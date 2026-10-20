@@ -321,6 +321,11 @@ pub async fn connect_dropbox(app: AppHandle, device_name: String) -> CommandResu
                 .map_err(|error| format!("Impossibile aprire il browser: {error}"))?;
             let code = crate::calendar_commands::wait_for_code(&listeners, &csrf, &cancel)?;
             drop(listeners);
+            // Dopo il login nel browser si torna a Greatnote.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
             let tokens = auth.exchange_code(&code, &pkce.verifier).map_err(message)?;
             let refresh = tokens
                 .refresh_token
@@ -350,8 +355,17 @@ pub async fn connect_dropbox(app: AppHandle, device_name: String) -> CommandResu
             })
             .map_err(message)?;
         tracing::info!("account Dropbox collegato");
-        if let Some(Err(error)) = run_once(app) {
-            return Err(error);
+        // La prima sincronizzazione può durare a lungo (tutte le note e gli
+        // allegati): parte in background, l'esito arriva con l'evento
+        // `sync-finished` e l'interfaccia mostra subito l'account collegato.
+        let background = app.clone();
+        let spawned = thread::Builder::new()
+            .name("sync-first-dropbox".to_owned())
+            .spawn(move || {
+                run_once(&background);
+            });
+        if let Err(error) = spawned {
+            tracing::warn!("prima sincronizzazione non avviata: {error}");
         }
         view(app)
     })

@@ -10,6 +10,10 @@ iniziale e non ha ancora release.
   si legge "Sincronizzato con Dropbox" (o "con la cartella"); durante la
   sincronizzazione o dopo un errore il messaggio cambia. Passando sopra con
   il mouse si vede l'ora dell'ultima sincronizzazione o l'errore.
+- **Collegamento a Dropbox.** Dopo il login nel browser Greatnote torna in
+  primo piano e mostra subito l'account collegato. Prima la schermata
+  restava su "collegamento in corso" fino alla fine della prima
+  sincronizzazione, che ora prosegue in background.
 - **Immagini nelle note su Windows.** Ora vengono mostrate (la politica di
   sicurezza dei contenuti non consentiva gli indirizzi `blob:`).
 
