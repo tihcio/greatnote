@@ -240,16 +240,18 @@ pub fn start_builtin_model_download(
         .name("ai-model-download".to_owned())
         .spawn(move || {
             let app = worker_app;
-            let result = runtime.store().download(model, &cancel, &mut |done, total| {
-                let _ = app.emit(
-                    DOWNLOAD_PROGRESS_EVENT,
-                    DownloadProgress {
-                        model_id: model.id.to_owned(),
-                        done,
-                        total,
-                    },
-                );
-            });
+            let result = runtime
+                .store()
+                .download(model, &cancel, &mut |done, total| {
+                    let _ = app.emit(
+                        DOWNLOAD_PROGRESS_EVENT,
+                        DownloadProgress {
+                            model_id: model.id.to_owned(),
+                            done,
+                            total,
+                        },
+                    );
+                });
             if let Ok(mut active) = app.state::<ModelDownloads>().active.lock() {
                 active.remove(model.id);
             }

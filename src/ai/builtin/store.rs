@@ -42,7 +42,8 @@ impl ModelStore {
     }
 
     fn partial_path(&self, file: &ModelFile) -> PathBuf {
-        self.directory.join(format!("{}{PARTIAL_SUFFIX}", file.file_name))
+        self.directory
+            .join(format!("{}{PARTIAL_SUFFIX}", file.file_name))
     }
 
     /// Il file definitivo esiste con la dimensione attesa (l'hash è già
@@ -326,6 +327,9 @@ mod tests {
         let cancel = AtomicBool::new(true);
         let result = store.download(model, &cancel, &mut |_, _| {});
         assert!(matches!(result, Err(AiError::Cancelled)));
-        assert!(store.partial_path(&model.model).exists(), "ripresa possibile");
+        assert!(
+            store.partial_path(&model.model).exists(),
+            "ripresa possibile"
+        );
     }
 }

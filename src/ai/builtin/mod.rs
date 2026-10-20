@@ -186,7 +186,13 @@ mod tests {
         assert!(provenance.local);
         assert_eq!(provenance.model, "BGE-M3");
         assert!(matches!(
-            provider.chat("gemma-4-e2b", &[], 0.3, &AtomicBool::new(false), &mut |_| {}),
+            provider.chat(
+                "gemma-4-e2b",
+                &[],
+                0.3,
+                &AtomicBool::new(false),
+                &mut |_| {}
+            ),
             Err(AiError::NotConfigured(_))
         ));
     }

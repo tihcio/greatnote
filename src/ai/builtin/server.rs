@@ -121,7 +121,10 @@ impl ServerSpec {
 /// circa 3 caratteri per token, più spazio per istruzioni e risposta.
 pub fn chat_context_tokens(max_context_chars: u32) -> u32 {
     let needed = max_context_chars / 3 + 4096;
-    needed.div_ceil(4096).saturating_mul(4096).clamp(8192, 32_768)
+    needed
+        .div_ceil(4096)
+        .saturating_mul(4096)
+        .clamp(8192, 32_768)
 }
 
 fn path_argument(path: &Path) -> String {
@@ -273,9 +276,13 @@ impl BuiltinRuntime {
     ) -> Result<RunningServer, AiError> {
         let port = free_port()?;
         let api_key = Uuid::new_v4().simple().to_string();
-        let log_path = self.store.directory().join(format!("server-{}.log", spec.alias));
-        let log = File::create(&log_path)
-            .map_err(|error| AiError::Builtin(format!("registro del server non creato: {error}")))?;
+        let log_path = self
+            .store
+            .directory()
+            .join(format!("server-{}.log", spec.alias));
+        let log = File::create(&log_path).map_err(|error| {
+            AiError::Builtin(format!("registro del server non creato: {error}"))
+        })?;
         let mut command = Command::new(executable);
         command
             .args(spec.arguments(&self.store, port, gpu))
@@ -346,7 +353,10 @@ impl BuiltinRuntime {
     }
 
     pub fn running(&self) -> usize {
-        self.servers.lock().map(|servers| servers.len()).unwrap_or(0)
+        self.servers
+            .lock()
+            .map(|servers| servers.len())
+            .unwrap_or(0)
     }
 }
 
