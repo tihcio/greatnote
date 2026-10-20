@@ -252,6 +252,15 @@ Motivazioni in [ADR 0011](./docs/decisions/0011-import-from-evernote-joplin-obsi
   indicizzazione incrementale), `retrieval` (fonti semantiche o FTS5,
   rilettura dalle note correnti), `prompt` (messaggi con delimitatori non
   falsificabili, risposte strutturate).
+- `src/ai/builtin/`: motore integrato (ADR 0020).
+  - `catalog`: modelli fissati per commit e SHA-256.
+  - `store`: download con ripresa e verifica.
+  - `server`: processi `llama-server` su 127.0.0.1 con chiave casuale,
+    avviati su richiesta e fermati dopo l'inattività.
+  - `BuiltinProvider`: implementa `AiProvider` inoltrando le richieste a
+    `OpenAiCompatible`.
+
+  I comandi sono in `src-tauri/src/builtin_ai_commands.rs`.
 - `src-tauri/src/ai_commands.rs`: comandi asincroni con identificativo per
   l'annullamento, streaming tramite `Channel`, chiave API nel portachiavi
   (`keyring`), indicizzazione in background con eventi

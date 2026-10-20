@@ -2,7 +2,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type { Note } from "../../types";
 
 /** Impostazioni AI salvate nel database (mai segreti). */
-export type ProviderKind = "openai-compatible" | "claude-code";
+export type ProviderKind = "openai-compatible" | "claude-code" | "builtin";
 
 export interface AiSettings {
   enabled: boolean;
@@ -167,6 +167,46 @@ export const IMAGE_TEXT_FINISHED_EVENT = "image-text-finished";
 export const INDEX_PROGRESS_EVENT = "ai-index-progress";
 export const INDEX_FINISHED_EVENT = "ai-index-finished";
 
+export type BuiltinRole = "chat" | "embedding" | "vision";
+
+/** Modello del catalogo del motore integrato (ADR 0020). */
+export interface BuiltinModel {
+  id: string;
+  role: BuiltinRole;
+  name: string;
+  license: string;
+  memory_gb: number;
+  recommended: boolean;
+  size_bytes: number;
+  /** Byte ancora da scaricare (meno del totale se un file è già presente). */
+  missing_bytes: number;
+  installed: boolean;
+  downloading: boolean;
+}
+
+export interface BuiltinCatalog {
+  engine_available: boolean;
+  models: BuiltinModel[];
+  models_directory: string;
+  used_bytes: number;
+  running_servers: number;
+}
+
+export interface ModelDownloadProgress {
+  model_id: string;
+  done: number;
+  total: number;
+}
+
+export interface ModelDownloadFinished {
+  model_id: string;
+  error: string | null;
+  cancelled: boolean;
+}
+
+export const MODEL_DOWNLOAD_PROGRESS_EVENT = "ai-model-download-progress";
+export const MODEL_DOWNLOAD_FINISHED_EVENT = "ai-model-download-finished";
+
 export function newRequestId(): string {
   return crypto.randomUUID();
 }
@@ -236,6 +276,10 @@ export const aiApi = {
   imageTextCapabilities: () => invoke<ImageTextCapabilities>("image_text_capabilities"),
   startImageTextAll: (includeFailed: boolean) => invoke<void>("start_image_text_all", { includeFailed }),
   cancelImageTextAll: () => invoke<void>("cancel_image_text_all"),
+  builtinCatalog: () => invoke<BuiltinCatalog>("get_builtin_ai_catalog"),
+  downloadBuiltinModel: (modelId: string) => invoke<void>("start_builtin_model_download", { modelId }),
+  cancelBuiltinDownload: (modelId: string) => invoke<void>("cancel_builtin_model_download", { modelId }),
+  deleteBuiltinModel: (modelId: string) => invoke<BuiltinCatalog>("delete_builtin_model", { modelId }),
 };
 
 /** Utilizzabile per inviare dati: attiva, modello di chat scelto e consenso

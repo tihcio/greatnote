@@ -4,6 +4,7 @@ import { askConfirmation } from "../../lib/confirm";
 import { errorMessage } from "../../lib/format";
 import type { Notebook } from "../../types";
 import { aiApi } from "./aiApi";
+import BuiltinModels from "./BuiltinModels";
 import ImageTextSettings from "./ImageTextSettings";
 import type { AiSettings, AiStatus, ConnectionTest, IndexProgress } from "./aiApi";
 
@@ -92,7 +93,8 @@ export default function AiSettingsSection({
     );
   }
 
-  const remote = draft.provider === "claude-code" || !isLoopback(draft.base_url);
+  const remote =
+    draft.provider === "claude-code" || (draft.provider === "openai-compatible" && !isLoopback(draft.base_url));
   const changed = JSON.stringify(draft) !== JSON.stringify(status.settings) || apiKey.trim() !== "";
   const openWebUi = /:3000\/api$/.test(draft.base_url.trim().replace(/\/+$/, ""));
   const patch = (value: Partial<AiSettings>) => {
@@ -234,11 +236,29 @@ export default function AiSettingsSection({
         <legend>{t.aiProvider}</legend>
         <div className="segmented ai-provider-switch" role="radiogroup" aria-label={t.aiProvider}>
           <button
+            aria-checked={draft.provider === "builtin"}
+            className={`segment${draft.provider === "builtin" ? " selected" : ""}`}
+            onClick={() => {
+              setTest(null);
+              // I nomi dei modelli degli altri provider non valgono qui: il
+              // pannello del motore integrato propone quelli scaricati.
+              patch({ provider: "builtin", chat_model: "", embedding_model: "", vision_model: "" });
+            }}
+            role="radio"
+            type="button"
+          >
+            {t.aiProviderBuiltin}
+          </button>
+          <button
             aria-checked={draft.provider === "openai-compatible"}
             className={`segment${draft.provider === "openai-compatible" ? " selected" : ""}`}
             onClick={() => {
               setTest(null);
-              patch({ provider: "openai-compatible" });
+              patch(
+                draft.provider === "builtin"
+                  ? { provider: "openai-compatible", chat_model: "", embedding_model: "", vision_model: "" }
+                  : { provider: "openai-compatible" },
+              );
             }}
             role="radio"
             type="button"
@@ -260,7 +280,9 @@ export default function AiSettingsSection({
         </div>
       </fieldset>
 
-      {draft.provider === "claude-code" ? (
+      {draft.provider === "builtin" ? (
+        <BuiltinModels draft={draft} patch={patch} />
+      ) : draft.provider === "claude-code" ? (
         <>
       <fieldset>
         <legend>Claude Code</legend>

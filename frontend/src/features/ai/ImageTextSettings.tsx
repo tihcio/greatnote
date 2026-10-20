@@ -109,6 +109,9 @@ export default function ImageTextSettings({ draft, saved, patch }: ImageTextSett
           <small className="data-hint">{t.imageTextVisionHint}</small>
         </label>
       )}
+      {draft.ocr_engine === "ai" && draft.provider === "builtin" && (
+        <p className="data-hint">{draft.vision_model ? t.imageTextBuiltinHint : t.imageTextBuiltinMissing}</p>
+      )}
       {draft.ocr_engine === "ai" && (
         <label className="dialog-field">
           <span>{t.imageTextMaxSide}</span>

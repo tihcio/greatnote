@@ -170,6 +170,12 @@ delle notifiche nella finestra nativa.
 - [x] Confronto tra versioni di una nota: differenze locali parola per
       parola e spiegazione facoltativa con l'AI (Cronologia nota).
 - [x] Cronologia delle richieste AI facoltativa, ricercabile e cancellabile.
+- [ ] Motore AI integrato (ADR 0020).
+  - [x] llama.cpp incluso nell'installer Windows.
+  - [x] Catalogo dei modelli per chat, contesto e visione, scaricabili con
+        verifica SHA-256 e ripresa.
+  - [x] Processi locali avviati su richiesta e fermati dopo l'inattività.
+  - [ ] Verifica manuale su Windows con un modello reale.
 - [ ] Trascrizione di riunioni (P3).
 
 **Accettazione:** funzioni AI facoltative, fonti verificabili e nessuna

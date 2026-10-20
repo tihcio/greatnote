@@ -18,6 +18,12 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      # Motore AI integrato (ADR 0020): serve già alla compilazione, perché
+      # tauri.windows.conf.json lo include tra le risorse.
+      - name: Fetch llama.cpp engine
+        shell: pwsh
+        run: ./scripts/fetch-llama.ps1
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 

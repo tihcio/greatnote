@@ -12,5 +12,8 @@
 /docs/mockup/
 /.vscode/
 
+# Motore llama.cpp scaricato da scripts/fetch-llama.ps1 (non versionato).
+/src-tauri/resources/llama/
+
 # Registrazioni OAuth dell'editore: solo in locale o nei segreti della CI.
 /oauth.env

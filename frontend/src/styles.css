@@ -4626,6 +4626,60 @@ p {
   margin: 4px 0 8px;
 }
 
+.ai-builtin-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.ai-builtin-group {
+  margin-top: 12px;
+}
+
+.ai-builtin-group h4 {
+  margin: 0 0 2px;
+  font-size: 13px;
+}
+
+.ai-builtin-model {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ai-builtin-model > .checkbox-field {
+  flex: 1 1 260px;
+  align-items: flex-start;
+}
+
+.ai-builtin-model .ai-inline-actions {
+  margin: 0;
+}
+
+.ai-builtin-model .ai-badge {
+  margin-left: 6px;
+}
+
+.ai-builtin-meta {
+  display: block;
+}
+
+.ai-builtin-model progress {
+  width: 120px;
+  accent-color: var(--accent);
+}
+
 .ai-save-row {
   padding-top: 6px;
   border-top: 1px solid var(--line);

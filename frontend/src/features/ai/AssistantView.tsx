@@ -343,7 +343,7 @@ export default function AssistantView({
                   status.settings.provider === "claude-code"
                     ? `Claude Code${status.settings.chat_model && status.settings.chat_model !== "default" ? ` · ${status.settings.chat_model}` : ""}`
                     : status.settings.chat_model,
-                  status.host,
+                  status.settings.provider === "builtin" ? t.aiBuiltinHost : status.host,
                   status.local,
                 )
               : t.assistantSubtitle}

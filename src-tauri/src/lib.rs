@@ -1,4 +1,5 @@
 mod ai_commands;
+mod builtin_ai_commands;
 mod calendar_commands;
 mod data_commands;
 mod mcp_commands;
@@ -514,6 +515,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             app.manage(data_commands::PendingOperations::default());
             app.manage(planner_commands::UiLanguage::default());
             app.manage(ai_commands::AiJobs::default());
+            app.manage(builtin_ai_commands::ModelDownloads::default());
+            builtin_ai_commands::setup(app.handle())?;
             app.manage(calendar_commands::CalendarState::default());
             app.manage(sync_commands::SyncRunState::default());
             data_commands::spawn_automatic_backup(app.handle());
@@ -678,9 +681,19 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             ai_commands::image_text_capabilities,
             ai_commands::read_image_text,
             ai_commands::start_image_text_all,
-            ai_commands::cancel_image_text_all
+            ai_commands::cancel_image_text_all,
+            builtin_ai_commands::get_builtin_ai_catalog,
+            builtin_ai_commands::start_builtin_model_download,
+            builtin_ai_commands::cancel_builtin_model_download,
+            builtin_ai_commands::delete_builtin_model
         ])
-        .run(tauri::generate_context!())?;
+        .build(tauri::generate_context!())?
+        .run(|_app, event| {
+            // I processi del motore AI integrato non sopravvivono all'app.
+            if let tauri::RunEvent::Exit = event {
+                builtin_ai_commands::shutdown();
+            }
+        });
     Ok(())
 }
 

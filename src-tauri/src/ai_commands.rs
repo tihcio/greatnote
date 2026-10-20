@@ -16,6 +16,7 @@ use std::{
 use greatnote_core::{
     ai::{
         AiError,
+        builtin::BuiltinProvider,
         claude_code::{self, ClaudeCode, ClaudeCodeStatus},
         history::{HistoryEntry, HistoryKind, HistorySource, NewHistoryEntry},
         index::{AiIndexStatus, IndexProgress, IndexReport, SemanticResult, index_pending_notes},
@@ -39,6 +40,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State, ipc::Channel};
 
 use crate::{
+    builtin_ai_commands,
     data_commands::blocking,
     planner_commands::{UiLanguage, get_time_context},
 };
@@ -174,6 +176,13 @@ fn provider_with_key(
         let executable = claude_code::locate(&settings.claude_path).map_err(message)?;
         return Ok(Box::new(ClaudeCode::new(executable, timeout)));
     }
+    if settings.provider == ProviderKind::Builtin {
+        return Ok(Box::new(BuiltinProvider::new(
+            builtin_ai_commands::runtime()?,
+            settings,
+            timeout,
+        )));
+    }
     let key = if typed_key.is_some() {
         typed_key
     } else if settings.use_api_key {
@@ -287,6 +296,10 @@ pub async fn update_ai_settings(app: AppHandle, settings: AiSettings) -> Command
         if saved != previous {
             // L'indicizzazione in corso usa le impostazioni precedenti.
             jobs.cancel_indexing();
+            // I server integrati non più usati liberano subito la memoria.
+            if let Ok(runtime) = builtin_ai_commands::runtime() {
+                runtime.stop_idle(Duration::ZERO);
+            }
         }
         database.ai_purge_index(&saved).map_err(message)?;
         status(&database, &jobs)
@@ -385,6 +398,27 @@ pub async fn test_ai_connection(
                 local,
                 host,
                 claude_code: Some(status),
+            });
+        }
+        if settings.provider == ProviderKind::Builtin {
+            // Nessun processo avviato: motore presente e modelli scaricati.
+            let runtime = builtin_ai_commands::runtime()?;
+            if runtime.executable().is_none() {
+                return Err(message(AiError::NotConfigured(
+                    "il motore AI integrato non è incluso in questa installazione",
+                )));
+            }
+            let models = runtime
+                .store()
+                .installed()
+                .into_iter()
+                .map(|model| model.id.to_owned())
+                .collect();
+            return Ok(ConnectionTest {
+                models,
+                local,
+                host,
+                claude_code: None,
             });
         }
         let typed_key = api_key.and_then(ApiKey::new);
@@ -1063,6 +1097,14 @@ fn read_text_of(
             }
             let model = if settings.provider == ProviderKind::ClaudeCode {
                 settings.chat_model.clone()
+            } else if settings.provider == ProviderKind::Builtin {
+                // I modelli integrati per la chat non leggono le immagini.
+                if settings.vision_model.is_empty() {
+                    return Err(message(AiError::NotConfigured(
+                        "scegli e scarica un modello per le immagini nelle impostazioni AI",
+                    )));
+                }
+                settings.vision_model.clone()
             } else if !settings.vision_model.is_empty() {
                 settings.vision_model.clone()
             } else {

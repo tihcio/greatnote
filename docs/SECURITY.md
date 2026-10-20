@@ -106,6 +106,21 @@ locali.
   cartella temporanea vuota; il testo delle note passa dallo standard
   input, non dagli argomenti. È trattato come server remoto (consenso
   obbligatorio). Vedi ADR 0012.
+- **Motore integrato (ADR 0020).**
+  - `llama-server` ascolta solo su `127.0.0.1`, su una porta casuale, e
+    accetta solo richieste con una chiave casuale generata a ogni avvio.
+    La chiave passa nell'ambiente, non negli argomenti visibili ad altri
+    processi.
+  - Web UI e accesso alla rete del server sono disattivati.
+  - I modelli si scaricano solo dopo una conferma, via `https`, da URL
+    fissati a un commit. File con dimensione o SHA-256 diversi da quelli
+    del catalogo vengono scartati.
+  - Anche l'archivio di llama.cpp distribuito con l'installer è verificato
+    con SHA-256 durante la build.
+  - I nomi dei file vengono solo dal catalogo, mai dall'interfaccia.
+  - Limite: dopo un arresto anomalo dell'app, il server può restare attivo
+    fino alla chiusura manuale; resta comunque raggiungibile solo in
+    locale e con la chiave.
 - **Chiave API:** solo nel portachiavi di sistema (Secret Service /
   Credential Manager); mai nel database, nei backup, nei log o nel frontend.
   Se il portachiavi non è disponibile la chiave non viene salvata.

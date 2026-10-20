@@ -221,7 +221,21 @@ e in [ADR 0011](./docs/decisions/0011-import-from-evernote-joplin-obsidian.md).
 ## Funzioni AI (facoltative)
 
 Tutto è spento finché non lo attivi in **Impostazioni › Intelligenza
-artificiale**. Per usare un modello locale con [Ollama](https://ollama.com):
+artificiale**.
+
+Il modo più semplice è il provider **Integrato**: l'app propone i modelli
+da scaricare per chat, contesto e visione e li esegue con llama.cpp, che è
+incluso nell'installer Windows. Su Linux serve `llama-server` nel `PATH`.
+Per una build Windows locale, prima di `npx tauri build` scarica il motore
+con:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/fetch-llama.ps1
+```
+
+Dettagli in [ADR 0020](./docs/decisions/0020-builtin-ai-engine.md).
+
+In alternativa, per usare un modello locale con [Ollama](https://ollama.com):
 
 ```sh
 ollama pull qwen3:8b            # modello per chat e scrittura (esempio)
@@ -234,8 +248,8 @@ modelli e salva. Funziona con qualunque server compatibile con l'API OpenAI
 (Open WebUI con `http://localhost:3000/api` e una sua chiave API, LM Studio,
 oppure **Claude Code** installato sul computer, con il tuo account,
 llama.cpp server con `--embeddings` per gli embedding, servizi
-remoti via `https` con chiave salvata nel portachiavi di sistema). Greatnote
-non scarica modelli. Dettagli in [ADR 0010](./docs/decisions/0010-optional-ai-providers-and-semantic-search.md)
+remoti via `https` con chiave salvata nel portachiavi di sistema). Con un
+server esterno Greatnote non scarica modelli. Dettagli in [ADR 0010](./docs/decisions/0010-optional-ai-providers-and-semantic-search.md)
 e nella [guida utente](./docs/USER_GUIDE.md#assistente-ai-facoltativo).
 
 ## Documentazione

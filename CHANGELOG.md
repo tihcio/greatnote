@@ -5,6 +5,18 @@ iniziale e non ha ancora release.
 
 ## Non rilasciato
 
+- **Motore AI integrato.** In Impostazioni › Intelligenza artificiale si
+  può scegliere il provider **Integrato**: non serve installare Ollama.
+  - L'app propone i modelli da scaricare per chat, contesto (ricerca
+    semantica) e visione (testo nelle immagini), con dimensione, memoria
+    necessaria e licenza. "Scarica i consigliati" li scarica tutti con una
+    sola conferma.
+  - I download si possono interrompere e riprendere e sono verificati con
+    SHA-256. I modelli restano sul computer e non finiscono nei backup.
+  - Su Windows l'installer include llama.cpp con accelerazione Vulkan; i
+    modelli si avviano solo quando servono e si chiudono dopo 10 minuti di
+    inattività (ADR 0020).
+
 - **Installer per Windows.** Ora è possibile compilare per Windows x64 un
   installer `.exe` (NSIS, per l'utente corrente e senza permessi di
   amministratore) e un `.msi`, entrambi in italiano e inglese. Il workflow

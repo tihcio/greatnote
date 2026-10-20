@@ -7,7 +7,10 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 
-use super::AiError;
+use super::{
+    AiError,
+    builtin::catalog::{ModelRole, find_with_role},
+};
 use crate::storage::{Database, StorageError};
 
 pub const AI_SETTINGS_KEY: &str = "ai.settings";
@@ -19,14 +22,18 @@ pub const CONTEXT_CHARS_RANGE: (u32, u32) = (2_000, 60_000);
 pub const TIMEOUT_SECONDS_RANGE: (u32, u32) = (10, 600);
 pub const VISION_SIDE_RANGE: (u32, u32) = (384, 4096);
 
-/// Tipo di provider: server con API compatibile OpenAI oppure la CLI di
-/// Claude Code installata sul computer (con il suo account).
+/// Tipo di provider: server con API compatibile OpenAI, la CLI di Claude
+/// Code installata sul computer (con il suo account) oppure il motore
+/// integrato.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProviderKind {
     #[default]
     OpenaiCompatible,
     ClaudeCode,
+    /// Motore llama.cpp distribuito con l'app e modelli scaricati dal
+    /// catalogo (ADR 0020): nessun server da installare, tutto locale.
+    Builtin,
 }
 
 /// Motore per leggere il testo delle immagini allegate.
@@ -136,6 +143,20 @@ impl AiSettings {
             self.embedding_model.clear();
             self.auto_index = false;
         }
+        if self.provider == ProviderKind::Builtin {
+            // Solo modelli del catalogo, ciascuno nel suo ruolo.
+            for (model, role) in [
+                (&self.chat_model, ModelRole::Chat),
+                (&self.embedding_model, ModelRole::Embedding),
+                (&self.vision_model, ModelRole::Vision),
+            ] {
+                if !model.is_empty() && find_with_role(model, role).is_none() {
+                    return Err(AiError::InvalidSettings(
+                        "modello non presente tra quelli del motore integrato",
+                    ));
+                }
+            }
+        }
         if !(CONTEXT_CHARS_RANGE.0..=CONTEXT_CHARS_RANGE.1).contains(&self.max_context_chars) {
             return Err(AiError::InvalidSettings(
                 "contesto massimo fuori dall'intervallo consentito",
@@ -171,6 +192,12 @@ impl AiSettings {
                 base_url: String::new(),
                 host: CLAUDE_CODE_HOST.to_owned(),
                 https: true,
+            }),
+            // Processo su questo computer, raggiunto solo su 127.0.0.1.
+            ProviderKind::Builtin => Ok(Endpoint {
+                base_url: String::new(),
+                host: "localhost".to_owned(),
+                https: false,
             }),
         }
     }
@@ -432,6 +459,39 @@ mod tests {
             serde_json::from_str(r#"{"enabled":true,"base_url":"http://localhost:11434/v1"}"#)
                 .expect("old settings");
         assert_eq!(stored.provider, ProviderKind::OpenaiCompatible);
+    }
+
+    #[test]
+    fn builtin_provider_is_local_and_accepts_only_catalog_models() {
+        let settings = AiSettings {
+            enabled: true,
+            provider: ProviderKind::Builtin,
+            chat_model: "gemma-4-e2b".to_owned(),
+            embedding_model: "bge-m3".to_owned(),
+            vision_model: "qwen3-vl-2b".to_owned(),
+            ..AiSettings::default()
+        }
+        .validated()
+        .expect("valid");
+        assert!(settings.ensure_usable().expect("usable").is_local());
+        let stored: AiSettings = serde_json::from_str(r#"{"provider":"builtin"}"#).expect("stored");
+        assert_eq!(stored.provider, ProviderKind::Builtin);
+        for invalid in [
+            AiSettings {
+                chat_model: "qwen3:8b".to_owned(),
+                ..settings.clone()
+            },
+            AiSettings {
+                embedding_model: "gemma-4-e2b".to_owned(),
+                ..settings.clone()
+            },
+            AiSettings {
+                vision_model: "bge-m3".to_owned(),
+                ..settings.clone()
+            },
+        ] {
+            assert!(invalid.validated().is_err());
+        }
     }
 
     #[test]

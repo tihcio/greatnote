@@ -336,7 +336,37 @@ presenti.
 ## Assistente AI (facoltativo)
 
 Le funzioni AI sono **spente** finché non le attivi in **Strumenti ›
-Impostazioni › Intelligenza artificiale**. Servono un server di modelli
+Impostazioni › Intelligenza artificiale**.
+
+**Motore integrato (il modo più semplice).** Non serve installare nulla:
+
+1. Attiva le funzioni AI e scegli il provider **Integrato**.
+2. Premi **Scarica i consigliati** oppure scarica i singoli modelli, per
+   ognuna delle tre sezioni:
+   - **Chat e modifiche**: obbligatoria.
+   - **Contesto**: facoltativa. Serve alla ricerca per significato e a
+     dare alla chat le note pertinenti.
+   - **Visione**: facoltativa. Serve a leggere il testo nelle immagini.
+
+   Per ogni modello sono indicati dimensione, memoria necessaria e
+   licenza. I file arrivano da Hugging Face, sono verificati con il loro
+   hash e restano sul computer. Puoi interrompere un download e
+   riprenderlo dopo.
+3. Scegli il modello di ogni sezione (i modelli scaricati vengono
+   proposti da soli) e premi **Salva le impostazioni AI**.
+
+Il primo utilizzo di un modello richiede qualche secondo per caricarlo.
+Dopo 10 minuti di inattività il modello viene chiuso per liberare memoria.
+Con una scheda grafica compatibile Vulkan le risposte sono più rapide;
+senza, Greatnote usa solo il processore. Un modello si elimina con
+**Elimina**; quello in uso va prima sostituito.
+
+Su Windows il motore è incluso nell'installer. Su Linux serve llama.cpp
+installato (comando `llama-server` nel `PATH`). In alternativa puoi
+indicare il percorso completo dell'eseguibile nella variabile d'ambiente
+`GREATNOTE_LLAMA_SERVER`.
+
+**Server esterno.** In alternativa servono un server di modelli
 compatibile con l'API OpenAI e almeno un modello di chat già installato:
 
 1. Installa e avvia un server, per esempio Ollama, e scarica un modello

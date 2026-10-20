@@ -4,10 +4,13 @@
 //! un servizio specifico: [`provider::AiProvider`] descrive chat ed
 //! embedding, [`provider::OpenAiCompatible`] lo implementa per i server con
 //! API compatibile OpenAI (Ollama, LM Studio, llama.cpp, servizi remoti).
+//! [`builtin`] avvia un motore llama.cpp distribuito con l'app, con modelli
+//! scaricati su richiesta (nessun server da installare).
 //! Il contenuto delle note inviato ai modelli è sempre riletto dal database e
 //! trattato come dato non attendibile ([`prompt`]); nessuna funzione AI
 //! modifica le note: le proposte vengono applicate solo dall'utente.
 
+pub mod builtin;
 pub mod chunking;
 pub mod claude_code;
 pub mod history;
@@ -57,6 +60,10 @@ pub enum AiError {
     ClaudeCode(String),
     #[error("Lettura dell'immagine non riuscita: {0}")]
     Ocr(String),
+    #[error("Motore AI integrato: {0}")]
+    Builtin(String),
+    #[error("Download del modello non riuscito: {0}")]
+    ModelDownload(String),
     #[error(transparent)]
     Storage(#[from] StorageError),
 }

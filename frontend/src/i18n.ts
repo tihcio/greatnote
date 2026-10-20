@@ -1026,6 +1026,63 @@ const messages = {
       `${cancelled ? "Interrotta: " : ""}${read} immagini lette, ${failed} non riuscite, ${skipped} saltate (escluse o oltre 5 MB).`,
     aiProvider: "Provider",
     aiProviderOpenai: "Server compatibile OpenAI",
+    aiProviderBuiltin: "Integrato (nessuna installazione)",
+    aiBuiltinHost: "motore integrato",
+    aiBuiltinTitle: "Motore AI integrato",
+    aiBuiltinIntro:
+      "Greatnote esegue i modelli su questo computer con llama.cpp: non serve installare Ollama né altri programmi e le note non escono dal computer. Scarica i modelli che ti servono: vengono avviati solo quando li usi e chiusi dopo 10 minuti di inattività. Con una scheda grafica compatibile Vulkan le risposte sono più rapide.",
+    aiBuiltinEngineMissing:
+      "Il motore integrato non è incluso in questa installazione. Su Linux puoi installare llama.cpp (comando llama-server) oppure usare un server compatibile OpenAI.",
+    aiBuiltinSuggest: (size: string) =>
+      `Per iniziare ti proponiamo i modelli consigliati per chat, contesto e immagini (${size} in totale).`,
+    aiBuiltinDownloadRecommended: "Scarica i consigliati",
+    aiBuiltinRoleChat: "Chat e modifiche",
+    aiBuiltinRoleChatHint: "Risponde alle domande sulle note, riassume, corregge, traduce e propone tag e attività.",
+    aiBuiltinRoleEmbedding: "Contesto (ricerca semantica)",
+    aiBuiltinRoleEmbeddingHint:
+      "Trova le note pertinenti per significato e le passa alla chat come contesto. Facoltativo: senza, si usa la ricerca testuale.",
+    aiBuiltinRoleVision: "Visione (testo nelle immagini)",
+    aiBuiltinRoleVisionHint: "Legge il testo di foto, scansioni e immagini allegate. Facoltativo.",
+    aiBuiltinNone: "Nessuno",
+    aiBuiltinRecommended: "Consigliato",
+    aiBuiltinMeta: (size: string, memory: number, license: string) =>
+      `${size} · circa ${memory.toLocaleString("it-IT")} GB di memoria · licenza ${license}`,
+    aiBuiltinDescription: (id: string) => {
+      switch (id) {
+        case "gemma-4-e2b":
+          return "Buon equilibrio tra qualità e velocità, ottimo in italiano. Adatto alla maggior parte dei computer.";
+        case "qwen3.5-0.8b":
+          return "Molto leggero e veloce, per computer con poca memoria. Risposte più semplici.";
+        case "gemma-4-e4b":
+          return "Qualità migliore ma più lento: consigliato con 16 GB di memoria o una scheda grafica.";
+        case "bge-m3":
+          return "Multilingue, ottimo per l'italiano.";
+        case "nomic-embed-text-v2":
+          return "Multilingue e più leggero.";
+        case "qwen3-vl-2b":
+          return "Legge bene testi stampati e scritti a mano, anche in tabelle.";
+        case "gemma-4-e2b-vision":
+          return "Usa lo stesso file di Gemma 4 E2B: se lo usi già per la chat, aggiunge solo il componente per le immagini e un unico processo serve entrambe.";
+        default:
+          return "";
+      }
+    },
+    aiBuiltinDownload: "Scarica",
+    aiBuiltinDownloadSize: (size: string) => `Scarica (${size})`,
+    aiBuiltinDownloadConfirmTitle: "Scaricare da Hugging Face?",
+    aiBuiltinDownloadConfirm: (name: string, size: string) =>
+      `${name}: verranno scaricati ${size} da Hugging Face. Il file viene verificato con il suo hash e resta su questo computer. Puoi interrompere il download e riprenderlo in seguito.`,
+    aiBuiltinDownloadAllConfirm: (names: string, size: string) =>
+      `Verranno scaricati ${names} (${size} in totale) da Hugging Face. I file vengono verificati con il loro hash e restano su questo computer. Puoi interrompere i download e riprenderli in seguito.`,
+    aiBuiltinDownloading: (percent: number) => `Download: ${percent}%`,
+    aiBuiltinCancel: "Interrompi",
+    aiBuiltinDelete: "Elimina",
+    aiBuiltinDeleteConfirm: (name: string) => `Eliminare ${name} da questo computer? Potrai scaricarlo di nuovo.`,
+    aiBuiltinDeleted: (name: string) => `${name} eliminato.`,
+    aiBuiltinStorage: (size: string, directory: string) => `Spazio usato dai modelli: ${size} (${directory}).`,
+    imageTextBuiltinHint: "Con il motore integrato il modello per le immagini si sceglie in «Motore AI integrato», qui sopra.",
+    imageTextBuiltinMissing:
+      "Scarica e scegli un modello in «Visione» nella sezione «Motore AI integrato», qui sopra, oppure usa Tesseract.",
     aiDontAskAgain: (host: string) => `Non chiedermelo più per ${host}`,
     aiConfirmEachSend:
       "Mostra cosa verrà inviato e chiedi conferma prima di ogni richiesta (le fonti usate restano sempre visibili sotto le risposte)",
@@ -2109,6 +2166,63 @@ const messages = {
       `${cancelled ? "Stopped: " : ""}${read} images read, ${failed} failed, ${skipped} skipped (excluded or over 5 MB).`,
     aiProvider: "Provider",
     aiProviderOpenai: "OpenAI-compatible server",
+    aiProviderBuiltin: "Built-in (nothing to install)",
+    aiBuiltinHost: "built-in engine",
+    aiBuiltinTitle: "Built-in AI engine",
+    aiBuiltinIntro:
+      "Greatnote runs the models on this computer with llama.cpp: you don't need to install Ollama or anything else, and your notes never leave the computer. Download the models you need: they start only when used and stop after 10 minutes of inactivity. With a Vulkan-capable graphics card, answers are faster.",
+    aiBuiltinEngineMissing:
+      "The built-in engine is not included in this installation. On Linux you can install llama.cpp (the llama-server command) or use an OpenAI-compatible server.",
+    aiBuiltinSuggest: (size: string) =>
+      `To get started, we suggest the recommended models for chat, context and images (${size} in total).`,
+    aiBuiltinDownloadRecommended: "Download recommended",
+    aiBuiltinRoleChat: "Chat and edits",
+    aiBuiltinRoleChatHint: "Answers questions about your notes, summarizes, proofreads, translates and suggests tags and tasks.",
+    aiBuiltinRoleEmbedding: "Context (semantic search)",
+    aiBuiltinRoleEmbeddingHint:
+      "Finds notes relevant by meaning and passes them to the chat as context. Optional: without it, keyword search is used.",
+    aiBuiltinRoleVision: "Vision (text in images)",
+    aiBuiltinRoleVisionHint: "Reads the text in attached photos, scans and images. Optional.",
+    aiBuiltinNone: "None",
+    aiBuiltinRecommended: "Recommended",
+    aiBuiltinMeta: (size: string, memory: number, license: string) =>
+      `${size} · about ${memory.toLocaleString("en-US")} GB of memory · ${license} license`,
+    aiBuiltinDescription: (id: string) => {
+      switch (id) {
+        case "gemma-4-e2b":
+          return "Good balance of quality and speed, strong in many languages. Suits most computers.";
+        case "qwen3.5-0.8b":
+          return "Very light and fast, for computers with little memory. Simpler answers.";
+        case "gemma-4-e4b":
+          return "Better quality but slower: recommended with 16 GB of memory or a graphics card.";
+        case "bge-m3":
+          return "Multilingual, great for Italian and English.";
+        case "nomic-embed-text-v2":
+          return "Multilingual and lighter.";
+        case "qwen3-vl-2b":
+          return "Reads printed and handwritten text well, including tables.";
+        case "gemma-4-e2b-vision":
+          return "Uses the same file as Gemma 4 E2B: if you already use it for chat, it only adds the image component and a single process serves both.";
+        default:
+          return "";
+      }
+    },
+    aiBuiltinDownload: "Download",
+    aiBuiltinDownloadSize: (size: string) => `Download (${size})`,
+    aiBuiltinDownloadConfirmTitle: "Download from Hugging Face?",
+    aiBuiltinDownloadConfirm: (name: string, size: string) =>
+      `${name}: ${size} will be downloaded from Hugging Face. The file is checked against its hash and stays on this computer. You can stop the download and resume it later.`,
+    aiBuiltinDownloadAllConfirm: (names: string, size: string) =>
+      `${names} (${size} in total) will be downloaded from Hugging Face. The files are checked against their hashes and stay on this computer. You can stop the downloads and resume them later.`,
+    aiBuiltinDownloading: (percent: number) => `Downloading: ${percent}%`,
+    aiBuiltinCancel: "Stop",
+    aiBuiltinDelete: "Delete",
+    aiBuiltinDeleteConfirm: (name: string) => `Delete ${name} from this computer? You can download it again.`,
+    aiBuiltinDeleted: (name: string) => `${name} deleted.`,
+    aiBuiltinStorage: (size: string, directory: string) => `Space used by models: ${size} (${directory}).`,
+    imageTextBuiltinHint: "With the built-in engine, the image model is chosen in “Built-in AI engine” above.",
+    imageTextBuiltinMissing:
+      "Download and choose a model under “Vision” in the “Built-in AI engine” section above, or use Tesseract.",
     aiDontAskAgain: (host: string) => `Don't ask again for ${host}`,
     aiConfirmEachSend:
       "Show what will be sent and ask before every request (the sources used always stay visible under the answers)",
