@@ -5,6 +5,14 @@ iniziale e non ha ancora release.
 
 ## Non rilasciato
 
+- **Stato della sincronizzazione nella barra laterale.** In basso a sinistra
+  non compare più sempre "Archivio locale". Con la sincronizzazione attiva
+  si legge "Sincronizzato con Dropbox" (o "con la cartella"); durante la
+  sincronizzazione o dopo un errore il messaggio cambia. Passando sopra con
+  il mouse si vede l'ora dell'ultima sincronizzazione o l'errore.
+- **Immagini nelle note su Windows.** Ora vengono mostrate (la politica di
+  sicurezza dei contenuti non consentiva gli indirizzi `blob:`).
+
 - **Motore AI integrato.** In Impostazioni › Intelligenza artificiale si
   può scegliere il provider **Integrato**: non serve installare Ollama.
   - L'app propone i modelli da scaricare per chat, contesto (ricerca

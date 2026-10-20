@@ -38,6 +38,7 @@ import { askConfirmation } from "./lib/confirm";
 import NotePlanner from "./features/NotePlanner";
 import ReminderAlerts from "./features/ReminderAlerts";
 import RemindersView from "./features/RemindersView";
+import SyncStatusIndicator from "./features/SyncStatusIndicator";
 import TasksView from "./features/TasksView";
 import { buildMenus, noteItems } from "./app/buildMenus";
 import type { ExportKind, MenuContext } from "./app/buildMenus";
@@ -2676,8 +2677,14 @@ export default function App() {
         </section>
 
         <div className="sidebar-footer">
-          <span className={`status-dot ${isDesktop ? "local" : "unavailable"}`} />
-          <span>{isDesktop ? t.localArchive : t.previewMode}</span>
+          {isDesktop ? (
+            <SyncStatusIndicator refreshKey={isSettingsOpen} />
+          ) : (
+            <>
+              <span className="status-dot unavailable" />
+              <span>{t.previewMode}</span>
+            </>
+          )}
           {isDesktop && (
             <button
               aria-label={t.settingsTitle}
