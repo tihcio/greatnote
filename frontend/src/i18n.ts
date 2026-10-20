@@ -1047,7 +1047,7 @@ const messages = {
     aiBuiltinRecommended: "Consigliato",
     aiBuiltinMeta: (size: string, memory: number, license: string) =>
       `${size} · circa ${memory.toLocaleString("it-IT")} GB di memoria · licenza ${license}`,
-    aiBuiltinDescription: (id: string) => {
+    aiBuiltinDescription: (id: string): string => {
       switch (id) {
         case "gemma-4-e2b":
           return "Buon equilibrio tra qualità e velocità, ottimo in italiano. Adatto alla maggior parte dei computer.";
@@ -2187,7 +2187,7 @@ const messages = {
     aiBuiltinRecommended: "Recommended",
     aiBuiltinMeta: (size: string, memory: number, license: string) =>
       `${size} · about ${memory.toLocaleString("en-US")} GB of memory · ${license} license`,
-    aiBuiltinDescription: (id: string) => {
+    aiBuiltinDescription: (id: string): string => {
       switch (id) {
         case "gemma-4-e2b":
           return "Good balance of quality and speed, strong in many languages. Suits most computers.";
