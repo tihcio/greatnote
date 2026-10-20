@@ -1,0 +1,39 @@
+[package]
+name = "greatnote-core"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+description = "Local-first domain and SQLite storage for Greatnote"
+
+[workspace]
+members = ["src-tauri"]
+default-members = ["."]
+resolver = "2"
+
+[dependencies]
+age = "0.12"
+base64 = "0.22"
+jiff = "0.2"
+# Ridimensionamento delle immagini inviate ai modelli con visione.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
+# Hash MD5 usato da Evernote per collegare gli allegati al testo (non per sicurezza).
+md-5 = "0.10"
+# Lettura in streaming dei file ENEX di Evernote.
+quick-xml = "0.42"
+pulldown-cmark = { version = "0.13", default-features = false }
+rusqlite = { version = "0.40", features = ["bundled"] }
+scraper = { version = "0.27", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+# Archivi JEX di Joplin (solo lettura in memoria, nessuna estrazione su disco).
+tar = { version = "0.4", default-features = false }
+thiserror = "2"
+tracing = "0.1"
+# Client HTTP bloccante per i provider AI (rustls, nessuna libreria TLS di sistema).
+ureq = { version = "3.4", default-features = false, features = ["rustls"] }
+uuid = { version = "1", features = ["v4"] }
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+[dev-dependencies]
+tempfile = "3"

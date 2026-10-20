@@ -1,0 +1,17 @@
+[Desktop Entry]
+Categories={{categories}}
+{{#if comment}}
+Comment={{comment}}
+{{/if}}
+Exec={{exec}}
+{{!-- Deve coincidere con l'app_id Wayland (identificatore Tauri con
+      enableGTKAppId): così KDE/GNOME associano la finestra a questa voce e
+      ne mostrano icona e nome. --}}
+StartupWMClass=dev.greatnote.notes
+Icon={{icon}}
+Name={{name}}
+Terminal=false
+Type=Application
+{{#if mime_type}}
+MimeType={{mime_type}}
+{{/if}}

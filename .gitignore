@@ -1,0 +1,16 @@
+/node_modules/
+/dist/
+/target/
+/src-tauri/target/
+/src-tauri/gen/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Materiale locale non pubblicato: screenshot di riferimento di terzi
+# e impostazioni personali dell'editor.
+/docs/mockup/
+/.vscode/
+
+# Registrazioni OAuth dell'editore: solo in locale o nei segreti della CI.
+/oauth.env

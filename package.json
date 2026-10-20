@@ -1,0 +1,36 @@
+{
+  "name": "greatnote",
+  "private": true,
+  "version": "0.1.0",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config frontend/vite.config.ts",
+    "build": "tsc -p frontend/tsconfig.json && vite build --config frontend/vite.config.ts",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "test:ui": "node tests/ui/smoke.mjs",
+    "ui:screens": "node tests/ui/screens.mjs"
+  },
+  "dependencies": {
+    "@fontsource/manrope": "^5.3.0",
+    "@tauri-apps/api": "^2.12.3",
+    "@tiptap/extension-highlight": "^3.32.0",
+    "@tiptap/extension-list": "^3.32.0",
+    "@tiptap/extension-table": "^3.32.0",
+    "@tiptap/extension-text-style": "^3.32.0",
+    "@tiptap/react": "^3.32.0",
+    "@tiptap/starter-kit": "^3.32.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "puppeteer-core": "^25.13.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.4"
+  }
+}
