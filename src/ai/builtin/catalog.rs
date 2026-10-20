@@ -29,7 +29,7 @@ pub struct ModelFile {
     pub sha256: &'static str,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CatalogModel {
     /// Identificativo salvato nelle impostazioni.
     pub id: &'static str,
