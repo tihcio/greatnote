@@ -2185,7 +2185,7 @@ mod tests {
             let mut entry = archive.by_index(index).expect("entry");
             let name = entry.enclosed_name().expect("safe name");
             // Nome grezzo nell'archivio: sempre con `/`, su ogni sistema.
-            names.push(entry.name().to_owned());
+            names.push(entry.name().expect("entry name").to_string());
             let target = extracted.path().join(&name);
             fs::create_dir_all(target.parent().expect("parent")).expect("dirs");
             let mut bytes = Vec::new();
