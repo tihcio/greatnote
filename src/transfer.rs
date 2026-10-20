@@ -995,8 +995,17 @@ pub(crate) fn display_name(path: &Path, root: &Path) -> String {
     path.strip_prefix(root)
         .ok()
         .or_else(|| path.file_name().map(Path::new))
-        .map(|name| name.to_string_lossy().into_owned())
+        .map(portable_path)
         .unwrap_or_else(|| "file".to_owned())
+}
+
+/// Percorso relativo con `/` come separatore su ogni sistema, così i report
+/// d'importazione sono uguali su Linux e Windows.
+pub(crate) fn portable_path(path: &Path) -> String {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// Piano per singoli file selezionati (Markdown, HTML o testo).
@@ -2175,7 +2184,8 @@ mod tests {
         for index in 0..archive.len() {
             let mut entry = archive.by_index(index).expect("entry");
             let name = entry.enclosed_name().expect("safe name");
-            names.push(name.to_string_lossy().into_owned());
+            // Nome grezzo nell'archivio: sempre con `/`, su ogni sistema.
+            names.push(entry.name().to_owned());
             let target = extracted.path().join(&name);
             fs::create_dir_all(target.parent().expect("parent")).expect("dirs");
             let mut bytes = Vec::new();

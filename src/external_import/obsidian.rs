@@ -24,7 +24,7 @@ use crate::{
     transfer::{
         Collection, ImportPlan, ImportedAttachment, MAX_FOLDER_DEPTH, MAX_IMPORT_FILE_BYTES,
         MAX_IMPORT_FILES, MAX_IMPORT_TOTAL_BYTES, ParsedNote, PlannedLink, PlannedNote,
-        read_limited,
+        portable_path, read_limited,
     },
 };
 
@@ -366,7 +366,7 @@ pub fn plan_obsidian_import(root: &Path) -> Result<ImportPlan, StorageError> {
     for path in &vault.notes {
         let relative = path.strip_prefix(&vault.root).unwrap_or(path);
         files.push(PlannedNote {
-            source_name: relative.to_string_lossy().into_owned(),
+            source_name: portable_path(relative),
             outcome: build_note(&vault, path, relative, &mut budget),
         });
     }

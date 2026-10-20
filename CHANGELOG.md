@@ -11,6 +11,8 @@ iniziale e non ha ancora release.
   *Windows installer* li compila su GitHub Actions. La CI esegue i
   controlli anche su Windows. Gli installer non sono ancora firmati
   (ADR 0019).
+  - Su Windows i report d'importazione mostrano i percorsi con `/`, come su
+    Linux (es. `sottocartella/nota.md`), e non più con `\`.
 
 - **Sincronizzazione con Dropbox.** In Impostazioni › Sincronizzazione si
   sceglie **Dropbox** e si preme **Collega Dropbox**: accesso nel browser,
