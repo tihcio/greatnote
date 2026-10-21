@@ -181,7 +181,8 @@ fn catalog_status(runtime: &BuiltinRuntime, downloads: &ModelDownloads) -> Built
 #[tauri::command]
 pub async fn get_builtin_ai_catalog(app: AppHandle) -> CommandResult<BuiltinCatalog> {
     blocking(app, |app| {
-        Ok(catalog_status(&runtime()?, &app.state::<ModelDownloads>()))
+        let runtime = runtime()?;
+        Ok(catalog_status(&runtime, &app.state::<ModelDownloads>()))
     })
     .await
 }
