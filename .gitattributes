@@ -1,0 +1,2 @@
+# Gli script shell devono restare con fine riga LF anche su Windows.
+*.sh text eol=lf
