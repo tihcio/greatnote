@@ -35,5 +35,10 @@ ureq = { version = "3.4", default-features = false, features = ["rustls"] }
 uuid = { version = "1", features = ["v4"] }
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
+# RAM totale per indicare i modelli AI adatti al computer (già presente tra
+# le dipendenze di Tauri, qui con la sola API di sistema necessaria).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_SystemInformation"] }
+
 [dev-dependencies]
 tempfile = "3"

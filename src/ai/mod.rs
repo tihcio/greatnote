@@ -64,6 +64,8 @@ pub enum AiError {
     Builtin(String),
     #[error("Download del modello non riuscito: {0}")]
     ModelDownload(String),
+    #[error("Hugging Face: {0}")]
+    Hub(String),
     #[error(transparent)]
     Storage(#[from] StorageError),
 }

@@ -233,7 +233,12 @@ con:
 powershell -ExecutionPolicy Bypass -File scripts/fetch-llama.ps1
 ```
 
-Dettagli in [ADR 0020](./docs/decisions/0020-builtin-ai-engine.md).
+Oltre ai modelli consigliati puoi cercarne altri su Hugging Face. Ogni
+variante mostra dimensione, memoria stimata e se è adatta al computer
+(scheda video, processore, al limite, troppo grande).
+
+Dettagli in [ADR 0020](./docs/decisions/0020-builtin-ai-engine.md) e
+[ADR 0021](./docs/decisions/0021-hugging-face-model-search.md).
 
 In alternativa, per usare un modello locale con [Ollama](https://ollama.com):
 

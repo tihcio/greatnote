@@ -1086,6 +1086,75 @@ const messages = {
     aiBuiltinDeleteConfirm: (name: string) => `Eliminare ${name} da questo computer? Potrai scaricarlo di nuovo.`,
     aiBuiltinDeleted: (name: string) => `${name} eliminato.`,
     aiBuiltinStorage: (size: string, directory: string) => `Spazio usato dai modelli: ${size} (${directory}).`,
+    aiBuiltinHardware: (ram: string | null, gpus: string[]) =>
+      `Questo computer: ${ram ? `${ram} di RAM` : "RAM non rilevata"} · ${
+        gpus.length > 0 ? gpus.join(", ") : "nessuna scheda video utilizzabile dal motore"
+      }.`,
+    aiBuiltinGpu: (name: string, size: string, dedicated: boolean) =>
+      dedicated ? `${name} (${size})` : `${name} (memoria condivisa)`,
+    aiBuiltinFit: (fit: string): string => {
+      switch (fit) {
+        case "gpu":
+          return "Adatto: scheda video";
+        case "cpu":
+          return "Adatto: processore, più lento";
+        case "tight":
+          return "Al limite della memoria";
+        case "too-large":
+          return "Troppo grande";
+        default:
+          return "Memoria non rilevata";
+      }
+    },
+    aiBuiltinFitHint: (fit: string): string => {
+      switch (fit) {
+        case "gpu":
+          return "Entra nella memoria della scheda video: risposte rapide.";
+        case "cpu":
+          return "Entra nella RAM: funziona, ma le risposte sono più lente.";
+        case "tight":
+          return "Occupa quasi tutta la memoria: può rallentare il computer e le altre applicazioni.";
+        case "too-large":
+          return "Richiede più memoria di quella disponibile: probabilmente non si avvierà.";
+        default:
+          return "Non è stato possibile leggere la memoria di questo computer.";
+      }
+    },
+    aiBuiltinFromHub: "Hugging Face",
+    aiBuiltinHubDescription: (repo: string) =>
+      `Da ${repo}. Non provato con il motore incluso: se non si avvia, scegline un altro.`,
+    aiBuiltinHubOpen: "Cerca altri modelli su Hugging Face",
+    aiBuiltinHubClose: "Chiudi la ricerca",
+    aiBuiltinHubTitle: (role: string) => `Cerca su Hugging Face: ${role}`,
+    aiBuiltinHubPrivacy:
+      "La ricerca invia a Hugging Face solo le parole cercate, mai le note. I modelli trovati non sono stati provati con il motore incluso e alcuni potrebbero non avviarsi; controlla la licenza prima di usarli.",
+    aiBuiltinHubQuery: "Nome del modello",
+    aiBuiltinHubPlaceholder: "es. gemma, qwen, mistral, phi",
+    aiBuiltinHubSearch: "Cerca",
+    aiBuiltinHubSearching: "Ricerca su Hugging Face…",
+    aiBuiltinHubNoResults: "Nessun modello GGUF trovato: prova con un altro nome.",
+    aiBuiltinHubRepoMeta: (downloads: number, likes: number, license: string | null) =>
+      `${downloads.toLocaleString("it-IT")} download · ${likes.toLocaleString("it-IT")} preferenze · licenza ${
+        license ?? "non indicata"
+      }`,
+    aiBuiltinHubGated: "Accesso riservato su Hugging Face: non scaricabile dall'app.",
+    aiBuiltinHubShowVariants: "Mostra le varianti",
+    aiBuiltinHubHideVariants: "Nascondi le varianti",
+    aiBuiltinHubLoadingVariants: "Lettura dei file del repository…",
+    aiBuiltinHubNoVariants: "Nessuna variante GGUF scaricabile in questo repository.",
+    aiBuiltinHubNoProjector:
+      "Questo repository non contiene il componente per le immagini (mmproj): il modello non può leggere immagini.",
+    aiBuiltinHubNotEmbedding:
+      "Questo repository non è indicato come modello di embedding: potrebbe non funzionare per la ricerca semantica.",
+    aiBuiltinHubVariantMeta: (size: string, memory: number) =>
+      `${size} · circa ${memory.toLocaleString("it-IT")} GB di memoria`,
+    aiBuiltinHubRecommendedForYou: "Consigliata per questo computer",
+    aiBuiltinHubAlreadyAdded: "Già nell'elenco",
+    aiBuiltinHubDownloadConfirm: (name: string, size: string, license: string, fit: string) =>
+      `${name}: verranno scaricati ${size} da Hugging Face. Licenza: ${license}. Su questo computer: ${fit}. I file vengono verificati con il loro hash e restano su questo computer; puoi interrompere il download e riprenderlo in seguito.`,
+    aiBuiltinHubTooLargeWarning:
+      " Attenzione: il modello richiede più memoria di quella disponibile e probabilmente non si avvierà.",
+    aiBuiltinHubStarted: (name: string) => `Download di ${name} avviato: lo trovi nell'elenco qui sopra.`,
     imageTextBuiltinHint: "Con il motore integrato il modello per le immagini si sceglie in «Motore AI integrato», qui sopra.",
     imageTextBuiltinMissing:
       "Scarica e scegli un modello in «Visione» nella sezione «Motore AI integrato», qui sopra, oppure usa Tesseract.",
@@ -2232,6 +2301,75 @@ const messages = {
     aiBuiltinDeleteConfirm: (name: string) => `Delete ${name} from this computer? You can download it again.`,
     aiBuiltinDeleted: (name: string) => `${name} deleted.`,
     aiBuiltinStorage: (size: string, directory: string) => `Space used by models: ${size} (${directory}).`,
+    aiBuiltinHardware: (ram: string | null, gpus: string[]) =>
+      `This computer: ${ram ? `${ram} of RAM` : "RAM not detected"} · ${
+        gpus.length > 0 ? gpus.join(", ") : "no graphics card usable by the engine"
+      }.`,
+    aiBuiltinGpu: (name: string, size: string, dedicated: boolean) =>
+      dedicated ? `${name} (${size})` : `${name} (shared memory)`,
+    aiBuiltinFit: (fit: string): string => {
+      switch (fit) {
+        case "gpu":
+          return "Fits: graphics card";
+        case "cpu":
+          return "Fits: processor, slower";
+        case "tight":
+          return "At the memory limit";
+        case "too-large":
+          return "Too large";
+        default:
+          return "Memory not detected";
+      }
+    },
+    aiBuiltinFitHint: (fit: string): string => {
+      switch (fit) {
+        case "gpu":
+          return "Fits in the graphics card memory: fast answers.";
+        case "cpu":
+          return "Fits in RAM: it works, but answers are slower.";
+        case "tight":
+          return "Uses almost all the memory: it may slow down the computer and other applications.";
+        case "too-large":
+          return "Needs more memory than available: it will probably not start.";
+        default:
+          return "The memory of this computer could not be read.";
+      }
+    },
+    aiBuiltinFromHub: "Hugging Face",
+    aiBuiltinHubDescription: (repo: string) =>
+      `From ${repo}. Not tested with the included engine: if it does not start, choose another one.`,
+    aiBuiltinHubOpen: "Search more models on Hugging Face",
+    aiBuiltinHubClose: "Close search",
+    aiBuiltinHubTitle: (role: string) => `Search Hugging Face: ${role}`,
+    aiBuiltinHubPrivacy:
+      "The search sends Hugging Face only the words you type, never your notes. The models found have not been tested with the included engine and some may not start; check the license before using them.",
+    aiBuiltinHubQuery: "Model name",
+    aiBuiltinHubPlaceholder: "e.g. gemma, qwen, mistral, phi",
+    aiBuiltinHubSearch: "Search",
+    aiBuiltinHubSearching: "Searching Hugging Face…",
+    aiBuiltinHubNoResults: "No GGUF model found: try another name.",
+    aiBuiltinHubRepoMeta: (downloads: number, likes: number, license: string | null) =>
+      `${downloads.toLocaleString("en-US")} downloads · ${likes.toLocaleString("en-US")} likes · license ${
+        license ?? "not stated"
+      }`,
+    aiBuiltinHubGated: "Restricted access on Hugging Face: cannot be downloaded by the app.",
+    aiBuiltinHubShowVariants: "Show variants",
+    aiBuiltinHubHideVariants: "Hide variants",
+    aiBuiltinHubLoadingVariants: "Reading the repository files…",
+    aiBuiltinHubNoVariants: "No downloadable GGUF variant in this repository.",
+    aiBuiltinHubNoProjector:
+      "This repository has no image component (mmproj): the model cannot read images.",
+    aiBuiltinHubNotEmbedding:
+      "This repository is not marked as an embedding model: it may not work for semantic search.",
+    aiBuiltinHubVariantMeta: (size: string, memory: number) =>
+      `${size} · about ${memory.toLocaleString("en-US")} GB of memory`,
+    aiBuiltinHubRecommendedForYou: "Recommended for this computer",
+    aiBuiltinHubAlreadyAdded: "Already in the list",
+    aiBuiltinHubDownloadConfirm: (name: string, size: string, license: string, fit: string) =>
+      `${name}: ${size} will be downloaded from Hugging Face. License: ${license}. On this computer: ${fit}. The files are verified with their hash and stay on this computer; you can stop the download and resume it later.`,
+    aiBuiltinHubTooLargeWarning:
+      " Warning: the model needs more memory than available and will probably not start.",
+    aiBuiltinHubStarted: (name: string) => `Download of ${name} started: you will find it in the list above.`,
     imageTextBuiltinHint: "With the built-in engine, the image model is chosen in “Built-in AI engine” above.",
     imageTextBuiltinMissing:
       "Download and choose a model under “Vision” in the “Built-in AI engine” section above, or use Tesseract.",

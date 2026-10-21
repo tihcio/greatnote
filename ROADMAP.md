@@ -175,6 +175,13 @@ delle notifiche nella finestra nativa.
   - [x] Catalogo dei modelli per chat, contesto e visione, scaricabili con
         verifica SHA-256 e ripresa.
   - [x] Processi locali avviati su richiesta e fermati dopo l'inattività.
+  - [x] Ricerca dei modelli GGUF su Hugging Face per ruolo, con varianti,
+        modelli divisi, proiettori e registro locale (ADR 0021).
+  - [x] RAM e schede video rilevate, con l'indicazione di quanto ogni
+        modello è adatto e la variante consigliata.
+  - [ ] Verifica manuale su Windows: ricerca, download e avvio di un
+        modello di Hugging Face; rilevamento delle schede video
+        nell'installer.
   - [ ] Verifica manuale su Windows con un modello reale.
 - [ ] Trascrizione di riunioni (P3).
 

@@ -182,6 +182,27 @@ export interface BuiltinModel {
   missing_bytes: number;
   installed: boolean;
   downloading: boolean;
+  /** Quanto il modello è adatto a questo computer. */
+  fit: ModelFit;
+  /** Catalogo curato, provato con il motore distribuito. */
+  curated: boolean;
+  /** Repository di Hugging Face per i modelli scelti dalla ricerca. */
+  repo: string | null;
+}
+
+/** gpu: sta nella scheda video · cpu: sta in RAM, più lento · tight: al
+ *  limite della memoria · too-large: non ci sta · unknown: memoria ignota. */
+export type ModelFit = "gpu" | "cpu" | "tight" | "too-large" | "unknown";
+
+export interface GpuDevice {
+  name: string;
+  memory_bytes: number;
+  dedicated: boolean;
+}
+
+export interface HardwareInfo {
+  ram_bytes: number | null;
+  gpus: GpuDevice[];
 }
 
 export interface BuiltinCatalog {
@@ -190,6 +211,60 @@ export interface BuiltinCatalog {
   models_directory: string;
   used_bytes: number;
   running_servers: number;
+  hardware: HardwareInfo;
+}
+
+/** Repository GGUF trovato su Hugging Face (ADR 0021). */
+export interface HubRepo {
+  id: string;
+  downloads: number;
+  likes: number;
+  license: string | null;
+  pipeline_tag: string | null;
+  architecture: string | null;
+  gated: boolean;
+  last_modified: string | null;
+}
+
+export interface HubModelFile {
+  file_name: string;
+  size_bytes: number;
+}
+
+export interface HubVariant {
+  model: {
+    id: string;
+    name: string;
+    license: string;
+    memory_gb: number;
+    model: HubModelFile;
+    parts: HubModelFile[];
+    projector: HubModelFile | null;
+  };
+  quantization: string | null;
+  fit: ModelFit;
+}
+
+export interface HubRepoDetails {
+  repo: string;
+  revision: string;
+  role: BuiltinRole;
+  license: string | null;
+  pipeline_tag: string | null;
+  architecture: string | null;
+  variants: HubVariant[];
+  recommended: number | null;
+  has_projector: boolean;
+}
+
+/** Dimensione complessiva di una variante (parti e proiettore inclusi). */
+export function variantSize(variant: HubVariant): number {
+  const { model } = variant;
+  return (
+    model.model.size_bytes +
+    model.parts.reduce((sum, part) => sum + part.size_bytes, 0) +
+    (model.projector?.size_bytes ?? 0)
+  );
 }
 
 export interface ModelDownloadProgress {
@@ -278,6 +353,10 @@ export const aiApi = {
   cancelImageTextAll: () => invoke<void>("cancel_image_text_all"),
   builtinCatalog: () => invoke<BuiltinCatalog>("get_builtin_ai_catalog"),
   downloadBuiltinModel: (modelId: string) => invoke<void>("start_builtin_model_download", { modelId }),
+  searchHubModels: (query: string, role: BuiltinRole) => invoke<HubRepo[]>("search_hub_models", { query, role }),
+  hubModelDetails: (repo: string, role: BuiltinRole) => invoke<HubRepoDetails>("get_hub_model_details", { repo, role }),
+  downloadHubModel: (repo: string, role: BuiltinRole, modelId: string) =>
+    invoke<void>("start_hub_model_download", { repo, role, modelId }),
   cancelBuiltinDownload: (modelId: string) => invoke<void>("cancel_builtin_model_download", { modelId }),
   deleteBuiltinModel: (modelId: string) => invoke<BuiltinCatalog>("delete_builtin_model", { modelId }),
 };

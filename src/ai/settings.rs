@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     AiError,
-    builtin::catalog::{ModelRole, find_with_role},
+    builtin::catalog::{ModelRole, is_valid_model_id},
 };
 use crate::storage::{Database, StorageError};
 
@@ -144,13 +144,14 @@ impl AiSettings {
             self.auto_index = false;
         }
         if self.provider == ProviderKind::Builtin {
-            // Solo modelli del catalogo, ciascuno nel suo ruolo.
+            // Solo modelli del catalogo o di Hugging Face, ciascuno nel suo
+            // ruolo; la presenza dei file si controlla quando vengono usati.
             for (model, role) in [
                 (&self.chat_model, ModelRole::Chat),
                 (&self.embedding_model, ModelRole::Embedding),
                 (&self.vision_model, ModelRole::Vision),
             ] {
-                if !model.is_empty() && find_with_role(model, role).is_none() {
+                if !model.is_empty() && !is_valid_model_id(model, role) {
                     return Err(AiError::InvalidSettings(
                         "modello non presente tra quelli del motore integrato",
                     ));
@@ -476,7 +477,19 @@ mod tests {
         assert!(settings.ensure_usable().expect("usable").is_local());
         let stored: AiSettings = serde_json::from_str(r#"{"provider":"builtin"}"#).expect("stored");
         assert_eq!(stored.provider, ProviderKind::Builtin);
+        let hub = AiSettings {
+            chat_model: "hf:chat:unsloth/gemma-4-12b-it-GGUF:gemma-4-12b-it-Q4_K_M".to_owned(),
+            ..settings.clone()
+        };
+        assert!(
+            hub.validated().is_ok(),
+            "modello di Hugging Face per la chat"
+        );
         for invalid in [
+            AiSettings {
+                chat_model: "hf:embedding:unsloth/bge-GGUF:bge-Q8_0".to_owned(),
+                ..settings.clone()
+            },
             AiSettings {
                 chat_model: "qwen3:8b".to_owned(),
                 ..settings.clone()

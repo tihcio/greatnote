@@ -683,6 +683,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             ai_commands::start_image_text_all,
             ai_commands::cancel_image_text_all,
             builtin_ai_commands::get_builtin_ai_catalog,
+            builtin_ai_commands::search_hub_models,
+            builtin_ai_commands::get_hub_model_details,
+            builtin_ai_commands::start_hub_model_download,
             builtin_ai_commands::start_builtin_model_download,
             builtin_ai_commands::cancel_builtin_model_download,
             builtin_ai_commands::delete_builtin_model

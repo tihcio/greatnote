@@ -117,7 +117,26 @@ locali.
     del catalogo vengono scartati.
   - Anche l'archivio di llama.cpp distribuito con l'installer è verificato
     con SHA-256 durante la build.
-  - I nomi dei file vengono solo dal catalogo, mai dall'interfaccia.
+  - I nomi dei file vengono solo dal catalogo o dal registro dei modelli,
+    mai dall'interfaccia.
+- **Modelli cercati su Hugging Face (ADR 0021).**
+  - La ricerca invia a `huggingface.co` solo il testo cercato, via
+    `https`, e solo dopo che l'utente ha aperto la ricerca.
+  - Le risposte sono dati non attendibili: nomi dei repository, percorsi
+    e hash sono controllati prima di entrare in un URL o in un nome di
+    file, e le risposte hanno un limite di 16 MB.
+  - Al download il backend rilegge URL e hash da Hugging Face, fissati al
+    commit corrente; non usa quelli arrivati dall'interfaccia.
+  - L'integrità è garantita rispetto ai metadati di Hugging Face: un file
+    alterato in transito o sul disco viene scartato. Non è garantita
+    l'affidabilità dell'autore del repository. Un GGUF è un file di dati
+    letto da llama.cpp, non codice eseguito; eventuali vulnerabilità del
+    parser di llama.cpp restano comunque un rischio, da contenere
+    aggiornando il motore.
+  - Il registro `hub-models.json` viene ricontrollato a ogni lettura, e le
+    voci manomesse sono ignorate.
+  - `llama-server --list-devices`, usato per leggere le schede video, gira
+    senza rete e con un tempo massimo.
   - Limite: dopo un arresto anomalo dell'app, il server può restare attivo
     fino alla chiusura manuale; resta comunque raggiungibile solo in
     locale e con la chiave.

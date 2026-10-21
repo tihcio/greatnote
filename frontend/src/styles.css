@@ -4705,6 +4705,98 @@ p {
   accent-color: var(--accent);
 }
 
+/* Adattezza del modello al computer: il testo dice sempre il significato. */
+.ai-fit {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.ai-fit-gpu,
+.ai-fit-cpu {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--paper));
+  background: color-mix(in srgb, var(--accent) 10%, var(--paper));
+}
+
+.ai-fit-tight {
+  border-color: color-mix(in srgb, #d69e2e 55%, var(--paper));
+  background: color-mix(in srgb, #f3d58a 18%, var(--paper));
+}
+
+.ai-fit-too-large {
+  border-color: color-mix(in srgb, var(--error) 50%, var(--paper));
+  background: color-mix(in srgb, var(--error) 10%, var(--paper));
+}
+
+.ai-hub-open {
+  margin-top: 6px;
+}
+
+.ai-hub {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--ground);
+}
+
+.ai-hub-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-hub-header h5 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.ai-hub-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.ai-hub-search .dialog-field {
+  flex: 1 1 220px;
+}
+
+.ai-hub-results {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-hub-results > li {
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+
+.ai-hub-repo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.ai-hub-repo strong {
+  overflow-wrap: anywhere;
+}
+
+.ai-hub-repo .ai-badge {
+  margin-left: 6px;
+}
+
+.ai-hub-variants {
+  margin: 4px 0 0 12px;
+}
+
 .ai-save-row {
   padding-top: 6px;
   border-top: 1px solid var(--line);

@@ -1,12 +1,15 @@
 //! Provider AI integrato (ADR 0020): `llama-server` di llama.cpp distribuito
-//! con l'app e modelli scaricati su richiesta dal [`catalog`]. Non serve
-//! installare Ollama o altri server; i dati non escono dal computer.
+//! con l'app e modelli scaricati su richiesta dal [`catalog`] curato o da
+//! Hugging Face ([`hub`], ADR 0021). Non serve installare Ollama o altri
+//! server; i dati delle note non escono dal computer.
 //!
 //! Il provider non parla direttamente con i modelli: avvia il server adatto
 //! ([`server::BuiltinRuntime`]) e gli inoltra le richieste con
 //! [`OpenAiCompatible`], lo stesso client usato per i server esterni.
 
 pub mod catalog;
+pub mod hardware;
+pub mod hub;
 pub mod server;
 pub mod store;
 
@@ -15,7 +18,7 @@ use std::{
     time::Duration,
 };
 
-use catalog::{CatalogModel, ModelRole, find_with_role};
+use catalog::{CatalogModel, ModelRole};
 use server::{BuiltinRuntime, ServerLease, ServerSpec, chat_context_tokens};
 
 use super::{
@@ -33,29 +36,35 @@ pub struct BuiltinProvider {
     /// Modello per le immagini scelto nelle impostazioni: se usa lo stesso
     /// file della chat, la chat usa lo stesso processo (con il proiettore)
     /// invece di caricare il modello due volte.
-    vision_model: Option<&'static CatalogModel>,
+    vision_model: Option<CatalogModel>,
     timeout: Duration,
 }
 
 impl BuiltinProvider {
     pub fn new(runtime: Arc<BuiltinRuntime>, settings: &AiSettings, timeout: Duration) -> Self {
+        let vision_model = runtime
+            .store()
+            .find_with_role(&settings.vision_model, ModelRole::Vision);
         Self {
             runtime,
             chat_context_tokens: chat_context_tokens(settings.max_context_chars),
-            vision_model: find_with_role(&settings.vision_model, ModelRole::Vision),
+            vision_model,
             timeout,
         }
     }
 
     fn spec(&self, model_id: &str, role: ModelRole) -> Result<ServerSpec, AiError> {
-        let model = find_with_role(model_id, role).ok_or(AiError::NotConfigured(match role {
-            ModelRole::Chat => "scegli un modello per la chat tra quelli scaricabili",
-            ModelRole::Embedding => "scegli un modello per la ricerca semantica",
-            ModelRole::Vision => "scegli un modello per leggere le immagini",
-        }))?;
-        let model = match self.vision_model {
+        let store = self.runtime.store();
+        let model = store
+            .find_with_role(model_id, role)
+            .ok_or(AiError::NotConfigured(match role {
+                ModelRole::Chat => "scegli un modello per la chat tra quelli scaricabili",
+                ModelRole::Embedding => "scegli un modello per la ricerca semantica",
+                ModelRole::Vision => "scegli un modello per leggere le immagini",
+            }))?;
+        let model = match &self.vision_model {
             Some(vision) if role == ModelRole::Chat && vision.model == model.model => vision,
-            _ => model,
+            _ => &model,
         };
         Ok(ServerSpec::for_model(model, self.chat_context_tokens))
     }
@@ -82,7 +91,7 @@ impl AiProvider for BuiltinProvider {
             .store()
             .installed()
             .into_iter()
-            .map(|model| model.id.to_owned())
+            .map(|model| model.id)
             .collect())
     }
 
@@ -96,7 +105,7 @@ impl AiProvider for BuiltinProvider {
     ) -> Result<String, AiError> {
         let spec = self.spec(model, ModelRole::Chat)?;
         let (_lease, client) = self.client(&spec, cancel)?;
-        client.chat(spec.alias, messages, temperature, cancel, on_delta)
+        client.chat(&spec.alias, messages, temperature, cancel, on_delta)
     }
 
     fn embed(
@@ -107,14 +116,17 @@ impl AiProvider for BuiltinProvider {
     ) -> Result<Vec<Vec<f32>>, AiError> {
         let spec = self.spec(model, ModelRole::Embedding)?;
         let (_lease, client) = self.client(&spec, cancel)?;
-        client.embed(spec.alias, inputs, cancel)
+        client.embed(&spec.alias, inputs, cancel)
     }
 
     fn provenance(&self, model: &str) -> Provenance {
         Provenance {
             host: BUILTIN_HOST.to_owned(),
-            model: catalog::find(model)
-                .map(|entry| entry.name.to_owned())
+            model: self
+                .runtime
+                .store()
+                .find(model)
+                .map(|entry| entry.name)
                 .unwrap_or_else(|| model.to_owned()),
             local: true,
         }
@@ -131,7 +143,7 @@ impl AiProvider for BuiltinProvider {
     ) -> Result<String, AiError> {
         let spec = self.spec(model, ModelRole::Vision)?;
         let (_lease, client) = self.client(&spec, cancel)?;
-        client.read_image(spec.alias, instructions, request, image, mime, cancel)
+        client.read_image(&spec.alias, instructions, request, image, mime, cancel)
     }
 }
 

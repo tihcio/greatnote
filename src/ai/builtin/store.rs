@@ -2,22 +2,36 @@
 //! rimozione. Un file compare con il suo nome definitivo solo dopo che
 //! dimensione e SHA-256 corrispondono al catalogo; i download interrotti
 //! restano in un file `.part` e riprendono da dove si erano fermati.
+//!
+//! I modelli scelti su Hugging Face (ADR 0021) sono registrati in
+//! `hub-models.json` nella stessa cartella, con URL, dimensioni e hash fissati
+//! al momento della scelta. Le voci lette dal disco vengono ricontrollate.
 
 use std::{
+    collections::HashSet,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 use sha2::{Digest, Sha256};
 use ureq::Agent;
 
-use super::catalog::{CATALOG, CatalogModel, ModelFile};
-use crate::{ai::AiError, backup::private_directory};
+use super::catalog::{self, CatalogModel, ModelFile, ModelRole, curated};
+use crate::{
+    ai::AiError,
+    backup::{create_private_file, private_directory},
+};
 
 const PARTIAL_SUFFIX: &str = ".part";
+const REGISTRY_FILE: &str = "hub-models.json";
+const MAX_REGISTRY_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_REGISTERED_MODELS: usize = 200;
 const BUFFER_BYTES: usize = 1 << 20;
 /// Intervallo minimo tra due notifiche di avanzamento.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
@@ -25,25 +39,140 @@ const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 #[derive(Debug, Clone)]
 pub struct ModelStore {
     directory: PathBuf,
+    /// Una sola scrittura alla volta del registro.
+    registry_lock: Arc<Mutex<()>>,
 }
 
 impl ModelStore {
     pub fn new(directory: PathBuf) -> Self {
-        Self { directory }
+        Self {
+            directory,
+            registry_lock: Arc::new(Mutex::new(())),
+        }
     }
 
     pub fn directory(&self) -> &Path {
         &self.directory
     }
 
-    /// Percorso del file: i nomi vengono solo dal catalogo, mai dall'utente.
+    /// Percorso del file: i nomi vengono dal catalogo o dal registro, già
+    /// controllati, mai direttamente dall'utente.
     pub fn path(&self, file: &ModelFile) -> PathBuf {
-        self.directory.join(file.file_name)
+        self.directory.join(&file.file_name)
     }
 
     fn partial_path(&self, file: &ModelFile) -> PathBuf {
         self.directory
             .join(format!("{}{PARTIAL_SUFFIX}", file.file_name))
+    }
+
+    fn registry_path(&self) -> PathBuf {
+        self.directory.join(REGISTRY_FILE)
+    }
+
+    /// Modelli di Hugging Face registrati. Le voci non valide (file
+    /// modificato a mano o danneggiato) sono ignorate.
+    pub fn hub_models(&self) -> Vec<CatalogModel> {
+        let path = self.registry_path();
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            return Vec::new();
+        };
+        if !metadata.is_file() || metadata.len() > MAX_REGISTRY_BYTES {
+            tracing::warn!("registro dei modelli ignorato: non è un file valido");
+            return Vec::new();
+        }
+        let parsed = fs::read_to_string(&path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<Vec<CatalogModel>>(&text).ok());
+        let Some(models) = parsed else {
+            tracing::warn!("registro dei modelli illeggibile: ignorato");
+            return Vec::new();
+        };
+        let mut seen = HashSet::new();
+        models
+            .into_iter()
+            .filter(|model| {
+                !model.is_curated()
+                    && model.is_valid()
+                    && catalog::find(&model.id).is_none()
+                    && seen.insert(model.id.clone())
+            })
+            .collect()
+    }
+
+    /// Catalogo curato più modelli registrati, nell'ordine in cui mostrarli.
+    pub fn models(&self) -> Vec<CatalogModel> {
+        let mut models = curated().to_vec();
+        models.extend(self.hub_models());
+        models
+    }
+
+    pub fn find(&self, id: &str) -> Option<CatalogModel> {
+        catalog::find(id)
+            .cloned()
+            .or_else(|| self.hub_models().into_iter().find(|model| model.id == id))
+    }
+
+    pub fn find_with_role(&self, id: &str, role: ModelRole) -> Option<CatalogModel> {
+        self.find(id).filter(|model| model.role == role)
+    }
+
+    /// Aggiunge (o aggiorna) un modello di Hugging Face nel registro.
+    pub fn register(&self, model: &CatalogModel) -> Result<(), AiError> {
+        if model.is_curated() || !model.is_valid() || catalog::find(&model.id).is_some() {
+            return Err(AiError::Hub("modello non valido".to_owned()));
+        }
+        let _guard = self.lock_registry()?;
+        let mut models = self.hub_models();
+        models.retain(|existing| existing.id != model.id);
+        if models.len() >= MAX_REGISTERED_MODELS {
+            return Err(AiError::Hub(
+                "troppi modelli registrati: eliminane qualcuno".to_owned(),
+            ));
+        }
+        models.push(model.clone());
+        self.write_registry(&models)
+    }
+
+    /// Toglie un modello dal registro (i file si eliminano con [`Self::remove`]).
+    pub fn unregister(&self, id: &str) -> Result<(), AiError> {
+        let _guard = self.lock_registry()?;
+        let mut models = self.hub_models();
+        let before = models.len();
+        models.retain(|model| model.id != id);
+        if models.len() == before {
+            return Ok(());
+        }
+        self.write_registry(&models)
+    }
+
+    fn lock_registry(&self) -> Result<std::sync::MutexGuard<'_, ()>, AiError> {
+        self.registry_lock
+            .lock()
+            .map_err(|_| AiError::Builtin("registro dei modelli non disponibile".to_owned()))
+    }
+
+    /// Scrittura atomica: il registro non resta mai a metà.
+    fn write_registry(&self, models: &[CatalogModel]) -> Result<(), AiError> {
+        private_directory(&self.directory)?;
+        let json = serde_json::to_vec_pretty(models)
+            .map_err(|error| AiError::Builtin(format!("registro dei modelli: {error}")))?;
+        let temporary = self.directory.join(format!(
+            "{REGISTRY_FILE}.{}.tmp",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let written = create_private_file(&temporary)
+            .map_err(AiError::from)
+            .and_then(|mut file| {
+                file.write_all(&json)
+                    .and_then(|()| file.sync_all())
+                    .map_err(io_error)
+            })
+            .and_then(|()| fs::rename(&temporary, self.registry_path()).map_err(io_error));
+        if written.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        written
     }
 
     /// Il file definitivo esiste con la dimensione attesa (l'hash è già
@@ -66,9 +195,9 @@ impl ModelStore {
             .sum()
     }
 
-    pub fn installed(&self) -> Vec<&'static CatalogModel> {
-        CATALOG
-            .iter()
+    pub fn installed(&self) -> Vec<CatalogModel> {
+        self.models()
+            .into_iter()
             .filter(|model| self.is_installed(model))
             .collect()
     }
@@ -117,7 +246,7 @@ impl ModelStore {
             }
             Err(_) => 0,
         };
-        let mut request = agent.get(file.url);
+        let mut request = agent.get(&file.url);
         if existing > 0 {
             request = request.header("Range", format!("bytes={existing}-"));
         }
@@ -198,7 +327,7 @@ impl ModelStore {
 
     /// Elimina i file del modello non usati da `keep` (altri modelli
     /// installati che condividono lo stesso file), e il download parziale.
-    pub fn remove(&self, model: &CatalogModel, keep: &[&CatalogModel]) -> Result<(), AiError> {
+    pub fn remove(&self, model: &CatalogModel, keep: &[CatalogModel]) -> Result<(), AiError> {
         for file in model.files() {
             let shared = keep
                 .iter()
@@ -305,12 +434,14 @@ mod tests {
         assert!(store.is_installed(chat));
         assert_eq!(
             store.missing_bytes(vision),
-            vision.projector.expect("projector").size_bytes
+            vision.projector.as_ref().expect("projector").size_bytes
         );
         assert_eq!(store.installed().len(), 1);
 
         // Il file condiviso con un modello installato resta.
-        store.remove(vision, &[chat]).expect("remove vision");
+        store
+            .remove(vision, std::slice::from_ref(chat))
+            .expect("remove vision");
         assert!(store.is_installed(chat));
         store.remove(chat, &[]).expect("remove chat");
         assert!(!store.path(&chat.model).exists());
@@ -331,5 +462,80 @@ mod tests {
             store.partial_path(&model.model).exists(),
             "ripresa possibile"
         );
+    }
+
+    fn hub_model(variant: &str) -> CatalogModel {
+        let revision = "6938c58e698502037401a5f19f6905f2fb2f7dee";
+        CatalogModel {
+            id: catalog::hub_model_id(ModelRole::Chat, "autore/repo-GGUF", variant),
+            role: ModelRole::Chat,
+            name: format!("repo · {variant}"),
+            license: "apache-2.0".to_owned(),
+            memory_gb: 2.0,
+            recommended: false,
+            model: ModelFile {
+                file_name: format!("hf-000000000000-{variant}.gguf"),
+                url: format!(
+                    "https://huggingface.co/autore/repo-GGUF/resolve/{revision}/{variant}.gguf"
+                ),
+                size_bytes: 1024,
+                sha256: "ab".repeat(32),
+            },
+            parts: Vec::new(),
+            projector: None,
+            source: catalog::ModelSource::HuggingFace {
+                repo: "autore/repo-GGUF".to_owned(),
+                revision: revision.to_owned(),
+            },
+        }
+    }
+
+    #[test]
+    fn registry_keeps_valid_hub_models_and_ignores_tampered_entries() {
+        let directory = tempfile::tempdir().expect("directory");
+        let store = ModelStore::new(directory.path().join("models"));
+        assert!(store.hub_models().is_empty());
+        let first = hub_model("Q4_K_M");
+        store.register(&first).expect("register");
+        store.register(&first).expect("aggiornare non duplica");
+        store.register(&hub_model("Q8_0")).expect("register");
+        assert_eq!(store.hub_models().len(), 2);
+        assert_eq!(store.models().len(), curated().len() + 2);
+        assert_eq!(store.find(&first.id), Some(first.clone()));
+        assert!(
+            store
+                .find_with_role(&first.id, ModelRole::Embedding)
+                .is_none()
+        );
+        assert!(store.find("bge-m3").is_some(), "il catalogo curato resta");
+        // Né modelli curati né modelli incoerenti nel registro.
+        assert!(store.register(find("bge-m3").expect("curated")).is_err());
+        let mut unsafe_name = hub_model("Q5_K_M");
+        unsafe_name.model.file_name = "../fuori.gguf".to_owned();
+        assert!(store.register(&unsafe_name).is_err());
+
+        // Una voce modificata a mano con un percorso pericoloso è ignorata.
+        let mut entries: Vec<serde_json::Value> =
+            serde_json::from_str(&fs::read_to_string(store.registry_path()).expect("read"))
+                .expect("json");
+        entries[0]["model"]["file_name"] = serde_json::json!("../../segreto.gguf");
+        fs::write(
+            store.registry_path(),
+            serde_json::to_string(&entries).expect("json"),
+        )
+        .expect("write");
+        assert_eq!(store.hub_models().len(), 1);
+
+        store.unregister(&hub_model("Q8_0").id).expect("unregister");
+        assert!(store.hub_models().is_empty());
+        fs::write(store.registry_path(), b"{non json").expect("write");
+        assert!(
+            store.hub_models().is_empty(),
+            "registro danneggiato ignorato"
+        );
+        store
+            .register(&first)
+            .expect("si riparte da un registro valido");
+        assert_eq!(store.hub_models().len(), 1);
     }
 }

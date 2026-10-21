@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { t } from "../../i18n";
 import { askConfirmation } from "../../lib/confirm";
 import { errorMessage, formatFileSize } from "../../lib/format";
+import HubSearch, { FitBadge } from "./HubSearch";
 import { MODEL_DOWNLOAD_FINISHED_EVENT, MODEL_DOWNLOAD_PROGRESS_EVENT, aiApi } from "./aiApi";
 import type {
   AiSettings,
@@ -58,6 +59,8 @@ export default function BuiltinModels({ draft, patch }: BuiltinModelsProps) {
   const [error, setError] = useState<string | null>(null);
   /** Modelli scaricati dall'ultimo aggiornamento del catalogo. */
   const justDownloaded = useRef<Set<string>>(new Set());
+  /** Ruolo per cui è aperta la ricerca su Hugging Face. */
+  const [hubRole, setHubRole] = useState<BuiltinRole | null>(null);
 
   const forget = useCallback((modelId: string) => {
     setProgress((current) => {
@@ -208,6 +211,14 @@ export default function BuiltinModels({ draft, patch }: BuiltinModelsProps) {
     <fieldset>
       <legend>{t.aiBuiltinTitle}</legend>
       <p className="data-hint">{t.aiBuiltinIntro}</p>
+      <p className="data-hint">
+        {t.aiBuiltinHardware(
+          catalog.hardware.ram_bytes ? formatFileSize(catalog.hardware.ram_bytes) : null,
+          catalog.hardware.gpus.map((gpu) =>
+            t.aiBuiltinGpu(gpu.name, formatFileSize(gpu.memory_bytes), gpu.dedicated),
+          ),
+        )}
+      </p>
       {!catalog.engine_available && (
         <p className="dialog-error" role="alert">
           {t.aiBuiltinEngineMissing}
@@ -248,10 +259,16 @@ export default function BuiltinModels({ draft, patch }: BuiltinModelsProps) {
                     <span>
                       <strong>{model.name}</strong>
                       {model.recommended && <span className="ai-badge">{t.aiBuiltinRecommended}</span>}
+                      {!model.curated && <span className="ai-badge">{t.aiBuiltinFromHub}</span>}
                       <small className="data-hint ai-builtin-meta">
                         {t.aiBuiltinMeta(formatFileSize(model.size_bytes), model.memory_gb, model.license)}
                       </small>
-                      <small className="data-hint ai-builtin-meta">{t.aiBuiltinDescription(model.id)}</small>
+                      <small className="data-hint ai-builtin-meta">
+                        <FitBadge fit={model.fit} />
+                      </small>
+                      <small className="data-hint ai-builtin-meta">
+                        {model.curated ? t.aiBuiltinDescription(model.id) : t.aiBuiltinHubDescription(model.repo ?? "")}
+                      </small>
                     </span>
                   </label>
                   <div className="ai-inline-actions">
@@ -274,14 +291,22 @@ export default function BuiltinModels({ draft, patch }: BuiltinModelsProps) {
                         {t.aiBuiltinDelete}
                       </button>
                     ) : (
-                      <button
-                        className="data-action"
-                        disabled={!catalog.engine_available}
-                        onClick={() => void download(model)}
-                        type="button"
-                      >
-                        {t.aiBuiltinDownloadSize(formatFileSize(model.missing_bytes))}
-                      </button>
+                      <>
+                        <button
+                          className="data-action"
+                          disabled={!catalog.engine_available}
+                          onClick={() => void download(model)}
+                          type="button"
+                        >
+                          {t.aiBuiltinDownloadSize(formatFileSize(model.missing_bytes))}
+                        </button>
+                        {/* Un modello di Hugging Face non finito si può togliere dall'elenco. */}
+                        {!model.curated && (
+                          <button className="data-action destructive" onClick={() => void remove(model)} type="button">
+                            {t.aiBuiltinDelete}
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -297,6 +322,23 @@ export default function BuiltinModels({ draft, patch }: BuiltinModelsProps) {
               />
               <span>{t.aiBuiltinNone}</span>
             </label>
+          )}
+          {hubRole === role ? (
+            <HubSearch
+              engineAvailable={catalog.engine_available}
+              knownIds={new Set(catalog.models.map((model) => model.id))}
+              onClose={() => setHubRole(null)}
+              onDownloadStarted={(modelId, total) => {
+                setProgress((current) => ({ ...current, [modelId]: { model_id: modelId, done: 0, total } }));
+                void load();
+              }}
+              role={role}
+              roleLabel={roleLabel(role)}
+            />
+          ) : (
+            <button className="data-action ai-hub-open" onClick={() => setHubRole(role)} type="button">
+              {t.aiBuiltinHubOpen}
+            </button>
           )}
         </div>
       ))}

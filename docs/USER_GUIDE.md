@@ -355,6 +355,37 @@ Impostazioni › Intelligenza artificiale**.
 3. Scegli il modello di ogni sezione (i modelli scaricati vengono
    proposti da soli) e premi **Salva le impostazioni AI**.
 
+**Scegliere il modello adatto al tuo computer.** In cima alla sezione
+compaiono la RAM e le schede video del computer. Ogni modello ha
+un'etichetta:
+
+- **Adatto: scheda video**: risposte rapide.
+- **Adatto: processore, più lento**: funziona, ma le risposte sono più
+  lente.
+- **Al limite della memoria**: può rallentare il computer.
+- **Troppo grande**: probabilmente non si avvia.
+
+**Altri modelli da Hugging Face.** Sotto ogni sezione c'è **Cerca altri
+modelli su Hugging Face**:
+
+1. Apri la ricerca: compaiono i modelli GGUF più scaricati per quella
+   sezione. Puoi anche cercarne uno per nome (per esempio gemma, qwen,
+   mistral).
+2. Premi **Mostra le varianti** su un modello. Ogni variante ha
+   dimensione, memoria stimata ed etichetta. Quella **Consigliata per
+   questo computer** è la più fedele che ci sta.
+3. Premi **Scarica**: la conferma riporta dimensione, licenza e
+   adattezza. Il modello compare nell'elenco della sezione con il marchio
+   «Hugging Face» e si sceglie come gli altri.
+
+La ricerca invia a Hugging Face solo le parole cercate, mai le note. I
+modelli trovati non sono stati provati con il motore incluso: se uno non
+si avvia, l'errore lo dice e puoi sceglierne un altro. Controlla anche la
+licenza, perché alcune non permettono ogni uso. I modelli che richiedono
+di accettare condizioni su Hugging Face non sono scaricabili dall'app. Un
+download interrotto si riprende con **Scarica** o si toglie dall'elenco
+con **Elimina**.
+
 Il primo utilizzo di un modello richiede qualche secondo per caricarlo.
 Dopo 10 minuti di inattività il modello viene chiuso per liberare memoria.
 Con una scheda grafica compatibile Vulkan le risposte sono più rapide;

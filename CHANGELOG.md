@@ -5,6 +5,19 @@ iniziale e non ha ancora release.
 
 ## Non rilasciato
 
+- **Modelli AI da Hugging Face, adatti al tuo computer.** Nel motore
+  integrato ogni sezione (chat, contesto, visione) ha ora **Cerca altri
+  modelli su Hugging Face**.
+  - La ricerca mostra i modelli GGUF più scaricati, oppure quelli cercati
+    per nome.
+  - Per ogni variante si vedono dimensione, memoria stimata e se è adatta
+    al computer. La variante consigliata è indicata.
+  - In cima compaiono la RAM e le schede video rilevate. Ogni modello,
+    anche quelli consigliati, ha un'etichetta: scheda video, processore,
+    al limite, troppo grande.
+  - I file sono fissati alla revisione corrente e verificati con il loro
+    hash. La ricerca invia solo le parole cercate (ADR 0021).
+
 - **Stato della sincronizzazione nella barra laterale.** In basso a sinistra
   non compare più sempre "Archivio locale". Con la sincronizzazione attiva
   si legge "Sincronizzato con Dropbox" (o "con la cartella"); durante la

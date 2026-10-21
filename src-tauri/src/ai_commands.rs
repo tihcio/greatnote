@@ -412,7 +412,7 @@ pub async fn test_ai_connection(
                 .store()
                 .installed()
                 .into_iter()
-                .map(|model| model.id.to_owned())
+                .map(|model| model.id)
                 .collect();
             return Ok(ConnectionTest {
                 models,

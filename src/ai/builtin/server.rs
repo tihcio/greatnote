@@ -50,12 +50,15 @@ const VISION_CONTEXT: u32 = 8192;
 /// usano lo stesso processo.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ServerSpec {
-    pub model_file: &'static str,
-    pub projector_file: Option<&'static str>,
+    pub model_file: String,
+    /// Parti successive di un modello diviso: llama.cpp le trova da solo
+    /// accanto alla prima, ma devono esserci tutte.
+    pub part_files: Vec<String>,
+    pub projector_file: Option<String>,
     pub embedding: bool,
     pub context_tokens: u32,
     /// Nome con cui il server espone il modello (id del catalogo).
-    pub alias: &'static str,
+    pub alias: String,
 }
 
 impl ServerSpec {
@@ -63,15 +66,20 @@ impl ServerSpec {
     /// per la chat; embedding e visione usano valori fissi.
     pub fn for_model(model: &CatalogModel, chat_context_tokens: u32) -> Self {
         Self {
-            model_file: model.model.file_name,
-            projector_file: model.projector.map(|file| file.file_name),
+            model_file: model.model.file_name.clone(),
+            part_files: model
+                .parts
+                .iter()
+                .map(|file| file.file_name.clone())
+                .collect(),
+            projector_file: model.projector.as_ref().map(|file| file.file_name.clone()),
             embedding: model.role == ModelRole::Embedding,
             context_tokens: match model.role {
                 ModelRole::Chat => chat_context_tokens,
                 ModelRole::Embedding => EMBEDDING_CONTEXT,
                 ModelRole::Vision => VISION_CONTEXT.max(chat_context_tokens),
             },
-            alias: model.id,
+            alias: model.id.clone(),
         }
     }
 
@@ -82,9 +90,9 @@ impl ServerSpec {
             "--port".to_owned(),
             port.to_string(),
             "--model".to_owned(),
-            path_argument(&store.directory().join(self.model_file)),
+            path_argument(&store.directory().join(&self.model_file)),
             "--alias".to_owned(),
-            self.alias.to_owned(),
+            self.alias.clone(),
             "--ctx-size".to_owned(),
             self.context_tokens.to_string(),
             "--parallel".to_owned(),
@@ -92,7 +100,7 @@ impl ServerSpec {
             "--no-webui".to_owned(),
             "--offline".to_owned(),
         ];
-        if let Some(projector) = self.projector_file {
+        if let Some(projector) = &self.projector_file {
             arguments.push("--mmproj".to_owned());
             arguments.push(path_argument(&store.directory().join(projector)));
         }
@@ -125,6 +133,22 @@ pub fn chat_context_tokens(max_context_chars: u32) -> u32 {
         .div_ceil(4096)
         .saturating_mul(4096)
         .clamp(8192, 32_768)
+}
+
+/// Nome del registro ricavato dall'id del modello: gli id di Hugging Face
+/// contengono `/` e `:`, non validi in un nome di file.
+fn log_name(alias: &str) -> String {
+    alias
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(120)
+        .collect()
 }
 
 fn path_argument(path: &Path) -> String {
@@ -208,7 +232,10 @@ impl BuiltinRuntime {
         let executable = self.executable.as_deref().ok_or(AiError::NotConfigured(
             "il motore AI integrato non è incluso in questa installazione",
         ))?;
-        for file in std::iter::once(spec.model_file).chain(spec.projector_file) {
+        for file in std::iter::once(&spec.model_file)
+            .chain(&spec.part_files)
+            .chain(spec.projector_file.as_ref())
+        {
             if !self.store.directory().join(file).is_file() {
                 return Err(AiError::NotConfigured(
                     "il modello scelto non è scaricato: scaricalo nelle impostazioni AI",
@@ -279,7 +306,7 @@ impl BuiltinRuntime {
         let log_path = self
             .store
             .directory()
-            .join(format!("server-{}.log", spec.alias));
+            .join(format!("server-{}.log", log_name(&spec.alias)));
         let log = File::create(&log_path).map_err(|error| {
             AiError::Builtin(format!("registro del server non creato: {error}"))
         })?;
@@ -461,6 +488,15 @@ mod tests {
         let embedding_arguments = embedding_spec.arguments(&store, 4321, true).join(" ");
         assert!(embedding_arguments.contains("--embedding"));
         assert!(!embedding_arguments.contains("--device"));
+    }
+
+    #[test]
+    fn log_names_are_valid_file_names() {
+        assert_eq!(log_name("bge-m3"), "bge-m3");
+        assert_eq!(
+            log_name("hf:chat:autore/repo-GGUF:Q4_K_M"),
+            "hf_chat_autore_repo-GGUF_Q4_K_M"
+        );
     }
 
     #[test]
