@@ -454,6 +454,15 @@ export default function AiSettingsSection({
             ))}
           </div>
         )}
+        <label className="checkbox-field">
+          <input
+            checked={draft.planner_context}
+            onChange={(event) => patch({ planner_context: event.target.checked })}
+            type="checkbox"
+          />
+          <span>{t.aiPlannerContext}</span>
+        </label>
+        <p className="data-hint">{t.aiPlannerContextHint}</p>
         <label className="dialog-field">
           <span>{t.aiMaxContext}</span>
           <input

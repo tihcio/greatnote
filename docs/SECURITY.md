@@ -36,7 +36,10 @@
   symlink.
 - File esportati e backup sono scritti in file temporanei con permessi 0600 e
   rinominati a scrittura completata; la cartella `backups/` ha permessi 0700.
-- La CSP limita le risorse alle origini locali necessarie alla UI.
+- La CSP limita le risorse alle origini locali necessarie alla UI e vieta
+  plugin (`object-src 'none'`), il cambio dell'URL di base
+  (`base-uri 'none'`) e l'invio di form verso qualsiasi indirizzo
+  (`form-action 'none'`).
 - In modalità sviluppo, `devCsp` consente lo script inline richiesto dal
   preambolo React Refresh e il WebSocket di Vite esclusivamente su
   `127.0.0.1:1420`. Questa eccezione non si applica alla CSP della build.
@@ -144,6 +147,16 @@ locali.
   Credential Manager); mai nel database, nei backup, nei log o nel frontend.
   Se il portachiavi non è disponibile la chiave non viene salvata.
 - **Taccuini esclusi:** le loro note non vengono inviate né indicizzate.
+  Attività, eventi e promemoria collegati a quelle note non vengono inviati
+  nemmeno come contesto della chat.
+- **Attività, calendario e promemoria nella chat** (attivo per
+  impostazione predefinita, disattivabile): titolo, stato, date, descrizione
+  (al massimo 400 caratteri) e titolo della nota collegata degli elementi
+  pertinenti, inclusi gli eventi dei calendari esterni sincronizzati. Usano
+  al massimo metà del limite di contesto, compaiono nell'anteprima dei dati
+  per i server remoti e sono riletti dal database al momento dell'invio
+  (cestino ed esclusioni applicati di nuovo). La domanda è analizzata con
+  regole locali, senza SQL costruito dal testo dell'utente.
 - **Prompt injection:** il contenuto delle note è racchiuso in delimitatori
   che non può falsificare e dichiarato dato non attendibile; il modello non
   ha strumenti né accesso ai dati, e ogni risultato richiede conferma
@@ -330,8 +343,19 @@ locali.
 - **File system:** i nomi utente non determinano il percorso fisico; la
   directory allegati usa permessi restrittivi e rifiuta symlink. La verifica
   di hash precede l'apertura e quella del percorso precede la rimozione.
-- **Dipendenze:** revisionare aggiornamenti Rust/npm e controllare gli audit
-  disponibili prima dei rilasci.
+- **Dipendenze:** `cargo audit` (job `rust-audit` della CI) e `npm audit`
+  falliscono in presenza di vulnerabilità note; la
+  [checklist di rilascio](./RELEASE_CHECKLIST.md) li esegue prima di ogni
+  versione. Il 2026-10-21 l'audit ha segnalato RUSTSEC-2026-0381 e
+  RUSTSEC-2026-0382 (catena dei certificati nel TLS di `ureq`), corretti
+  aggiornando `webpki-roots` a 1.0.10 e `rustls-webpki` a 0.103.16. Restano
+  avvisi non bloccanti su dipendenze di Tauri/GTK, D-Bus e `age`, elencati
+  nella checklist.
+- **Ripristino con sincronizzazione attiva:** un backup più vecchio
+  dell'ultima sincronizzazione riporterebbe indietro i numeri di sequenza
+  del dispositivo; la sincronizzazione si ferma (`DuplicateDevice`) senza
+  scrivere nella cartella, finché l'utente non assegna una nuova identità.
+  Coperto da test.
 - **Logging:** non registrare titoli, contenuti, percorsi personali o segreti.
 - **Permessi:** mantenere le capability Tauri minime e non esporre origini
   remote.

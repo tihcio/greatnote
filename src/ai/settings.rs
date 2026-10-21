@@ -85,6 +85,9 @@ pub struct AiSettings {
     pub confirm_remote_sends: bool,
     /// Le note di questi taccuini non vengono mai inviate né indicizzate.
     pub excluded_notebook_ids: Vec<String>,
+    /// La chat usa anche attività, eventi del calendario e promemoria come
+    /// contesto (quelli collegati a note escluse restano esclusi).
+    pub planner_context: bool,
     /// Limite del testo delle note inviato come contesto in una richiesta.
     pub max_context_chars: u32,
     pub timeout_seconds: u32,
@@ -109,6 +112,7 @@ impl Default for AiSettings {
             remote_consent: false,
             confirm_remote_sends: true,
             excluded_notebook_ids: Vec::new(),
+            planner_context: true,
             max_context_chars: 12_000,
             timeout_seconds: 120,
         }

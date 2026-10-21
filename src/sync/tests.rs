@@ -497,6 +497,49 @@ fn copied_database_is_detected_and_external_events_stay_local() {
 }
 
 #[test]
+fn restoring_an_older_backup_stops_sync_without_losing_data() {
+    let shared = tempfile::tempdir().expect("shared");
+    let a = device(shared.path(), "A");
+    let b = device(shared.path(), "B");
+    a.database.create_note("Prima", &doc("x")).expect("note");
+    sync(&a);
+    let backup = a
+        .database
+        .create_backup(crate::backup::BackupKind::Manual)
+        .expect("backup");
+    a.database.create_note("Seconda", &doc("y")).expect("note");
+    sync(&a);
+
+    // Il backup non conosce l'ultimo lotto che A ha già scritto nella
+    // cartella: riprendere con la stessa identità riutilizzerebbe i suoi
+    // numeri di sequenza.
+    a.database
+        .restore_backup(&backup.file_name)
+        .expect("restore");
+    a.database.create_note("Terza", &doc("z")).expect("note");
+    assert!(matches!(
+        a.database.sync_now(),
+        Err(SyncError::DuplicateDevice)
+    ));
+    sync(&b);
+    assert_eq!(titles(&b), ["Prima", "Seconda"]);
+
+    // Con una nuova identità A si ricongiunge: nessuna nota va persa.
+    let settings = a.database.sync_settings().expect("settings");
+    a.database
+        .set_sync_settings(SyncSettings {
+            enabled: false,
+            ..settings.clone()
+        })
+        .expect("off");
+    a.database.set_sync_settings(settings).expect("on");
+    sync(&a);
+    sync(&b);
+    assert_eq!(titles(&a), ["Prima", "Seconda", "Terza"]);
+    assert_eq!(titles(&b), ["Prima", "Seconda", "Terza"]);
+}
+
+#[test]
 fn editor_save_keeps_a_remote_edit_it_did_not_see() {
     let shared = tempfile::tempdir().expect("shared");
     let a = device(shared.path(), "A");

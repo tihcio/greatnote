@@ -28,7 +28,7 @@
       const visits = notes.map((note) => note.id);
       let aiSettings = {
         enabled: true, provider: "openai-compatible", claude_path: "", base_url: "http://localhost:11434/v1", chat_model: "modello-finto", embedding_model: "embed-finto",
-        auto_index: false, keep_history: true, ocr_engine: "ai", ocr_on_attach: false, vision_model: "", vision_max_side: 1024, use_api_key: false, remote_consent: false, confirm_remote_sends: true, excluded_notebook_ids: [], max_context_chars: 12000, timeout_seconds: 120,
+        auto_index: false, keep_history: true, ocr_engine: "ai", ocr_on_attach: false, vision_model: "", vision_max_side: 1024, use_api_key: false, remote_consent: false, confirm_remote_sends: true, excluded_notebook_ids: [], planner_context: true, max_context_chars: 12000, timeout_seconds: 120,
       };
       // Calendario esterno simulato (nessun account reale).
       const today = now.slice(0, 10);
@@ -84,8 +84,20 @@
           model: "modello-finto", host: "localhost", local: true, error: null, created_at: now },
       ];
       const aiSource = {
-        number: 1, note_id: "11111111-1111-4111-8111-111111111111", title: "Riunione di lunedì",
+        number: 1, kind: "note", note_id: "11111111-1111-4111-8111-111111111111", item_id: "", title: "Riunione di lunedì",
         char_start: 0, char_end: 29, text: "Ordine del giorno e decisioni", method: "keyword", score: null,
+        open: { kind: "note", id: "11111111-1111-4111-8111-111111111111" },
+      };
+      // Attività trovata per data: la citazione apre la vista Attività.
+      const aiTask = {
+        id: "77777777-7777-4777-8777-777777777777", note_id: null, note_title: null, title: "Inviare il verbale",
+        description: "", status: "open", priority: 2, due_date: "2026-10-22", completed_at: null, flagged: false,
+        created_at: "2026-10-20T08:00:00Z", updated_at: "2026-10-20T08:00:00Z", next_reminder_at: null,
+      };
+      const aiTaskSource = {
+        number: 2, kind: "task", note_id: "", item_id: aiTask.id, title: aiTask.title,
+        char_start: 0, char_end: 0, text: "Attività: Inviare il verbale\nScadenza: giovedì 2026-10-22",
+        method: "date", score: null, open: { kind: "task", id: aiTask.id },
       };
       // Invia frammenti a un Channel di Tauri come farebbe il backend.
       const stream = (channel, parts) => parts.forEach((message, index) => callbacks.get(channel.id)?.({ index, message }));
@@ -210,12 +222,20 @@
             : { models: ["modello-finto", "embed-finto"], local: true, host: "localhost", claude_code: null },
         cancel_ai_request: () => null,
         ai_prepare_chat: () => ({
-          sources: [aiSource], local: !remoteProvider(),
+          sources: [aiSource, aiTaskSource], local: !remoteProvider(),
           host: remoteProvider() ? "Anthropic (Claude Code)" : "localhost", warning: null,
         }),
         ai_chat: (args) => {
-          stream(args.onDelta, ["Le decisioni sono nella riunione ", "[1]."]);
-          return { text: "Le decisioni sono nella riunione [1].", sources: [aiSource], provenance };
+          stream(args.onDelta, ["Le decisioni sono nella riunione ", "[1]. Il verbale va inviato domani [2]."]);
+          return {
+            text: "Le decisioni sono nella riunione [1]. Il verbale va inviato domani [2].",
+            sources: [aiSource, aiTaskSource],
+            provenance,
+          };
+        },
+        get_task: (args) => {
+          if (args.id !== aiTask.id) throw new Error("Attività non trovata");
+          return aiTask;
         },
         ai_transform: (args) => {
           // Il riassunto lungo verifica che il dialog mostri tutto il testo.

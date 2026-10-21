@@ -3002,4 +3002,78 @@ mod tests {
             "legacy-note"
         );
     }
+
+    #[test]
+    fn backup_from_older_schema_restores_and_migrates() {
+        // Backup creato da una versione dell'app con lo schema 2.
+        let old_install = tempfile::tempdir().expect("old data directory");
+        let connection =
+            Connection::open(old_install.path().join("gna.sqlite3")).expect("legacy database");
+        connection
+            .execute_batch(MIGRATION_1)
+            .expect("legacy migration 1");
+        connection
+            .execute_batch(MIGRATION_2)
+            .expect("legacy migration 2");
+        connection
+            .execute(
+                "INSERT INTO notes (id, title, content_json) VALUES (?1, ?2, ?3)",
+                params![
+                    "legacy-note",
+                    "Verbale storico",
+                    json!({"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "decisione archiviata"}]}]})
+                        .to_string()
+                ],
+            )
+            .expect("legacy note");
+        let backup = crate::backup::create_backup_with_connection(
+            &connection,
+            old_install.path(),
+            crate::backup::BackupKind::Manual,
+        )
+        .expect("legacy backup");
+        drop(connection);
+        let backup_file = old_install.path().join("backups").join(&backup.file_name);
+
+        // Ripristino su un'installazione nuova con lo schema corrente.
+        let new_install = tempfile::tempdir().expect("new data directory");
+        let database =
+            Database::open(new_install.path().join("gna.sqlite3")).expect("current database");
+        database
+            .create_note("Nota da sostituire", &empty_document())
+            .expect("note before restore");
+        let verification = database
+            .verify_backup_file(&backup_file)
+            .expect("legacy backup verifies");
+        assert_eq!(verification.schema_version, 2);
+        assert_eq!(verification.note_count, 1);
+
+        database
+            .restore_backup_file(&backup_file)
+            .expect("legacy backup restores");
+        let schema: u32 = database
+            .connection()
+            .expect("connection")
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("schema version");
+        assert_eq!(schema, super::CURRENT_SCHEMA_VERSION);
+        let notes = database.list_notes(10, 0).expect("notes");
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].title, "Verbale storico");
+        assert_eq!(
+            database
+                .search_notes("archiviata", "all", None, 10, 0)
+                .expect("search after restore")[0]
+                .note
+                .id,
+            "legacy-note"
+        );
+        assert!(database.check_integrity().expect("integrity").ok);
+
+        // Il database ripristinato e migrato sopravvive al riavvio.
+        drop(database);
+        let reopened =
+            Database::open(new_install.path().join("gna.sqlite3")).expect("database reopens");
+        assert_eq!(reopened.list_notes(10, 0).expect("notes").len(), 1);
+    }
 }

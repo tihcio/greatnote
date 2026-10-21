@@ -441,6 +441,19 @@ di sistema (KWallet o GNOME Keyring) e puoi eliminarla in ogni momento.
   "fonti usate" per aprire la nota. Con un server remoto vedi prima i brani
   che verranno inviati e puoi togliere quelli che non vuoi. La conversazione
   non viene salvata.
+- **Attività, calendario e promemoria nella chat**: l'assistente usa anche
+  i tuoi impegni. Capisce le date nella domanda («oggi», «domani», «ieri»,
+  «questa settimana», «prossima settimana», «fine settimana», «questo mese»,
+  «venerdì», «28 ottobre», «2026-11-05», «5/11», «prossimi 10 giorni») e
+  cerca le parole della domanda in titoli e descrizioni. Se chiedi delle
+  attività o del calendario senza date, considera i prossimi 14 giorni, le
+  attività in ritardo e quelle senza scadenza. Esempi: «Cosa ho in programma
+  domani?», «Quando devo rinnovare il passaporto?», «Quali riunioni ho la
+  prossima settimana?». Nelle fonti questi elementi sono indicati come
+  *attività*, *evento* o *promemoria*; cliccandoli si apre l'attività o
+  l'evento (per un promemoria, la sua nota). Gli elementi collegati a note
+  di taccuini esclusi non vengono inviati. Si disattiva in Impostazioni ›
+  Intelligenza artificiale › Privacy.
 - **Cerca per significato**: trova note con parole diverse da quelle
   cercate; per ogni risultato vedi il brano più simile. Richiede l'indice
   semantico: **Aggiorna l'indice** (o l'aggiornamento automatico nelle
@@ -639,6 +652,15 @@ modifica prevale e la nota resta.
   Greatnote trova lo stesso database su due computer si ferma con un avviso;
   disattiva e riattiva la sincronizzazione su uno dei due per dargli una
   nuova identità.
+- **Ripristinare un backup con la sincronizzazione attiva:** se il backup è
+  più vecchio dell'ultima sincronizzazione, Greatnote ferma la
+  sincronizzazione con lo stesso avviso, senza scrivere nulla nella
+  cartella. Disattivala e riattivala: il computer riceve una nuova identità
+  e si ricongiunge. Il ripristino vale solo per questo computer: le
+  modifiche più recenti presenti nella cartella (anche quelle fatte da
+  questo computer prima del ripristino) tornano, e nessuna nota va persa.
+  Per annullare davvero delle modifiche usa la cronologia della nota o il
+  cestino.
 - **Allegati in ritardo:** gli allegati grandi possono arrivare dopo la
   nota. L'impostazione «Allegati in arrivo» li conta e Greatnote li completa
   appena il servizio li ha copiati.

@@ -264,6 +264,7 @@ e nella [guida utente](./docs/USER_GUIDE.md#assistente-ai-facoltativo).
 - [Guida utente](./docs/USER_GUIDE.md)
 - [Sicurezza](./docs/SECURITY.md)
 - [Test](./docs/TESTING.md)
+- [Checklist di rilascio](./docs/RELEASE_CHECKLIST.md)
 - [Formati di esportazione e backup](./docs/ARCHIVE_FORMAT.md)
 - [Decisioni architetturali](./docs/decisions/)
 - [Specifiche operative](./CLAUDE.md)

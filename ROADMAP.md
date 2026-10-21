@@ -170,6 +170,9 @@ delle notifiche nella finestra nativa.
 - [x] Confronto tra versioni di una nota: differenze locali parola per
       parola e spiegazione facoltativa con l'AI (Cronologia nota).
 - [x] Cronologia delle richieste AI facoltativa, ricercabile e cancellabile.
+- [x] Attività, eventi e promemoria come contesto della chat, con date
+      riconosciute nella domanda, fonti citabili ed esclusioni (ADR 0022).
+- [ ] Verifica manuale con un modello reale delle domande sul calendario.
 - [ ] Motore AI integrato (ADR 0020).
   - [x] llama.cpp incluso nell'installer Windows.
   - [x] Catalogo dei modelli per chat, contesto e visione, scaricabili con
@@ -275,7 +278,15 @@ Dropbox…), senza server né account (ADR 0017).
       disinstallazione senza perdita dei dati.
 - [ ] Firmare gli installer Windows con un certificato di firma del codice
       (SmartScreen e Smart App Control).
-- [ ] Eseguire hardening, verifiche backup/restore e checklist release.
+- [x] Hardening: CSP più restrittiva, `cargo audit` nella CI, vulnerabilità
+      TLS corrette (RUSTSEC-2026-0381/0382), script con fine riga LF.
+- [x] Verifiche backup/restore automatiche: backup da schema precedente
+      ripristinato e migrato; ripristino con sincronizzazione attiva senza
+      perdita di dati.
+- [x] Checklist di rilascio (`docs/RELEASE_CHECKLIST.md`) e controlli
+      automatici (`scripts/release-check.sh`).
+- [ ] Eseguire la checklist completa su un primo rilascio (passi manuali di
+      backup/restore, pacchetti Linux e Windows).
 
 **Accettazione:** pacchetti verificati sulle piattaforme dichiarate con
 aggiornamento e ripristino documentati.

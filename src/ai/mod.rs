@@ -15,6 +15,7 @@ pub mod chunking;
 pub mod claude_code;
 pub mod history;
 pub mod index;
+pub mod planner_context;
 pub mod prompt;
 pub mod provider;
 pub mod retrieval;

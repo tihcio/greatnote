@@ -20,12 +20,15 @@ use greatnote_core::{
         claude_code::{self, ClaudeCode, ClaudeCodeStatus},
         history::{HistoryEntry, HistoryKind, HistorySource, NewHistoryEntry},
         index::{AiIndexStatus, IndexProgress, IndexReport, SemanticResult, index_pending_notes},
+        planner_context::describe_now,
         prompt::{
             self, Language, MAX_QUESTION_CHARS, SuggestedTask, TransformAction, parse_tags,
             parse_tasks,
         },
         provider::{AiProvider, ApiKey, ChatMessage, OpenAiCompatible, Provenance},
-        retrieval::{ContextSource, SourceRef},
+        retrieval::{
+            ContextSource, RetrievalMethod, SourceKind, SourceRef, SourceTarget, renumber,
+        },
         settings::{AiSettings, Endpoint, OcrEngine, ProviderKind},
     },
     content::{markdown_to_document, to_plain_text},
@@ -34,6 +37,7 @@ use greatnote_core::{
         run_tesseract, tesseract_info, vision_prompt, vision_sizes,
     },
     storage::Database,
+    time::{self, Zone},
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -505,9 +509,36 @@ pub async fn ai_prepare_chat(
             } else {
                 None
             };
-            database
-                .ai_retrieve(&settings, question, vector.as_deref())
-                .map_err(message)?
+            // Attività, eventi e promemoria hanno al massimo metà del budget;
+            // le note usano il resto.
+            let planner = database
+                .ai_planner_context(
+                    &settings,
+                    question,
+                    time::now(),
+                    &Zone::system(),
+                    language(app),
+                    (settings.max_context_chars as usize / 2).max(1_000),
+                )
+                .map_err(message)?;
+            let planner_chars: usize = planner.iter().map(|s| s.text.chars().count()).sum();
+            let note_settings = AiSettings {
+                max_context_chars: settings
+                    .max_context_chars
+                    .saturating_sub(u32::try_from(planner_chars).unwrap_or(u32::MAX)),
+                ..settings.clone()
+            };
+            let notes = database
+                .ai_retrieve(&note_settings, question, vector.as_deref())
+                .map_err(message)?;
+            // Domande sul calendario: prima gli elementi del periodo.
+            let mut sources = if planner.iter().any(|s| s.method == RetrievalMethod::Date) {
+                planner.into_iter().chain(notes).collect::<Vec<_>>()
+            } else {
+                notes.into_iter().chain(planner).collect::<Vec<_>>()
+            };
+            renumber(&mut sources);
+            sources
         };
         Ok(PreparedContext {
             sources,
@@ -545,11 +576,14 @@ pub async fn ai_chat(
         let guard = jobs.begin(&request_id)?;
         let database = app.state::<Database>();
         let (settings, provider) = chat_provider(&database)?;
+        let zone = Zone::system();
+        let language = language(app);
         let sources = database
-            .ai_resolve_sources(&settings, &sources)
+            .ai_resolve_sources(&settings, &sources, &zone, language)
             .map_err(message)?;
-        let messages =
-            prompt::chat_messages(language(app), &history, &question, &sources).map_err(message)?;
+        let now = describe_now(time::now(), &zone, language);
+        let messages = prompt::chat_messages(language, &history, &question, &sources, Some(&now))
+            .map_err(message)?;
         let provenance = provider.provenance(&settings.chat_model);
         let result = provider.chat(
             &settings.chat_model,
@@ -993,8 +1027,11 @@ pub async fn ai_semantic_search(
                     .enumerate()
                     .map(|(index, result)| HistorySource {
                         number: index + 1,
+                        kind: SourceKind::Note,
                         note_id: result.note.id.clone(),
+                        item_id: String::new(),
                         title: result.note.title.clone(),
+                        open: Some(SourceTarget::note(&result.note.id)),
                     })
                     .collect()
             })

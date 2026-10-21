@@ -4,8 +4,17 @@ import { t } from "../../i18n";
 import Icon from "../../components/Icon";
 import AiHistoryPanel from "./AiHistoryPanel";
 import { errorMessage } from "../../lib/format";
-import { aiApi, aiReady, newRequestId } from "./aiApi";
-import type { AiStatus, ChatMessage, ContextSource, IndexProgress, PreparedContext, Provenance, SemanticResult } from "./aiApi";
+import { aiApi, aiReady, historyTarget, newRequestId } from "./aiApi";
+import type {
+  AiStatus,
+  ChatMessage,
+  ContextSource,
+  IndexProgress,
+  PreparedContext,
+  Provenance,
+  SemanticResult,
+  SourceTarget,
+} from "./aiApi";
 
 interface Turn {
   question: string;
@@ -34,6 +43,8 @@ interface AssistantViewProps {
   contextNote: AssistantContextNote | null;
   onClearContextNote: () => void;
   onOpenNote: (noteId: string) => void;
+  /** Apre la nota, l'attività o l'evento di una fonte. */
+  onOpenSource: (target: SourceTarget) => void;
   onOpenSettings: () => void;
   onStartIndexing: () => void;
   onCancelIndexing: () => void;
@@ -44,18 +55,35 @@ const METHOD_LABEL = () => ({
   semantic: t.aiMethodSemantic,
   keyword: t.aiMethodKeyword,
   selected: t.aiMethodSelected,
+  date: t.aiMethodDate,
 });
 
+/** Tipo della fonte e, per le note, come è stata trovata. */
+function sourceLabel(source: ContextSource): string {
+  if (source.kind !== "note") {
+    const kind = t.aiSourceKind(source.kind);
+    return source.method === "date" ? `${kind} · ${t.aiMethodDate}` : kind;
+  }
+  return METHOD_LABEL()[source.method];
+}
+
+function openSourceTitle(source: { kind?: string; title: string }): string {
+  const title = source.title || t.untitled;
+  if (source.kind === "task") return t.aiOpenTask(title);
+  if (source.kind === "event") return t.aiOpenEvent(title);
+  return t.aiOpenSource(title);
+}
+
 /** Testo della risposta con le citazioni `[n]` trasformate in collegamenti
- *  alle note sorgente (solo i numeri di fonti realmente inviate). */
+ *  alle fonti (solo i numeri di fonti realmente inviate). */
 function AnswerText({
   text,
   sources,
-  onOpenNote,
+  onOpenSource,
 }: {
   text: string;
   sources: ContextSource[];
-  onOpenNote: (noteId: string) => void;
+  onOpenSource: (target: SourceTarget) => void;
 }) {
   const paragraphs = text.split(/\n{2,}/);
   return (
@@ -69,8 +97,8 @@ function AnswerText({
             <button
               className="ai-citation"
               key={position}
-              onClick={() => onOpenNote(source.note_id)}
-              title={t.aiOpenSource(source.title || t.untitled)}
+              onClick={() => onOpenSource(source.open)}
+              title={openSourceTitle(source)}
               type="button"
             >
               {part}
@@ -85,24 +113,28 @@ function AnswerText({
 
 function SourceList({
   sources,
-  onOpenNote,
+  onOpenSource,
 }: {
   sources: ContextSource[];
-  onOpenNote: (noteId: string) => void;
+  onOpenSource: (target: SourceTarget) => void;
 }) {
   if (sources.length === 0) return null;
-  const labels = METHOD_LABEL();
   return (
     <details className="ai-sources">
       <summary>{t.aiSourcesUsed(sources.length)}</summary>
       <ol>
         {sources.map((source) => (
-          <li key={`${source.number}-${source.note_id}-${source.char_start}`}>
-            <button className="text-button" onClick={() => onOpenNote(source.note_id)} type="button">
+          <li key={`${source.number}-${source.note_id}-${source.item_id}-${source.char_start}`}>
+            <button
+              className="text-button"
+              onClick={() => onOpenSource(source.open)}
+              title={openSourceTitle(source)}
+              type="button"
+            >
               [{source.number}] {source.title || t.untitled}
             </button>
             <span className="ai-source-method">
-              {labels[source.method]}
+              {sourceLabel(source)}
               {source.score !== null && ` · ${Math.round(source.score * 100)}%`}
             </span>
             <p className="ai-source-excerpt">{source.text.slice(0, 280)}{source.text.length > 280 ? "…" : ""}</p>
@@ -119,6 +151,7 @@ export default function AssistantView({
   contextNote,
   onClearContextNote,
   onOpenNote,
+  onOpenSource,
   onOpenSettings,
   onStartIndexing,
   onCancelIndexing,
@@ -208,9 +241,14 @@ export default function AssistantView({
         entries.map((entry) => ({
           question: entry.prompt,
           answer: entry.response,
-          // Le fonti salvate hanno solo nota e titolo: bastano per i link.
+          // Le fonti salvate hanno solo riferimento e titolo: bastano per i link.
           sources: entry.sources.map((source) => ({
-            ...source,
+            number: source.number,
+            kind: source.kind ?? "note",
+            note_id: source.note_id,
+            item_id: source.item_id ?? "",
+            title: source.title,
+            open: historyTarget(source),
             char_start: 0,
             char_end: 0,
             text: "",
@@ -407,7 +445,7 @@ export default function AssistantView({
                 <div className="ai-answer" aria-busy={turn.streaming} aria-live={turn.streaming ? "polite" : undefined}>
                   {turn.warning && <p className="data-hint">{turn.warning}</p>}
                   {turn.answer ? (
-                    <AnswerText onOpenNote={onOpenNote} sources={turn.sources} text={turn.answer} />
+                    <AnswerText onOpenSource={onOpenSource} sources={turn.sources} text={turn.answer} />
                   ) : (
                     turn.streaming && <p className="data-hint">{t.aiThinking}</p>
                   )}
@@ -416,7 +454,7 @@ export default function AssistantView({
                       {turn.error}
                     </p>
                   )}
-                  <SourceList onOpenNote={onOpenNote} sources={turn.sources} />
+                  <SourceList onOpenSource={onOpenSource} sources={turn.sources} />
                   {turn.provenance && (
                     <p className="ai-provenance">
                       {t.aiProvenance(turn.provenance.model, turn.provenance.host, turn.provenance.local)}
@@ -434,7 +472,7 @@ export default function AssistantView({
                 ) : (
                   <ul className="ai-suggestions">
                     {pending.prepared.sources.map((source, index) => (
-                      <li key={`${source.note_id}-${source.char_start}`}>
+                      <li key={`${source.note_id}-${source.item_id}-${source.char_start}`}>
                         <label className="checkbox-field">
                           <input
                             checked={pending.selected[index]}
@@ -449,6 +487,7 @@ export default function AssistantView({
                             type="checkbox"
                           />
                           <span>
+                            {source.kind !== "note" && `${t.aiSourceKind(source.kind)}: `}
                             {source.title || t.untitled} — {t.aiCharacters(source.text.length)}
                           </span>
                         </label>
@@ -529,6 +568,7 @@ export default function AssistantView({
           enabled={Boolean(status?.settings.keep_history)}
           onOpenNote={onOpenNote}
           onOpenSettings={onOpenSettings}
+          onOpenSource={onOpenSource}
           onResume={(id) => void resume(id)}
         />
       ) : !status?.settings.embedding_model ? (

@@ -1,5 +1,5 @@
 //! Cronologia locale delle richieste AI: domanda o azione, risposta,
-//! modello e server usati, fonti citate (solo nota e titolo). Si attiva o
+//! modello e server usati, fonti citate (solo riferimento e titolo). Si attiva o
 //! disattiva dalle impostazioni e si può cancellare in ogni momento; resta
 //! sul dispositivo come il resto del database.
 
@@ -7,7 +7,10 @@ use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{provider::Provenance, retrieval::ContextSource};
+use super::{
+    provider::Provenance,
+    retrieval::{ContextSource, SourceKind, SourceTarget},
+};
 use crate::storage::{Database, StorageError};
 
 /// Voci conservate: oltre questo limite le più vecchie vengono eliminate.
@@ -53,16 +56,27 @@ impl HistoryKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistorySource {
     pub number: usize,
+    /// Le voci salvate prima delle fonti del planner sono note.
+    #[serde(default)]
+    pub kind: SourceKind,
     pub note_id: String,
+    #[serde(default)]
+    pub item_id: String,
     pub title: String,
+    /// Elemento da aprire; assente nelle voci meno recenti (la nota).
+    #[serde(default)]
+    pub open: Option<SourceTarget>,
 }
 
 impl From<&ContextSource> for HistorySource {
     fn from(source: &ContextSource) -> Self {
         Self {
             number: source.number,
+            kind: source.kind,
             note_id: source.note_id.clone(),
+            item_id: source.item_id.clone(),
             title: source.title.clone(),
+            open: Some(source.open.clone()),
         }
     }
 }
@@ -260,8 +274,11 @@ mod tests {
             response: "risposta [1]",
             sources: vec![HistorySource {
                 number: 1,
+                kind: SourceKind::Note,
                 note_id: "n".to_owned(),
+                item_id: String::new(),
                 title: "Nota".to_owned(),
+                open: Some(SourceTarget::note("n")),
             }],
             provenance,
             error: None,

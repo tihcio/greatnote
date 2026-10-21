@@ -14,6 +14,10 @@ cargo test
 Il workspace Rust include anche la shell Tauri, ma per impostazione predefinita
 il comando `cargo test` esegue il core senza compilare componenti grafici.
 
+Prima di un rilascio `scripts/release-check.sh` esegue tutti i controlli
+automatici (workspace completo, `cargo audit`, build e audit npm); vedi la
+[checklist di rilascio](./RELEASE_CHECKLIST.md).
+
 ## Frontend
 
 ```sh
@@ -211,8 +215,21 @@ e un provider di embedding deterministico, mai servizi reali:
   fermano il ciclo e note rifiutate che no;
 - recupero: termini FTS sicuri, fonti per parole chiave e semantiche,
   rilettura del testo corrente, budget di caratteri;
+- planner come contesto (`ai::planner_context`): espressioni di tempo in
+  italiano e inglese trasformate in intervalli di giorni (oggi, domani,
+  settimane, fine settimana, mesi con anno più vicino, giorni della
+  settimana, date numeriche, «prossimi N giorni» con limite), parole del
+  planner e termini di ricerca; eventi e attività del periodo con orari nel
+  fuso dell'utente e promemoria inclusi nella fonte; attività in ritardo per
+  «oggi»; ricerca per parole a qualunque data; taccuini esclusi, cestino,
+  impostazione disattivata e budget; rilettura che riapplica esclusioni e
+  cestino;
 - prompt: delimitatori non falsificabili, cronologia limitata, analisi
-  difensiva di tag e attività.
+  difensiva di tag e attività, tipo della fonte e data corrente.
+
+Il test dell'interfaccia (`npm run test:ui`) verifica che una fonte
+«attività · per data» compaia sotto la risposta e che la sua citazione apra
+l'attività nella vista Attività.
 
 Prova reale facoltativa con un server locale (ignorata di default):
 
@@ -494,6 +511,12 @@ I test del core (fixture sintetiche e directory temporanee) coprono:
   decifrata residua dopo errore o uso, ripristino completo da copia cifrata e
   pulizia dei residui all'avvio. Nei test il work factor scrypt è ridotto
   (`cfg(test)`) per tenere bassi tempo e memoria;
+- `storage`: backup creato da un database con schema 2 verificato,
+  ripristinato su un'installazione nuova, migrato allo schema corrente,
+  ricercabile e integro anche dopo la riapertura;
+- `sync`: ripristino di un backup più vecchio dell'ultima sincronizzazione
+  → sincronizzazione ferma senza scrivere nella cartella; con una nuova
+  identità il dispositivo si ricongiunge e nessuna nota va persa;
 - `data_dir`: spostamento dei dati da `dev.gna.notes` quando la cartella nuova
   contiene solo cache web o un database vuoto (messo da parte), nessuna
   modifica se entrambe contengono note, nessuna azione alla seconda

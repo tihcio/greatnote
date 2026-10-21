@@ -68,7 +68,7 @@ pub enum SyncError {
     #[error(transparent)]
     Storage(#[from] StorageError),
     #[error(
-        "Nella cartella ci sono modifiche di questo dispositivo che il database non conosce: probabilmente lo stesso database è stato copiato su un altro computer. Per sicurezza la sincronizzazione è ferma: disattivala e riattivala per dare a questo computer una nuova identità."
+        "Nella cartella ci sono modifiche di questo dispositivo che il database non conosce: è stato ripristinato un backup meno recente oppure lo stesso database è stato copiato su un altro computer. Per sicurezza la sincronizzazione è ferma: disattivala e riattivala per dare a questo computer una nuova identità."
     )]
     DuplicateDevice,
     #[error(

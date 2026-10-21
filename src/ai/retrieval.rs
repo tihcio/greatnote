@@ -13,9 +13,14 @@ use super::{
     AiError,
     chunking::{Chunk, MAX_CHUNK_CHARS, char_slice, chunk_text},
     index::{IMAGE_TEXT_COLUMN, NoteText, ai_text, note_text, usable_notes_condition},
+    planner_context::MAX_PLANNER_SOURCES,
+    prompt::Language,
     settings::AiSettings,
 };
-use crate::storage::{Database, StorageError};
+use crate::{
+    storage::{Database, StorageError},
+    time::Zone,
+};
 
 /// Frammenti per nota nel contesto di una risposta.
 const MAX_CHUNKS_PER_SOURCE_NOTE: usize = 2;
@@ -32,14 +37,67 @@ pub enum RetrievalMethod {
     Keyword,
     /// Nota scelta dall'utente.
     Selected,
+    /// Attività, evento o promemoria nel periodo nominato dalla domanda.
+    Date,
 }
 
-/// Riferimento a un frammento: è ciò che il frontend restituisce quando
-/// l'utente conferma l'invio.
+/// Che cosa è una fonte.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SourceKind {
+    #[default]
+    Note,
+    Task,
+    Event,
+    /// Promemoria di una nota (quelli di attività ed eventi compaiono nella
+    /// fonte dell'attività o dell'evento).
+    Reminder,
+}
+
+/// Elemento che l'interfaccia apre da una citazione.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceTarget {
+    pub kind: SourceKind,
+    pub id: String,
+}
+
+impl SourceTarget {
+    pub fn note(id: &str) -> Self {
+        Self {
+            kind: SourceKind::Note,
+            id: id.to_owned(),
+        }
+    }
+
+    pub fn task(id: &str) -> Self {
+        Self {
+            kind: SourceKind::Task,
+            id: id.to_owned(),
+        }
+    }
+
+    pub fn event(id: &str) -> Self {
+        Self {
+            kind: SourceKind::Event,
+            id: id.to_owned(),
+        }
+    }
+}
+
+/// Riferimento a un frammento di nota o a un elemento del planner: è ciò
+/// che il frontend restituisce quando l'utente conferma l'invio.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceRef {
+    #[serde(default)]
+    pub kind: SourceKind,
+    #[serde(default)]
     pub note_id: String,
+    /// Id dell'attività, dell'evento o del promemoria.
+    #[serde(default)]
+    pub item_id: String,
+    #[serde(default)]
     pub char_start: usize,
+    #[serde(default)]
     pub char_end: usize,
 }
 
@@ -47,19 +105,27 @@ pub struct SourceRef {
 pub struct ContextSource {
     /// Numero usato nelle citazioni `[n]`.
     pub number: usize,
+    pub kind: SourceKind,
+    /// Nota del frammento, o nota collegata all'elemento del planner (vuoto
+    /// se non c'è).
     pub note_id: String,
+    /// Id dell'attività, dell'evento o del promemoria; vuoto per le note.
+    pub item_id: String,
     pub title: String,
     pub char_start: usize,
     pub char_end: usize,
     pub text: String,
     pub method: RetrievalMethod,
     pub score: Option<f32>,
+    pub open: SourceTarget,
 }
 
 impl ContextSource {
     pub fn reference(&self) -> SourceRef {
         SourceRef {
+            kind: self.kind,
             note_id: self.note_id.clone(),
+            item_id: self.item_id.clone(),
             char_start: self.char_start,
             char_end: self.char_end,
         }
@@ -106,13 +172,17 @@ fn term_score(text: &str, terms: &[String]) -> usize {
         .sum()
 }
 
-struct Budget {
+pub(crate) struct Budget {
     remaining: usize,
 }
 
 impl Budget {
+    pub(crate) fn new(remaining: usize) -> Self {
+        Self { remaining }
+    }
+
     /// Accorcia il testo al budget rimasto; `None` se il budget è esaurito.
-    fn take(&mut self, text: String) -> Option<String> {
+    pub(crate) fn take(&mut self, text: String) -> Option<String> {
         if self.remaining < 200 {
             return None;
         }
@@ -256,30 +326,63 @@ impl Database {
         let text = budget.take(note.text.clone()).unwrap_or_default();
         Ok(vec![ContextSource {
             number: 1,
+            kind: SourceKind::Note,
             note_id: note.note_id.clone(),
+            item_id: String::new(),
             title: note.title.clone(),
             char_start: 0,
             char_end: length.max(1),
             text,
             method: RetrievalMethod::Selected,
             score: None,
+            open: SourceTarget::note(&note.note_id),
         }])
     }
 
-    /// Rilegge dal database i frammenti confermati dall'utente. I riferimenti
-    /// a note cestinate, escluse o inesistenti sono ignorati; il testo segue
-    /// la versione corrente della nota.
+    /// Rilegge dal database le fonti confermate dall'utente. I riferimenti
+    /// a note o elementi cestinati, esclusi o inesistenti sono ignorati; il
+    /// testo segue la versione corrente. Gli elementi del planner sono
+    /// descritti nel fuso `zone` e nella lingua `language`.
     pub fn ai_resolve_sources(
         &self,
         settings: &AiSettings,
         references: &[SourceRef],
+        zone: &Zone,
+        language: Language,
     ) -> Result<Vec<ContextSource>, StorageError> {
         let connection = self.connection()?;
         let mut budget = Budget {
             remaining: settings.max_context_chars as usize,
         };
         let mut sources = Vec::new();
-        for reference in references.iter().take(MAX_SOURCES) {
+        let (mut notes, mut planner) = (0, 0);
+        for reference in references {
+            if reference.kind != SourceKind::Note {
+                if planner >= MAX_PLANNER_SOURCES {
+                    continue;
+                }
+                planner += 1;
+                let Some(mut source) = Database::ai_resolve_planner_source(
+                    &connection,
+                    settings,
+                    reference,
+                    zone,
+                    language,
+                )?
+                else {
+                    continue;
+                };
+                let Some(text) = budget.take(source.text) else {
+                    break;
+                };
+                source.text = text;
+                sources.push(source);
+                continue;
+            }
+            if notes >= MAX_SOURCES {
+                continue;
+            }
+            notes += 1;
             let Some((note, _)) = note_text(&connection, &reference.note_id)? else {
                 continue;
             };
@@ -302,13 +405,16 @@ impl Database {
             };
             sources.push(ContextSource {
                 number: 0,
+                kind: SourceKind::Note,
                 note_id: note.note_id.clone(),
+                item_id: String::new(),
                 title: note.title.clone(),
                 char_start: reference.char_start,
                 char_end: end,
                 text,
                 method: RetrievalMethod::Selected,
                 score: None,
+                open: SourceTarget::note(&note.note_id),
             });
         }
         renumber(&mut sources);
@@ -325,17 +431,21 @@ fn source(
 ) -> ContextSource {
     ContextSource {
         number: 0,
+        kind: SourceKind::Note,
         note_id: note.note_id.clone(),
+        item_id: String::new(),
         title: note.title.clone(),
         char_start: chunk.start,
         char_end: chunk.end,
         text,
         method,
         score,
+        open: SourceTarget::note(&note.note_id),
     }
 }
 
-fn renumber(sources: &mut [ContextSource]) {
+/// Numera le fonti nell'ordine dato, a partire da 1.
+pub fn renumber(sources: &mut [ContextSource]) {
     for (index, source) in sources.iter_mut().enumerate() {
         source.number = index + 1;
     }
@@ -437,14 +547,19 @@ mod tests {
             .update_note(&note.id, "Gatti", &document("Il gatto mangia alle nove"))
             .expect("update");
         let resolved = database
-            .ai_resolve_sources(&settings, std::slice::from_ref(&reference))
+            .ai_resolve_sources(
+                &settings,
+                std::slice::from_ref(&reference),
+                &Zone::system(),
+                Language::It,
+            )
             .expect("resolve");
         assert!(resolved[0].text.contains("nove"));
 
         database.trash_note(&note.id).expect("trash");
         assert!(
             database
-                .ai_resolve_sources(&settings, &[reference])
+                .ai_resolve_sources(&settings, &[reference], &Zone::system(), Language::It)
                 .expect("resolve")
                 .is_empty()
         );

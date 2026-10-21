@@ -401,6 +401,21 @@ try {
     await expectVisible(".ai-answer .ai-citation");
     await expectVisible(".ai-sources");
   });
+  await step("assistente-fonte-attivita", async () => {
+    const labels = await page.$$eval(".ai-source-method", (items) => items.map((item) => item.textContent));
+    if (!labels.some((label) => label?.includes("attività · per data"))) throw new Error(`etichette: ${labels}`);
+    const citations = await page.$$(".ai-answer .ai-citation");
+    if (citations.length !== 2) throw new Error(`citazioni: ${citations.length}`);
+    await citations[1].click();
+    await pause(400);
+    await expectVisible("#tasks-title");
+    // L'attività citata si apre nel suo dialog.
+    await expectVisible('[role="dialog"]');
+    await page.keyboard.press("Escape");
+    await pause(200);
+    await clickText(".navigation-item", "Assistente AI");
+    await pause(200);
+  });
   await step("assistente-ricerca", async () => {
     await clickText(".segment", "Cerca per significato");
     await page.type('input[type="search"]', "decisioni prese");

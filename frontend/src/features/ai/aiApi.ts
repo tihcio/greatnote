@@ -21,6 +21,8 @@ export interface AiSettings {
   remote_consent: boolean;
   confirm_remote_sends: boolean;
   excluded_notebook_ids: string[];
+  /** La chat usa anche attività, eventi e promemoria come contesto. */
+  planner_context: boolean;
   max_context_chars: number;
   timeout_seconds: number;
 }
@@ -47,11 +49,24 @@ export interface ConnectionTest {
   claude_code: { executable: string; version: string; logged_in: boolean; auth_method: string | null } | null;
 }
 
-export type RetrievalMethod = "semantic" | "keyword" | "selected";
+export type RetrievalMethod = "semantic" | "keyword" | "selected" | "date";
+
+export type SourceKind = "note" | "task" | "event" | "reminder";
+
+/** Elemento aperto da una citazione (per un promemoria: la sua nota). */
+export interface SourceTarget {
+  kind: SourceKind;
+  id: string;
+}
 
 export interface ContextSource {
   number: number;
+  kind: SourceKind;
+  /** Nota del frammento o nota collegata all'elemento ("" se nessuna). */
   note_id: string;
+  /** Attività, evento o promemoria; "" per le note. */
+  item_id: string;
+  open: SourceTarget;
   title: string;
   char_start: number;
   char_end: number;
@@ -133,6 +148,21 @@ export type TransformAction =
 
 export type HistoryKind = "chat" | "transform" | "tags" | "tasks" | "search";
 
+/** Fonte salvata nella cronologia; le voci meno recenti hanno solo la nota. */
+export interface HistorySource {
+  number: number;
+  kind?: SourceKind;
+  note_id: string;
+  item_id?: string;
+  title: string;
+  open?: SourceTarget | null;
+}
+
+/** Elemento da aprire per una fonte salvata. */
+export function historyTarget(source: HistorySource): SourceTarget {
+  return source.open ?? { kind: "note", id: source.note_id };
+}
+
 export interface HistoryEntry {
   id: string;
   kind: HistoryKind;
@@ -140,7 +170,7 @@ export interface HistoryEntry {
   note_id: string | null;
   prompt: string;
   response: string;
-  sources: { number: number; note_id: string; title: string }[];
+  sources: HistorySource[];
   model: string;
   host: string;
   local: boolean;
@@ -316,8 +346,14 @@ export const aiApi = {
       question,
       history,
       conversationId,
-      // Solo i riferimenti: il testo viene riletto dalle note nel backend.
-      sources: sources.map(({ note_id, char_start, char_end }) => ({ note_id, char_start, char_end })),
+      // Solo i riferimenti: il testo viene riletto dal database nel backend.
+      sources: sources.map(({ kind, note_id, item_id, char_start, char_end }) => ({
+        kind,
+        note_id,
+        item_id,
+        char_start,
+        char_end,
+      })),
       onDelta: streamChannel(onDelta),
     }),
   transform: (

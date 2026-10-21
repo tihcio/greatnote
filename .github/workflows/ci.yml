@@ -46,3 +46,20 @@ jobs:
 
       - name: Audit npm dependencies
         run: npm audit
+
+  # Avvisi di sicurezza RustSec sull'intero Cargo.lock (desktop incluso).
+  # Fallisce solo per vulnerabilità; gli avvisi "unmaintained"/"unsound"
+  # delle dipendenze di Tauri e GTK restano visibili nel log.
+  rust-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Audit Rust dependencies
+        run: cargo audit

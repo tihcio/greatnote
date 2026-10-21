@@ -30,7 +30,7 @@ const PAST_TOLERANCE_MINUTES: i64 = 1;
 
 const NOW_SQL: &str = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
-const TASK_COLUMNS: &str = "tasks.id, tasks.note_id,
+pub(crate) const TASK_COLUMNS: &str = "tasks.id, tasks.note_id,
     (SELECT notes.title FROM notes WHERE notes.id = tasks.note_id AND notes.deleted_at IS NULL),
     tasks.title, tasks.description, tasks.status, tasks.priority, tasks.due_date,
     tasks.completed_at, tasks.created_at, tasks.updated_at,
@@ -39,7 +39,7 @@ const TASK_COLUMNS: &str = "tasks.id, tasks.note_id,
        AND reminders.status != 'done'),
     tasks.flagged";
 
-const EVENT_COLUMNS: &str = "events.id, events.note_id,
+pub(crate) const EVENT_COLUMNS: &str = "events.id, events.note_id,
     (SELECT notes.title FROM notes WHERE notes.id = events.note_id AND notes.deleted_at IS NULL),
     events.title, events.description, events.all_day, events.start_at, events.end_at,
     events.start_date, events.end_date, events.timezone, events.created_at, events.updated_at,
@@ -47,7 +47,8 @@ const EVENT_COLUMNS: &str = "events.id, events.note_id,
     events.subscription_id";
 
 /// Colonne di un promemoria con titolo e nota dell'entità. Usa l'alias `r`.
-const REMINDER_COLUMNS: &str = "r.id, r.entity_type, r.entity_id, r.remind_at, r.timezone,
+pub(crate) const REMINDER_COLUMNS: &str =
+    "r.id, r.entity_type, r.entity_id, r.remind_at, r.timezone,
     r.local_time, r.status, r.last_triggered_at,
     COALESCE(CASE r.entity_type
         WHEN 'note' THEN (SELECT title FROM notes WHERE id = r.entity_id)
@@ -65,14 +66,14 @@ const REMINDER_COLUMNS: &str = "r.id, r.entity_type, r.entity_id, r.remind_at, r
 
 /// Vero se l'entità del promemoria `r` esiste ed è attiva. Le note nel
 /// cestino conservano i promemoria, che riprendono dopo il ripristino.
-const REMINDER_ENTITY_ACTIVE: &str = "CASE r.entity_type
+pub(crate) const REMINDER_ENTITY_ACTIVE: &str = "CASE r.entity_type
     WHEN 'note' THEN EXISTS(SELECT 1 FROM notes WHERE id = r.entity_id AND deleted_at IS NULL)
     WHEN 'task' THEN EXISTS(SELECT 1 FROM tasks
                             WHERE id = r.entity_id AND status = 'open' AND deleted_at IS NULL)
     WHEN 'event' THEN EXISTS(SELECT 1 FROM events WHERE id = r.entity_id AND deleted_at IS NULL)
     ELSE 0 END";
 
-fn task_from_row(row: &Row<'_>) -> rusqlite::Result<Task> {
+pub(crate) fn task_from_row(row: &Row<'_>) -> rusqlite::Result<Task> {
     Ok(Task {
         id: row.get(0)?,
         note_id: row.get(1)?,
@@ -90,7 +91,7 @@ fn task_from_row(row: &Row<'_>) -> rusqlite::Result<Task> {
     })
 }
 
-fn event_from_row(row: &Row<'_>) -> rusqlite::Result<CalendarEvent> {
+pub(crate) fn event_from_row(row: &Row<'_>) -> rusqlite::Result<CalendarEvent> {
     Ok(CalendarEvent {
         id: row.get(0)?,
         note_id: row.get(1)?,
@@ -113,7 +114,7 @@ fn event_from_row(row: &Row<'_>) -> rusqlite::Result<CalendarEvent> {
     })
 }
 
-fn reminder_from_row(row: &Row<'_>) -> rusqlite::Result<Reminder> {
+pub(crate) fn reminder_from_row(row: &Row<'_>) -> rusqlite::Result<Reminder> {
     let entity: String = row.get(1)?;
     Ok(Reminder {
         id: row.get(0)?,

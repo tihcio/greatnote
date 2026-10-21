@@ -5,6 +5,32 @@ iniziale e non ha ancora release.
 
 ## Non rilasciato
 
+- **L'assistente AI conosce i tuoi impegni.** Nella chat si può chiedere
+  «Cosa ho domani?», «Quali riunioni ho la prossima settimana?» o «Quando
+  devo rinnovare il passaporto?».
+  - L'assistente cerca attività, eventi del calendario (anche Google,
+    Microsoft e iCal) e promemoria, capendo le date nella domanda («oggi»,
+    «venerdì», «28 ottobre», «prossimi 10 giorni»…) e le parole di titoli e
+    descrizioni.
+  - Questi elementi compaiono tra le fonti come *attività*, *evento* o
+    *promemoria*; la citazione apre l'attività o l'evento.
+  - Valgono le stesse protezioni delle note: anteprima prima dell'invio a un
+    server remoto, nessun elemento collegato a note di taccuini esclusi. Si
+    disattiva in Impostazioni › Intelligenza artificiale (ADR 0022).
+
+- **Preparazione ai rilasci.** Nuova
+  [checklist di rilascio](./docs/RELEASE_CHECKLIST.md) con lo script
+  `scripts/release-check.sh` che esegue tutti i controlli automatici.
+  - Corrette due vulnerabilità nella verifica dei certificati TLS usata per
+    AI remota, Dropbox e calendari (aggiornati `rustls-webpki` e
+    `webpki-roots`). La CI ora controlla anche gli avvisi di sicurezza
+    delle dipendenze Rust.
+  - Politica di sicurezza dei contenuti più restrittiva (niente plugin,
+    URL di base o invio di form).
+  - Se si ripristina un backup più vecchio dell'ultima sincronizzazione,
+    l'avviso ora lo dice chiaramente; la guida spiega come ricongiungere il
+    computer senza perdere note.
+
 - **Modelli AI da Hugging Face, adatti al tuo computer.** Nel motore
   integrato ogni sezione (chat, contesto, visione) ha ora **Cerca altri
   modelli su Hugging Face**.

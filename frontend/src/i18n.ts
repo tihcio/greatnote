@@ -923,10 +923,12 @@ const messages = {
     aiSemanticEmptyIndex: "L'indice semantico è vuoto: premi «Aggiorna l'indice» per analizzare le note.",
     aiChatTab: "Chat",
     aiSearchTab: "Cerca per significato",
-    aiChatEmpty: "Fai una domanda: l'assistente cerca le note pertinenti e risponde citandole.",
+    aiChatEmpty:
+      "Fai una domanda: l'assistente cerca note, attività, eventi e promemoria pertinenti e risponde citandoli. Prova «Cosa ho in programma domani?».",
     aiChatNotSaved: "La conversazione non viene salvata: si cancella chiudendo l'app o con «Nuova conversazione».",
     aiQuestionLabel: "Domanda per l'assistente",
-    aiQuestionPlaceholder: "Chiedi qualcosa sulle tue note… (Invio per inviare, Maiusc+Invio per andare a capo)",
+    aiQuestionPlaceholder:
+      "Chiedi qualcosa sulle tue note o sui tuoi impegni… (Invio per inviare, Maiusc+Invio per andare a capo)",
     aiQuestionAboutNote: "Chiedi qualcosa su questa nota…",
     aiAsk: "Chiedi",
     aiStop: "Interrompi",
@@ -937,6 +939,14 @@ const messages = {
     aiRemoveContext: "Usa tutte le note",
     aiSourcesUsed: (count: number) => `${count} ${count === 1 ? "fonte usata" : "fonti usate"}`,
     aiOpenSource: (title: string) => `Apri la nota «${title}»`,
+    aiOpenTask: (title: string) => `Apri l'attività «${title}»`,
+    aiOpenEvent: (title: string) => `Apri l'evento «${title}»`,
+    aiSourceKind: (kind: "note" | "task" | "event" | "reminder") =>
+      ({ note: "nota", task: "attività", event: "evento", reminder: "promemoria" })[kind],
+    aiMethodDate: "per data",
+    aiPlannerContext: "Usa anche attività, calendario e promemoria nella chat",
+    aiPlannerContextHint:
+      "L'assistente include gli elementi pertinenti alla domanda: per data («oggi», «domani», «prossima settimana», «28 ottobre»…) o per parole del titolo e della descrizione. Quelli collegati a note di taccuini esclusi non vengono mai inviati; con un server remoto li vedi prima dell'invio.",
     aiMethodSemantic: "per significato",
     aiMethodKeyword: "per parole chiave",
     aiMethodSelected: "nota scelta",
@@ -2138,10 +2148,11 @@ const messages = {
     aiSemanticEmptyIndex: "The semantic index is empty: press “Update index” to analyse your notes.",
     aiChatTab: "Chat",
     aiSearchTab: "Search by meaning",
-    aiChatEmpty: "Ask a question: the assistant finds relevant notes and answers citing them.",
+    aiChatEmpty:
+      "Ask a question: the assistant finds relevant notes, tasks, events and reminders and answers citing them. Try “What do I have tomorrow?”.",
     aiChatNotSaved: "The conversation is not saved: it is cleared when you close the app or start a new conversation.",
     aiQuestionLabel: "Question for the assistant",
-    aiQuestionPlaceholder: "Ask something about your notes… (Enter to send, Shift+Enter for a new line)",
+    aiQuestionPlaceholder: "Ask something about your notes or plans… (Enter to send, Shift+Enter for a new line)",
     aiQuestionAboutNote: "Ask something about this note…",
     aiAsk: "Ask",
     aiStop: "Stop",
@@ -2152,6 +2163,14 @@ const messages = {
     aiRemoveContext: "Use all notes",
     aiSourcesUsed: (count: number) => `${count} ${count === 1 ? "source used" : "sources used"}`,
     aiOpenSource: (title: string) => `Open note “${title}”`,
+    aiOpenTask: (title: string) => `Open task “${title}”`,
+    aiOpenEvent: (title: string) => `Open event “${title}”`,
+    aiSourceKind: (kind: "note" | "task" | "event" | "reminder") =>
+      ({ note: "note", task: "task", event: "event", reminder: "reminder" })[kind],
+    aiMethodDate: "by date",
+    aiPlannerContext: "Also use tasks, calendar and reminders in the chat",
+    aiPlannerContextHint:
+      "The assistant includes the items relevant to the question: by date (“today”, “tomorrow”, “next week”, “October 28”…) or by words in the title and description. Items linked to notes in excluded notebooks are never sent; with a remote server you see them before sending.",
     aiMethodSemantic: "by meaning",
     aiMethodKeyword: "by keywords",
     aiMethodSelected: "chosen note",

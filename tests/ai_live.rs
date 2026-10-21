@@ -97,7 +97,8 @@ fn local_server_answers_with_citations() {
             .iter()
             .any(|source| source.title == "Trasloco ufficio")
     );
-    let messages = prompt::chat_messages(Language::It, &[], question, &sources).expect("messages");
+    let messages =
+        prompt::chat_messages(Language::It, &[], question, &sources, None).expect("messages");
     let mut streamed = String::new();
     let answer = provider
         .chat(&chat_model, &messages, 0.2, &cancel, &mut |delta| {
@@ -178,7 +179,8 @@ fn claude_code_answers_with_citations() {
     let sources = database
         .ai_retrieve(&settings, question, None)
         .expect("retrieve");
-    let messages = prompt::chat_messages(Language::It, &[], question, &sources).expect("messages");
+    let messages =
+        prompt::chat_messages(Language::It, &[], question, &sources, None).expect("messages");
     let cancel = AtomicBool::new(false);
     let mut streamed = String::new();
     let answer = provider

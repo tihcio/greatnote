@@ -250,7 +250,9 @@ Motivazioni in [ADR 0011](./docs/decisions/0011-import-from-evernote-joplin-obsi
   annullamento ed errori tipizzati), `chunking` (frammenti con posizioni in
   caratteri), `index` (vettori in SQLite, ricerca per coseno,
   indicizzazione incrementale), `retrieval` (fonti semantiche o FTS5,
-  rilettura dalle note correnti), `prompt` (messaggi con delimitatori non
+  rilettura dalle note correnti), `planner_context` (attività, eventi e
+  promemoria pertinenti alla domanda, con date riconosciute localmente;
+  ADR 0022), `prompt` (messaggi con delimitatori non
   falsificabili, risposte strutturate).
 - `src/ai/builtin/`: motore integrato (ADR 0020).
   - `catalog`: modelli fissati per commit e SHA-256.

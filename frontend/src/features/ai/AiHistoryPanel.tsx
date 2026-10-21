@@ -5,8 +5,8 @@ import { askConfirmation } from "../../lib/confirm";
 import { errorMessage, formatDateTime } from "../../lib/format";
 import Icon from "../../components/Icon";
 import type { IconName } from "../../components/Icon";
-import { aiApi } from "./aiApi";
-import type { HistoryEntry, HistoryKind } from "./aiApi";
+import { aiApi, historyTarget } from "./aiApi";
+import type { HistoryEntry, HistoryKind, SourceTarget } from "./aiApi";
 
 const PAGE = 50;
 
@@ -31,6 +31,8 @@ function kindLabel(kind: HistoryKind): string {
 interface AiHistoryPanelProps {
   enabled: boolean;
   onOpenNote: (noteId: string) => void;
+  /** Apre la nota, l'attività o l'evento di una fonte. */
+  onOpenSource: (target: SourceTarget) => void;
   /** Riprende una conversazione nella chat. */
   onResume: (conversationId: string) => void;
   onOpenSettings: () => void;
@@ -40,7 +42,13 @@ interface AiHistoryPanelProps {
  * Cronologia delle richieste AI: ricerca, dettaglio con risposta e fonti,
  * copia, ripresa della conversazione ed eliminazione (singola o totale).
  */
-export default function AiHistoryPanel({ enabled, onOpenNote, onResume, onOpenSettings }: AiHistoryPanelProps) {
+export default function AiHistoryPanel({
+  enabled,
+  onOpenNote,
+  onOpenSource,
+  onResume,
+  onOpenSettings,
+}: AiHistoryPanelProps) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -186,11 +194,12 @@ export default function AiHistoryPanel({ enabled, onOpenNote, onResume, onOpenSe
                           {entry.sources.map((source) => (
                             <button
                               className="text-button"
-                              key={`${source.number}-${source.note_id}`}
-                              onClick={() => onOpenNote(source.note_id)}
+                              key={`${source.number}-${source.note_id}-${source.item_id ?? ""}`}
+                              onClick={() => onOpenSource(historyTarget(source))}
                               type="button"
                             >
-                              [{source.number}] {source.title || t.untitled}
+                              [{source.number}] {source.kind && source.kind !== "note" && `${t.aiSourceKind(source.kind)}: `}
+                              {source.title || t.untitled}
                             </button>
                           ))}
                         </div>

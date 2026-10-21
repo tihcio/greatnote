@@ -79,6 +79,7 @@ import type { AiTransformRequest } from "./features/ai/AiResultDialog";
 import AiSuggestionsDialog from "./features/ai/AiSuggestionsDialog";
 import AssistantView from "./features/ai/AssistantView";
 import type { AssistantContextNote } from "./features/ai/AssistantView";
+import type { SourceTarget } from "./features/ai/aiApi";
 import { aiNoteItems } from "./features/ai/aiActions";
 import { INDEX_FINISHED_EVENT, INDEX_PROGRESS_EVENT, aiApi, aiReady } from "./features/ai/aiApi";
 import type { AiStatus, IndexFinished, IndexProgress, TransformAction } from "./features/ai/aiApi";
@@ -884,6 +885,27 @@ export default function App() {
         if (!(await flushDraft(activeNoteRef.current))) return;
         setPendingEvent(event);
         setWorkspace("calendar");
+      }
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
+  /** Apre la nota, l'attività o l'evento citato dall'assistente. */
+  const openAiSource = async (target: SourceTarget) => {
+    try {
+      if (target.kind === "task") {
+        const task = await invoke<Task>("get_task", { id: target.id });
+        if (!(await flushDraft(activeNoteRef.current))) return;
+        setPendingTask(task);
+        setWorkspace("tasks");
+      } else if (target.kind === "event") {
+        const event = await invoke<CalendarEvent>("get_event", { id: target.id });
+        if (!(await flushDraft(activeNoteRef.current))) return;
+        setPendingEvent(event);
+        setWorkspace("calendar");
+      } else {
+        await openNoteFromPlanner(target.id);
       }
     } catch (cause) {
       setError(errorMessage(cause));
@@ -2757,6 +2779,7 @@ export default function App() {
           onCancelIndexing={cancelAiIndexing}
           onClearContextNote={() => setAssistantNote(null)}
           onOpenNote={(noteId) => void openNoteById(noteId)}
+          onOpenSource={(target) => void openAiSource(target)}
           onOpenSettings={() => openSettings("ai")}
           onStartIndexing={() => void startAiIndexing()}
           onStatus={setAiStatus}
