@@ -2608,7 +2608,12 @@ p {
   display: grid;
   min-height: 0;
   flex: 1;
-  grid-auto-rows: minmax(0, 1fr);
+  /* Senza colonna esplicita la traccia implicita si allarga al testo più
+     lungo degli eventi e la griglia supera la finestra. */
+  grid-template-columns: minmax(0, 1fr);
+  /* Le settimane dividono lo spazio ma non diventano più basse del loro
+     contenuto, che altrimenti finirebbe sopra la settimana successiva. */
+  grid-auto-rows: minmax(min-content, 1fr);
   grid-template-rows: auto;
   overflow-y: auto;
   padding: 0 0 12px;
@@ -2706,6 +2711,9 @@ p {
 
 .calendar-items {
   display: grid;
+  min-width: 0;
+  /* Gli eventi restano nella cella e il titolo lungo finisce con "…". */
+  grid-template-columns: minmax(0, 1fr);
   gap: 3px;
   margin: 0;
   padding: 0;

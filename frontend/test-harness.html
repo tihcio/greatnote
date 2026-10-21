@@ -32,6 +32,7 @@
       };
       // Calendario esterno simulato (nessun account reale).
       const today = now.slice(0, 10);
+      const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
       let calendarStatus = {
         clients: { google_client_id: "123-abc.apps.googleusercontent.com", microsoft_client_id: "" },
         google_has_secret: true, builtin_google: false, builtin_microsoft: false, syncing: false, connecting: false,
@@ -54,6 +55,13 @@
         externalEvent("ext-1", "Dentista", false),
         externalEvent("ext-2", "Standup", true),
         { ...externalEvent("ics-1", "Partita", true), external_calendar_id: null, calendar_provider: "ics", subscription_id: "sub-1", web_link: null },
+        // Titolo lungo: deve restare nella cella del giorno.
+        {
+          ...externalEvent("ics-2", "Non parcheggiare in piazza per il mercato settimanale!!!", true),
+          all_day: false, start_date: null, end_date: null,
+          start_at: `${tomorrow}T19:45:00Z`, end_at: `${tomorrow}T20:45:00Z`,
+          external_calendar_id: null, calendar_provider: "ics", subscription_id: "sub-1", web_link: null,
+        },
       ];
       // Sincronizzazione simulata: nessuna cartella reale.
       let syncView = {
@@ -215,6 +223,15 @@
         set_ui_preferences: (args) => {
           window.__UI_PREFERENCES__ = args.preferences;
           return args.preferences;
+        },
+        // Nota creata da un modello: entra nell'elenco come le altre.
+        create_note_from_template: () => {
+          const note = {
+            id: "99999999-9999-4999-8999-999999999999", notebook_id: null, title: "Riunione",
+            content: doc("Partecipanti"), created_at: now, updated_at: now, is_pinned: false, archived_at: null,
+          };
+          if (!notes.some((item) => item.id === note.id)) notes.push(note);
+          return note;
         },
         list_templates: () => [{ id: "builtin:meeting", name: "Verbale di riunione", title: "Riunione", content: doc("Partecipanti"), builtin: true, created_at: null, updated_at: null }],
         list_files: () => [],

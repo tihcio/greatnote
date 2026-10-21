@@ -366,6 +366,28 @@ try {
   for (const view of ["Modelli", "File", "Calendario", "Promemoria", "Cestino"]) {
     await step(`vista-${view.toLowerCase()}`, async () => clickText(".navigation-item", view));
   }
+  // Dal Cestino ai Modelli: la nota creata dal modello non deve aprirsi in
+  // sola lettura come se fosse nel cestino, nemmeno tornando indietro e avanti.
+  await step("modello-dal-cestino", async () => {
+    await clickText(".navigation-item", "Modelli");
+    await pause(300);
+    await clickText(".subtle-action.primary-action", "Usa");
+    await pause(500);
+    const editable = async (where) => {
+      const value = await page.$eval(".ProseMirror", (element) => element.getAttribute("contenteditable"));
+      if (value !== "true") throw new Error(`nota in sola lettura (${where})`);
+    };
+    await editable("dopo Usa");
+    const selected = await page.$$eval(".navigation-item[aria-current]", (items) =>
+      items.map((item) => item.textContent?.trim() ?? ""),
+    );
+    if (!selected.some((label) => label.includes("Tutte le note"))) throw new Error(`vista selezionata: ${selected}`);
+    await page.click('.tab-nav-button[aria-label="Indietro"]');
+    await pause(300);
+    await page.click('.tab-nav-button[aria-label="Avanti"]');
+    await pause(400);
+    await editable("dopo Indietro e Avanti");
+  });
   await step("concentrazione", async () => {
     await openNote();
     await clickText(".menu-bar-item", "Nota");
@@ -475,6 +497,30 @@ try {
     await clickText(".history-dialog .dialog-cancel-button", "Chiudi");
     await pause(200);
     if (await page.$(".history-dialog")) throw new Error("cronologia ancora aperta");
+  });
+  await step("calendario-eventi-nella-cella", async () => {
+    await clickText(".navigation-item", "Calendario");
+    await pause(400);
+    const overflow = await page.evaluate(() => {
+      const problems = [];
+      for (const item of document.querySelectorAll(".calendar-grid .calendar-item")) {
+        const day = item.closest(".calendar-day").getBoundingClientRect();
+        const box = item.getBoundingClientRect();
+        if (box.left < day.left - 1 || box.right > day.right + 1) problems.push(item.textContent);
+      }
+      const grid = document.querySelector(".calendar-grid");
+      if (grid.scrollWidth > grid.clientWidth + 1) problems.push(`griglia ${grid.scrollWidth} > ${grid.clientWidth}`);
+      // Un giorno con più eventi allunga la settimana invece di sovrapporsi
+      // a quella successiva.
+      const weeks = [...document.querySelectorAll(".calendar-week")];
+      weeks.forEach((week, index) => {
+        const bottom = Math.max(...[...week.children].map((day) => day.getBoundingClientRect().bottom));
+        const next = weeks[index + 1]?.getBoundingClientRect().top ?? Infinity;
+        if (bottom > next + 1) problems.push(`settimana ${index + 1} sovrapposta di ${Math.round(bottom - next)}px`);
+      });
+      return problems;
+    });
+    if (overflow.length > 0) throw new Error(`eventi fuori dalla cella: ${overflow.join(" | ")}`);
   });
   await step("calendario-esterno", async () => {
     await clickText(".navigation-item", "Calendario");

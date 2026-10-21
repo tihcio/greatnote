@@ -4,6 +4,18 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.1.1 — 2026-10-22
+
+- **Modelli dal Cestino.** Usando un modello dopo aver aperto il Cestino, la
+  nota creata si apriva in sola lettura come se fosse nel cestino. Ora si
+  apre in Tutte le note ed è modificabile. Lo stesso vale tornando a una
+  nota con le schede o con Indietro/Avanti.
+
+- **Calendario.** Nella vista mese gli eventi con titolo lungo restano nel
+  riquadro del giorno (il titolo termina con «…») invece di invadere i giorni
+  accanto. Un giorno con più eventi allunga la propria settimana invece di
+  sovrapporsi a quella successiva.
+
 ## 0.1.0 — 2026-10-21
 
 Prima versione pubblicata, per Windows x64 (installer NSIS e MSI non firmati

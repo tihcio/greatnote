@@ -1524,6 +1524,11 @@ export default function App() {
       if (location.noteId) {
         try {
           const note = await invoke<Note>("get_note", { noteId: location.noteId });
+          // `get_note` restituisce solo note fuori dal cestino: una posizione
+          // registrata come "Cestino + nota" (per esempio prima di un
+          // ripristino) si riapre in Tutte le note, dove la nota è
+          // modificabile.
+          if (location.view.kind === "trash") setSelectedView({ kind: "all" });
           setNotes((current) => [note, ...current.filter((item) => item.id !== note.id)]);
           await selectNote(note, true);
         } catch {
@@ -1929,6 +1934,11 @@ export default function App() {
         language,
       });
       setWorkspace("notes");
+      // Come per una nota nuova: la nota creata dal modello va mostrata in
+      // una vista che la contiene (mai nel Cestino, dove sarebbe in sola
+      // lettura).
+      if (selectedView.kind !== "notebook") setSelectedView({ kind: "all" });
+      setSearch("");
       setNoteListVersion((version) => version + 1);
       setNotes((current) => [note, ...current]);
       await selectNote(note, true);
