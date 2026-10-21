@@ -6,6 +6,7 @@ mod mcp_commands;
 mod planner_commands;
 mod sync_commands;
 mod ui_commands;
+mod update_commands;
 
 use std::{
     error::Error,
@@ -504,6 +505,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let data_directory = resolve_data_directory(&app.path().app_data_dir()?);
             create_data_directory(&data_directory)?;
@@ -524,6 +526,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             ai_commands::spawn_auto_indexer(app.handle());
             calendar_commands::spawn_calendar_sync(app.handle());
             sync_commands::spawn_sync_loop(app.handle());
+            app.manage(update_commands::UpdateState::default());
+            update_commands::spawn_update_checker(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -688,13 +692,19 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             builtin_ai_commands::start_hub_model_download,
             builtin_ai_commands::start_builtin_model_download,
             builtin_ai_commands::cancel_builtin_model_download,
-            builtin_ai_commands::delete_builtin_model
+            builtin_ai_commands::delete_builtin_model,
+            update_commands::get_update_status,
+            update_commands::check_for_updates,
+            update_commands::set_auto_update,
+            update_commands::install_update_now
         ])
         .build(tauri::generate_context!())?
-        .run(|_app, event| {
-            // I processi del motore AI integrato non sopravvivono all'app.
+        .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                // I processi del motore AI integrato non sopravvivono all'app.
                 builtin_ai_commands::shutdown();
+                // Un aggiornamento già scaricato si installa ora (ADR 0023).
+                update_commands::install_on_exit(app);
             }
         });
     Ok(())

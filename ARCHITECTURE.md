@@ -254,6 +254,10 @@ Motivazioni in [ADR 0011](./docs/decisions/0011-import-from-evernote-joplin-obsi
   promemoria pertinenti alla domanda, con date riconosciute localmente;
   ADR 0022), `prompt` (messaggi con delimitatori non
   falsificabili, risposte strutturate).
+- `src/updates.rs` e `src-tauri/src/update_commands.rs`: aggiornamenti
+  in-app firmati (ADR 0023): preferenza salvata nel database, controllo
+  periodico, download verificato in memoria, installazione alla chiusura o
+  su richiesta.
 - `src/ai/builtin/`: motore integrato (ADR 0020).
   - `catalog`: modelli fissati per commit e SHA-256.
   - `store`: download con ripresa e verifica.

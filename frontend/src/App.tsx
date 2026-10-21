@@ -39,6 +39,7 @@ import NotePlanner from "./features/NotePlanner";
 import ReminderAlerts from "./features/ReminderAlerts";
 import RemindersView from "./features/RemindersView";
 import SyncStatusIndicator from "./features/SyncStatusIndicator";
+import { updatesApi, useUpdateStatus } from "./features/updates/updatesApi";
 import TasksView from "./features/TasksView";
 import { buildMenus, noteItems } from "./app/buildMenus";
 import type { ExportKind, MenuContext } from "./app/buildMenus";
@@ -910,6 +911,15 @@ export default function App() {
     } catch (cause) {
       setError(errorMessage(cause));
     }
+  };
+
+  // Aggiornamenti dell'app (ADR 0023): scaricati in background, installati
+  // alla chiusura o con «Riavvia e aggiorna».
+  const [updateStatus, setUpdateStatus] = useUpdateStatus(isDesktop);
+  const installUpdate = async () => {
+    // La bozza aperta va salvata prima che l'app si chiuda.
+    if (!(await flushDraft(activeNoteRef.current))) return;
+    await updatesApi.installNow();
   };
 
   const firedReminders = reminders.filter((reminder) => reminder.status === "fired");
@@ -2707,6 +2717,16 @@ export default function App() {
               <span>{t.previewMode}</span>
             </>
           )}
+          {updateStatus?.phase.state === "ready" && (
+            <button
+              className="update-ready-button"
+              onClick={() => openSettings("updates")}
+              title={t.updateReadyHint}
+              type="button"
+            >
+              {t.updateReadyShort(updateStatus.phase.version)}
+            </button>
+          )}
           {isDesktop && (
             <button
               aria-label={t.settingsTitle}
@@ -3409,6 +3429,9 @@ export default function App() {
           }}
           onOpenData={() => openDataDialog("backup")}
           onOpenNote={(noteId) => void openNoteById(noteId)}
+          onInstallUpdate={installUpdate}
+          onUpdateStatus={setUpdateStatus}
+          updateStatus={updateStatus}
           onShowShortcuts={() => {
             setIsSettingsOpen(false);
             setIsShortcutsOpen(true);

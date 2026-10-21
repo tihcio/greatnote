@@ -628,6 +628,30 @@ try {
     await page.click('.planner-dialog button[aria-label="Chiudi"]');
     await pause(200);
   });
+  await step("aggiornamenti", async () => {
+    await keys("Control", "Comma");
+    await clickText(".settings-nav-item", "Aggiornamenti");
+    await pause(300);
+    const before = await page.$eval(".settings-content", (element) => element.textContent ?? "");
+    if (!before.includes("Versione installata: 0.1.0") || !before.includes("è aggiornato"))
+      throw new Error(`stato iniziale: ${before}`);
+    await clickText(".settings-content .data-action", "Cerca aggiornamenti");
+    await pause(300);
+    const ready = await page.$eval(".settings-content", (element) => element.textContent ?? "");
+    if (!ready.includes("La versione 0.2.0 è pronta") || !ready.includes("assistente con calendario"))
+      throw new Error(`aggiornamento non mostrato: ${ready}`);
+    await page.keyboard.press("Escape");
+    await pause(200);
+    const footer = await page.$(".sidebar-footer");
+    await footer?.screenshot({ path: "target/ui-smoke/aggiornamento-pronto.png", scrollIntoView: true });
+    // Il pulsante nella barra laterale riapre la sezione.
+    await clickText(".update-ready-button", "Aggiornamento 0.2.0 pronto");
+    await pause(300);
+    await clickText(".settings-content .data-action", "Riavvia e aggiorna");
+    await pause(300);
+    if (!(await page.evaluate(() => window.__UPDATE_INSTALLED__))) throw new Error("installazione non richiesta");
+    await page.keyboard.press("Escape");
+  });
   await step("impostazioni-integrazioni-mcp", async () => {
     await keys("Control", "Comma");
     await clickText(".settings-nav-item", "Integrazioni");

@@ -319,6 +319,28 @@ locali.
   di AI secondo le sue condizioni. L'utente lo vede nelle impostazioni
   prima di attivare il server.
 
+## Aggiornamenti in-app
+
+- **Firma obbligatoria:** il pacchetto è installato solo se la firma
+  minisign corrisponde alla chiave pubblica inclusa nell'app e indica la
+  versione annunciata (`requireSignedVersion`, contro i ritorni a versioni
+  vecchie). Endpoint solo `https`, fisso nella configurazione.
+- **Chiave privata:** generata fuori dal repository, conservata come
+  segreto di GitHub Actions e in un backup dell'utente; mai nel codice o
+  nei log. La compromissione richiede una nuova chiave e un'installazione
+  manuale (procedura in [UPDATES.md](./UPDATES.md)).
+- **Superficie ridotta:** il plugin è compilato senza estrazione di archivi
+  zip; il frontend non ha i permessi del plugin e usa solo quattro comandi
+  Rust. Nelle build di sviluppo gli aggiornamenti sono disattivati.
+- **Dati inviati:** la richiesta di `latest.json` e il download vanno a
+  GitHub e contengono solo indirizzo IP, versione e sistema operativo
+  (intestazioni standard); nessun dato delle note.
+- **Pubblicazione:** il workflow crea release in bozza; nulla arriva agli
+  utenti finché una persona non la pubblica.
+- **Limite:** gli installer non hanno un certificato di firma del codice;
+  la firma minisign protegge il canale di aggiornamento, non la prima
+  installazione scaricata a mano.
+
 ## Limiti e mitigazioni pianificate
 
 - **Perdita o corruzione dati:** backup manuali/automatici con hash, backup

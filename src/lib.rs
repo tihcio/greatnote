@@ -15,3 +15,4 @@ pub mod sync;
 pub mod time;
 pub mod transfer;
 pub mod trash;
+pub mod updates;

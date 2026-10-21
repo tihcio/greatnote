@@ -1506,6 +1506,42 @@ p {
   font-size: 12px;
 }
 
+/* Aggiornamento scaricato: apre Impostazioni › Aggiornamenti. Occupa una
+   riga propria sopra lo stato dell'archivio. */
+.sidebar-footer:has(.update-ready-button) {
+  flex-wrap: wrap;
+}
+
+.update-ready-button {
+  order: -1;
+  flex: 1 0 100%;
+  min-width: 0;
+  padding: 4px 10px;
+  overflow: hidden;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.update-ready-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.update-notes {
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  white-space: pre-wrap;
+}
+
 .data-dialog {
   width: min(620px, 100%);
   max-height: min(90vh, 760px);

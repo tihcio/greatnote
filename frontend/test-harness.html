@@ -83,6 +83,10 @@
           sources: [{ number: 1, note_id: "11111111-1111-4111-8111-111111111111", title: "Riunione di lunedì" }],
           model: "modello-finto", host: "localhost", local: true, error: null, created_at: now },
       ];
+      let updateStatus = {
+        current_version: "0.1.0", supported: true, auto_update: true, last_check_at: null,
+        phase: { state: "up-to-date" },
+      };
       const aiSource = {
         number: 1, kind: "note", note_id: "11111111-1111-4111-8111-111111111111", item_id: "", title: "Riunione di lunedì",
         char_start: 0, char_end: 29, text: "Ordine del giorno e decisioni", method: "keyword", score: null,
@@ -138,6 +142,19 @@
         list_tasks: () => [],
         list_events: () => externalEvents,
         get_sync_status: () => syncView,
+        // Aggiornamenti in-app: la ricerca trova la 0.2.0, già scaricata.
+        get_update_status: () => updateStatus,
+        check_for_updates: () =>
+          (updateStatus = {
+            ...updateStatus,
+            last_check_at: now,
+            phase: { state: "ready", version: "0.2.0", notes: "Novità: assistente con calendario." },
+          }),
+        set_auto_update: (args) => (updateStatus = { ...updateStatus, auto_update: args.enabled }),
+        install_update_now: () => {
+          window.__UPDATE_INSTALLED__ = true;
+          return null;
+        },
         set_sync_settings: (args) => {
           syncView = { ...syncView, settings: args.settings, last_sync_at: args.settings.enabled ? now : syncView.last_sync_at };
           return syncView;

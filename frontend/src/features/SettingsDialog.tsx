@@ -1,4 +1,6 @@
 import { useState } from "react";
+import UpdatesSection from "./updates/UpdatesSection";
+import type { UpdateStatus } from "./updates/updatesApi";
 import { t } from "../i18n";
 import type { NoteWidth, StartView, ThemePreference, UiPreferences } from "../app/preferences";
 import { ZOOM_STEPS } from "../app/preferences";
@@ -9,7 +11,15 @@ import SyncSection from "./SyncSection";
 import type { AiStatus, IndexProgress } from "./ai/aiApi";
 import PlannerDialog from "./PlannerDialog";
 
-export type SettingsSection = "general" | "sidebar" | "notes" | "ai" | "integrations" | "sync" | "data";
+export type SettingsSection =
+  | "general"
+  | "sidebar"
+  | "notes"
+  | "ai"
+  | "integrations"
+  | "sync"
+  | "data"
+  | "updates";
 
 interface SettingsDialogProps {
   preferences: UiPreferences;
@@ -25,6 +35,9 @@ interface SettingsDialogProps {
   onShowShortcuts: () => void;
   /** Apre una nota (per esempio da un conflitto di sincronizzazione). */
   onOpenNote: (noteId: string) => void;
+  updateStatus: UpdateStatus | null;
+  onUpdateStatus: (status: UpdateStatus) => void;
+  onInstallUpdate: () => Promise<void>;
   onClose: () => void;
 }
 
@@ -42,6 +55,9 @@ export default function SettingsDialog({
   onOpenData,
   onShowShortcuts,
   onOpenNote,
+  updateStatus,
+  onUpdateStatus,
+  onInstallUpdate,
   onClose,
 }: SettingsDialogProps) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
@@ -53,6 +69,7 @@ export default function SettingsDialog({
     { id: "integrations", label: t.settingsIntegrations },
     { id: "sync", label: t.settingsSync },
     { id: "data", label: t.settingsData },
+    { id: "updates", label: t.updatesTitle },
   ];
   const toggle = (key: keyof UiPreferences, label: string) => (
     <label className="checkbox-field">
@@ -183,6 +200,9 @@ export default function SettingsDialog({
                 onOpenNote(noteId);
               }}
             />
+          )}
+          {section === "updates" && (
+            <UpdatesSection onInstall={onInstallUpdate} onStatus={onUpdateStatus} status={updateStatus} />
           )}
           {section === "data" && (
             <>

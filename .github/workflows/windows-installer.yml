@@ -1,7 +1,10 @@
 name: Windows installer
 
 # Compila gli installer Windows (NSIS .exe e MSI) su un runner pulito.
-# Avvio manuale da "Actions" oppure con un tag di versione (es. v0.1.0).
+# Avvio manuale da "Actions" (solo artefatti) oppure con un tag di versione
+# (es. v0.2.0): in quel caso firma gli aggiornamenti in-app e crea una
+# release in bozza con installer, firme e latest.json (ADR 0023). Gli
+# utenti ricevono l'aggiornamento solo quando la bozza viene pubblicata.
 on:
   workflow_dispatch:
   push:
@@ -14,6 +17,9 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      # Necessario solo per creare la release in bozza.
+      contents: write
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -43,8 +49,22 @@ jobs:
       # Gli ID OAuth sono facoltativi (segreti del repository): se mancano,
       # i collegamenti a Google, Outlook e Dropbox risultano non configurati.
       - name: Build installers
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: npx tauri build
         env:
+          GREATNOTE_GOOGLE_CLIENT_ID: ${{ secrets.GREATNOTE_GOOGLE_CLIENT_ID }}
+          GREATNOTE_GOOGLE_CLIENT_SECRET: ${{ secrets.GREATNOTE_GOOGLE_CLIENT_SECRET }}
+          GREATNOTE_MICROSOFT_CLIENT_ID: ${{ secrets.GREATNOTE_MICROSOFT_CLIENT_ID }}
+          GREATNOTE_DROPBOX_APP_KEY: ${{ secrets.GREATNOTE_DROPBOX_APP_KEY }}
+
+      # Release: installer firmati per gli aggiornamenti in-app. La chiave
+      # privata e la sua password sono segreti del repository, mai nel codice.
+      - name: Build signed installers for release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: npx tauri build --config src-tauri/tauri.updater.conf.json
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           GREATNOTE_GOOGLE_CLIENT_ID: ${{ secrets.GREATNOTE_GOOGLE_CLIENT_ID }}
           GREATNOTE_GOOGLE_CLIENT_SECRET: ${{ secrets.GREATNOTE_GOOGLE_CLIENT_SECRET }}
           GREATNOTE_MICROSOFT_CLIENT_ID: ${{ secrets.GREATNOTE_MICROSOFT_CLIENT_ID }}
@@ -59,3 +79,21 @@ jobs:
             target/release/bundle/msi/*.msi
           if-no-files-found: error
           retention-days: 30
+
+      - name: Prepare update manifest
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: pwsh
+        run: ./scripts/updater-manifest.ps1 -Tag "${{ github.ref_name }}" -Repository "${{ github.repository }}"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # Bozza: si controlla e si pubblica a mano da GitHub › Releases.
+      - name: Create draft release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem target/release/bundle/nsis/*-setup.exe, target/release/bundle/nsis/*-setup.exe.sig, target/release/bundle/msi/*.msi, target/release/bundle/latest.json | ForEach-Object { $_.FullName })
+          gh release create "${{ github.ref_name }}" --draft --verify-tag --title "Greatnote ${{ github.ref_name }}" --notes "Vedi CHANGELOG.md. Gli installer non sono firmati con un certificato di firma del codice." @files
+        env:
+          GH_TOKEN: ${{ github.token }}

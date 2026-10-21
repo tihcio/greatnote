@@ -227,6 +227,15 @@ e un provider di embedding deterministico, mai servizi reali:
 - prompt: delimitatori non falsificabili, cronologia limitata, analisi
   difensiva di tag e attività, tipo della fonte e data corrente.
 
+Aggiornamenti in-app: `updates` verifica la preferenza (predefinita
+attiva, persistente, valore danneggiato ignorato). Il test
+dell'interfaccia (passo `aggiornamenti`) cerca un aggiornamento simulato,
+mostra versione e novità, il pulsante nella barra laterale e la richiesta di
+installazione dopo il salvataggio. `scripts/updater-manifest.ps1` è stato
+provato su un installer finto firmato senza versione (rifirma e
+`latest.json`). Il download e l'installazione reali richiedono una release
+pubblicata: vedi la checklist di rilascio.
+
 Il test dell'interfaccia (`npm run test:ui`) verifica che una fonte
 «attività · per data» compaia sotto la risposta e che la sua citazione apra
 l'attività nella vista Attività.

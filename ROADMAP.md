@@ -276,6 +276,11 @@ Dropbox…), senza server né account (ADR 0017).
       avvio, notifiche, portachiavi (Credential Manager), apertura allegati,
       percorsi con spazi e caratteri Unicode, aggiornamento e
       disinstallazione senza perdita dei dati.
+- [x] Aggiornamenti in-app firmati (minisign con versione vincolata),
+      release in bozza con `latest.json` dal workflow (ADR 0023).
+- [ ] Rendere pubblico il repository, configurare i segreti della chiave
+      di firma e provare l'aggiornamento reale da una versione all'altra.
+- [ ] Aggiornamenti in-app anche per le installazioni Linux (AppImage).
 - [ ] Firmare gli installer Windows con un certificato di firma del codice
       (SmartScreen e Smart App Control).
 - [x] Hardening: CSP più restrittiva, `cargo audit` nella CI, vulnerabilità

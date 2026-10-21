@@ -31,6 +31,10 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
+# Aggiornamenti in-app (ADR 0023). Senza la funzionalità `zip`: gli
+# aggiornamenti sono installer .exe/.msi o AppImage non compressi, e
+# l'estrazione di archivi (zip 4.x, RUSTSEC-2026-0367/0368/0369) resta fuori.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 
 [dev-dependencies]
 tempfile = "3"

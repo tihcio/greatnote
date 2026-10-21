@@ -691,6 +691,25 @@ Ciò che l'app di AI legge può essere inviato al suo fornitore secondo le
 sue condizioni. Greatnote non apre porte di rete: è l'app di AI ad
 avviarlo in background.
 
+## Aggiornamenti
+
+Greatnote installato con l'installer Windows si aggiorna da solo:
+
+- all'avvio e ogni 6 ore cerca una versione nuova e, se c'è, la scarica in
+  background e ne verifica la firma;
+- in basso nella barra laterale compare **Aggiornamento X pronto**: cliccalo
+  per leggere le novità;
+- la nuova versione si installa **quando chiudi Greatnote** (compare solo
+  una barra di avanzamento), oppure subito con **Riavvia e aggiorna** in
+  Impostazioni › Aggiornamenti: la nota aperta viene salvata e l'app si
+  riapre aggiornata;
+- le note, gli allegati e le impostazioni restano dove sono; se serve
+  aggiornare il database, prima viene creato un backup.
+
+In Impostazioni › Aggiornamenti vedi la versione installata, puoi cercare
+subito gli aggiornamenti o disattivare quelli automatici. Le installazioni
+Linux non si aggiornano ancora da sole.
+
 ## Dati
 
 Il database locale si chiama `gna.sqlite3` e vive nella directory dati

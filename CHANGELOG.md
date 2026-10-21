@@ -1,9 +1,21 @@
 # Changelog
 
-Le modifiche rilevanti sono registrate per rilascio. Il progetto è in fase
-iniziale e non ha ancora release.
+Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
+
+## 0.1.0 — 2026-10-21
+
+Prima versione pubblicata, per Windows x64 (installer NSIS e MSI non firmati
+con un certificato di firma del codice). Da questa versione gli
+aggiornamenti successivi arrivano direttamente nell'app.
+
+- **Aggiornamenti automatici.** Greatnote per Windows cerca da solo le
+  nuove versioni, le scarica in background e le installa quando lo chiudi
+  (o subito con **Riavvia e aggiorna**). In basso nella barra laterale
+  compare **Aggiornamento X pronto**; in Impostazioni › Aggiornamenti si
+  vedono versione e novità e si possono disattivare. Gli aggiornamenti sono
+  verificati con la firma del progetto (ADR 0023).
 
 - **L'assistente AI conosce i tuoi impegni.** Nella chat si può chiedere
   «Cosa ho domani?», «Quali riunioni ho la prossima settimana?» o «Quando

@@ -103,7 +103,13 @@ un account utente di prova o una macchina virtuale.
 ## 6. Pubblicazione
 
 - [ ] Tag `vX.Y.Z` sul commit verificato; il workflow *Windows installer*
-      parte dal tag.
+      parte dal tag, firma gli installer e crea la release in bozza con
+      `latest.json` ([UPDATES.md](./UPDATES.md)).
+- [ ] Nella bozza: `latest.json` indica la versione giusta e l'URL
+      dell'installer della stessa release.
+- [ ] Prova di aggiornamento: su un PC con la versione precedente
+      installata, dopo la pubblicazione **Cerca aggiornamenti** trova la
+      nuova versione, **Riavvia e aggiorna** la installa e le note restano.
 - [ ] Note di rilascio con: novità, limiti noti, avvisi di dipendenze
       accettati, stato della firma degli installer e procedura di
       ripristino.
