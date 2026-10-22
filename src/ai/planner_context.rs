@@ -503,6 +503,70 @@ struct Labels {
     fired: &'static str,
     linked_note: &'static str,
     description: &'static str,
+    repeats: &'static str,
+}
+
+/// Regola di ripetizione in parole, per il contesto della chat.
+fn describe_recurrence(rule: &crate::domain::recurrence::Recurrence, language: Language) -> String {
+    use crate::domain::recurrence::Frequency;
+    let italian = language == Language::It;
+    let n = rule.interval;
+    let unit = match (rule.frequency, italian, n == 1) {
+        (Frequency::Daily, true, true) => "ogni giorno".to_owned(),
+        (Frequency::Daily, true, false) => format!("ogni {n} giorni"),
+        (Frequency::Weekly, true, true) => "ogni settimana".to_owned(),
+        (Frequency::Weekly, true, false) => format!("ogni {n} settimane"),
+        (Frequency::Monthly, true, true) => "ogni mese".to_owned(),
+        (Frequency::Monthly, true, false) => format!("ogni {n} mesi"),
+        (Frequency::Yearly, true, true) => "ogni anno".to_owned(),
+        (Frequency::Yearly, true, false) => format!("ogni {n} anni"),
+        (Frequency::Daily, false, true) => "every day".to_owned(),
+        (Frequency::Daily, false, false) => format!("every {n} days"),
+        (Frequency::Weekly, false, true) => "every week".to_owned(),
+        (Frequency::Weekly, false, false) => format!("every {n} weeks"),
+        (Frequency::Monthly, false, true) => "every month".to_owned(),
+        (Frequency::Monthly, false, false) => format!("every {n} months"),
+        (Frequency::Yearly, false, true) => "every year".to_owned(),
+        (Frequency::Yearly, false, false) => format!("every {n} years"),
+    };
+    let mut text = unit;
+    if !rule.weekdays.is_empty() {
+        let names: [&str; 7] = if italian {
+            [
+                "lunedì",
+                "martedì",
+                "mercoledì",
+                "giovedì",
+                "venerdì",
+                "sabato",
+                "domenica",
+            ]
+        } else {
+            [
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+                "Sunday",
+            ]
+        };
+        let days: Vec<&str> = rule
+            .weekdays
+            .iter()
+            .filter_map(|day| names.get(usize::from(day.saturating_sub(1))).copied())
+            .collect();
+        text.push_str(&format!(" ({})", days.join(", ")));
+    }
+    if let Some(until) = &rule.until {
+        text.push_str(&if italian {
+            format!(", fino al {until}")
+        } else {
+            format!(", until {until}")
+        });
+    }
+    text
 }
 
 fn labels(language: Language) -> Labels {
@@ -526,6 +590,7 @@ fn labels(language: Language) -> Labels {
             fired: "scattato, in attesa",
             linked_note: "Nota collegata",
             description: "Descrizione",
+            repeats: "Si ripete",
         },
         Language::En => Labels {
             task: "Task",
@@ -546,6 +611,7 @@ fn labels(language: Language) -> Labels {
             fired: "fired, waiting",
             linked_note: "Linked note",
             description: "Description",
+            repeats: "Repeats",
         },
     }
 }
@@ -582,6 +648,13 @@ fn task_text(task: &Task, reminders: &[Reminder], zone: &Zone, language: Languag
             .map(|date| describe_day(date, language))
             .unwrap_or_else(|_| due.to_owned());
         lines.push(format!("{}: {due}", l.due));
+    }
+    if let Some(rule) = &task.recurrence {
+        lines.push(format!(
+            "{}: {}",
+            l.repeats,
+            describe_recurrence(rule, language)
+        ));
     }
     for reminder in reminders {
         lines.push(format!(
@@ -1094,6 +1167,21 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn recurrence_is_described_in_both_languages() {
+        let rule: crate::domain::recurrence::Recurrence = serde_json::from_str(
+            r#"{"frequency":"weekly","interval":2,"weekdays":[1,4],"until":"2026-12-31"}"#,
+        )
+        .expect("rule");
+        assert_eq!(
+            describe_recurrence(&rule, Language::It),
+            "ogni 2 settimane (lunedì, giovedì), fino al 2026-12-31"
+        );
+        let monthly: crate::domain::recurrence::Recurrence =
+            serde_json::from_str(r#"{"frequency":"monthly"}"#).expect("rule");
+        assert_eq!(describe_recurrence(&monthly, Language::En), "every month");
+    }
     use super::*;
     use crate::{
         domain::planner::{EventInput, TaskInput},
@@ -1216,6 +1304,7 @@ mod tests {
                 due_date: due.map(str::to_owned),
                 note_id: note.map(str::to_owned),
                 flagged: false,
+                recurrence: None,
             })
             .expect("task")
     }

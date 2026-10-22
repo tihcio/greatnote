@@ -160,8 +160,24 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # Aggiornamenti in-app su Linux: firma dei pacchetti con la chiave degli
+      # aggiornamenti e voci linux-x86_64-* nel latest.json della bozza,
+      # creato dal job Windows.
+      - name: Sign packages and extend update manifest
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          gh release download "${{ github.ref_name }}" --pattern latest.json --dir target/release
+          bash scripts/updater-manifest-linux.sh "${{ github.ref_name }}" "${{ github.repository }}" \
+            target/release/linux-packages target/release/latest.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
       - name: Add packages to draft release
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        run: gh release upload "${{ github.ref_name }}" target/release/linux-packages/*
+        run: |
+          gh release upload "${{ github.ref_name }}" target/release/linux-packages/*
+          gh release upload "${{ github.ref_name }}" target/release/latest.json --clobber
         env:
           GH_TOKEN: ${{ github.token }}

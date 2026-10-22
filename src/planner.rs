@@ -8,6 +8,7 @@
 use jiff::{Timestamp, civil::Date};
 use rusqlite::{Connection, ErrorCode, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
@@ -15,6 +16,7 @@ use crate::{
         CalendarEvent, EventInput, Reminder, ReminderEntity, ReminderStatus, SnoozePreset, Task,
         TaskCounts, TaskInput, TaskStatus, TaskView,
     },
+    domain::recurrence::Recurrence,
     storage::{Database, StorageError},
     time::{self, Zone},
 };
@@ -37,7 +39,7 @@ pub(crate) const TASK_COLUMNS: &str = "tasks.id, tasks.note_id,
     (SELECT MIN(reminders.remind_at) FROM reminders
      WHERE reminders.entity_type = 'task' AND reminders.entity_id = tasks.id
        AND reminders.status != 'done'),
-    tasks.flagged";
+    tasks.flagged, tasks.recurrence";
 
 pub(crate) const EVENT_COLUMNS: &str = "events.id, events.note_id,
     (SELECT notes.title FROM notes WHERE notes.id = events.note_id AND notes.deleted_at IS NULL),
@@ -88,7 +90,24 @@ pub(crate) fn task_from_row(row: &Row<'_>) -> rusqlite::Result<Task> {
         updated_at: row.get(10)?,
         next_reminder_at: row.get(11)?,
         flagged: row.get(12)?,
+        recurrence: parse_recurrence(row.get::<_, Option<String>>(13)?.as_deref()),
     })
+}
+
+/// Regola salvata; una regola illeggibile (dati alterati o di una versione
+/// futura) equivale a nessuna ripetizione.
+fn parse_recurrence(value: Option<&str>) -> Option<Recurrence> {
+    serde_json::from_str(value?).ok()
+}
+
+/// Id della prossima occorrenza, derivato dall'attività completata e dalla
+/// nuova scadenza: due dispositivi che completano la stessa attività creano
+/// la stessa riga, che la sincronizzazione unisce invece di duplicare.
+fn occurrence_id(previous: &str, due: Date) -> String {
+    let digest = Sha256::digest(format!("greatnote-occurrence/{previous}/{due}"));
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    Uuid::new_v8(bytes).to_string()
 }
 
 pub(crate) fn event_from_row(row: &Row<'_>) -> rusqlite::Result<CalendarEvent> {
@@ -168,6 +187,8 @@ struct ValidTask {
     priority: u8,
     due_date: Option<String>,
     note_id: Option<String>,
+    /// Regola validata in JSON.
+    recurrence: Option<String>,
 }
 
 fn validate_task(input: &TaskInput) -> Result<ValidTask, StorageError> {
@@ -186,6 +207,22 @@ fn validate_task(input: &TaskInput) -> Result<ValidTask, StorageError> {
         None | Some("") => None,
         Some(value) => Some(time::parse_date(value)?.to_string()),
     };
+    let recurrence = match &input.recurrence {
+        None => None,
+        Some(rule) => {
+            let due = due_date.as_deref().ok_or(StorageError::InvalidTask(
+                "per ripetere un'attività serve una scadenza",
+            ))?;
+            let rule = rule
+                .clone()
+                .validated(time::parse_date(due)?)
+                .map_err(StorageError::InvalidTask)?;
+            Some(
+                serde_json::to_string(&rule)
+                    .map_err(|_| StorageError::InvalidTask("ripetizione non valida"))?,
+            )
+        }
+    };
     Ok(ValidTask {
         flagged: input.flagged,
         title,
@@ -193,6 +230,7 @@ fn validate_task(input: &TaskInput) -> Result<ValidTask, StorageError> {
         priority: input.priority,
         due_date,
         note_id: input.note_id.clone().filter(|id| !id.is_empty()),
+        recurrence,
     })
 }
 
@@ -333,8 +371,9 @@ impl Database {
         let connection = self.connection()?;
         ensure_active_note(&connection, task.note_id.as_deref())?;
         connection.execute(
-            "INSERT INTO tasks (id, note_id, title, description, priority, due_date, flagged)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO tasks (id, note_id, title, description, priority, due_date, flagged,
+                 recurrence)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 id,
                 task.note_id,
@@ -342,7 +381,8 @@ impl Database {
                 task.description,
                 task.priority,
                 task.due_date,
-                task.flagged
+                task.flagged,
+                task.recurrence
             ],
         )?;
         get_task(&connection, &id)
@@ -359,8 +399,8 @@ impl Database {
         connection.execute(
             &format!(
                 "UPDATE tasks SET note_id = ?1, title = ?2, description = ?3, priority = ?4,
-                     due_date = ?5, flagged = ?6, updated_at = {NOW_SQL}
-                 WHERE id = ?7"
+                     due_date = ?5, flagged = ?6, recurrence = ?7, updated_at = {NOW_SQL}
+                 WHERE id = ?8"
             ),
             params![
                 task.note_id,
@@ -369,6 +409,7 @@ impl Database {
                 task.priority,
                 task.due_date,
                 task.flagged,
+                task.recurrence,
                 id
             ],
         )?;
@@ -376,10 +417,19 @@ impl Database {
     }
 
     /// Completa o riapre un'attività. Completandola, i suoi promemoria
-    /// vengono chiusi nella stessa transazione.
-    pub fn set_task_completed(&self, id: &str, completed: bool) -> Result<Task, StorageError> {
+    /// vengono chiusi nella stessa transazione; se si ripete nasce la
+    /// successiva (vedi [`schedule_next_occurrence`]). `now` e `zone`
+    /// stabiliscono "oggi" e gli orari dei promemoria copiati.
+    pub fn set_task_completed(
+        &self,
+        id: &str,
+        completed: bool,
+        now: Timestamp,
+        zone: &Zone,
+    ) -> Result<Task, StorageError> {
         let mut connection = self.connection()?;
         let transaction = connection.transaction()?;
+        let previous = get_task(&transaction, id)?;
         let status = if completed {
             TaskStatus::Done
         } else {
@@ -397,6 +447,9 @@ impl Database {
         )?;
         if changed == 0 {
             return Err(StorageError::TaskNotFound);
+        }
+        if completed && previous.status == TaskStatus::Open {
+            schedule_next_occurrence(&transaction, &previous, now, zone)?;
         }
         if completed {
             transaction.execute(
@@ -775,6 +828,79 @@ impl Database {
     }
 }
 
+/// Crea l'occorrenza successiva di un'attività ricorrente appena completata:
+/// stessi dati e stessa regola, scadenza alla prossima data utile da oggi in
+/// poi, e una copia dei promemoria spostati degli stessi giorni (solo quelli
+/// che cadono nel futuro). Idempotente: l'id dipende dall'attività e dalla
+/// data, quindi completarla di nuovo dopo averla riaperta non duplica nulla.
+fn schedule_next_occurrence(
+    connection: &Connection,
+    task: &Task,
+    now: Timestamp,
+    zone: &Zone,
+) -> Result<Option<String>, StorageError> {
+    let (Some(rule), Some(due)) = (&task.recurrence, task.due_date.as_deref()) else {
+        return Ok(None);
+    };
+    let due = time::parse_date(due)?;
+    let Some(next) = rule.next_due(due, time::today(now, zone)) else {
+        return Ok(None);
+    };
+    let next_id = occurrence_id(&task.id, next);
+    let inserted = connection.execute(
+        "INSERT OR IGNORE INTO tasks (id, note_id, title, description, priority, due_date,
+             flagged, recurrence)
+         SELECT ?1, note_id, title, description, priority, ?2, flagged, recurrence
+         FROM tasks WHERE id = ?3",
+        params![next_id, next.to_string(), task.id],
+    )?;
+    if inserted == 0 {
+        return Ok(Some(next_id));
+    }
+    let shift = due
+        .until(next)
+        .map_err(|_| StorageError::InvalidTask("ripetizione non valida"))?
+        .get_days();
+    let reminders: Vec<(String, String, String)> = connection
+        .prepare(
+            "SELECT id, timezone, local_time FROM reminders
+             WHERE entity_type = 'task' AND entity_id = ?1 ORDER BY remind_at",
+        )?
+        .query_map([&task.id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?
+        .collect::<Result<_, _>>()?;
+    for (reminder_id, timezone, local_time) in reminders {
+        let reminder_zone = Zone::stored(&timezone);
+        let Ok(local) = time::parse_local(&local_time) else {
+            continue;
+        };
+        let Ok(moved) = local.checked_add(jiff::Span::new().days(i64::from(shift))) else {
+            continue;
+        };
+        let wall = moved.strftime("%Y-%m-%dT%H:%M").to_string();
+        let Ok(remind_at) = time::local_to_utc(&wall, &reminder_zone) else {
+            continue;
+        };
+        if remind_at <= now {
+            continue;
+        }
+        connection.execute(
+            "INSERT OR IGNORE INTO reminders (id, entity_type, entity_id, remind_at, timezone,
+                 local_time)
+             VALUES (?1, 'task', ?2, ?3, ?4, ?5)",
+            params![
+                occurrence_id(&reminder_id, next),
+                next_id,
+                time::format_utc(remind_at),
+                reminder_zone.name,
+                time::local_wall(remind_at, &reminder_zone)
+            ],
+        )?;
+    }
+    Ok(Some(next_id))
+}
+
 // ---------------------------------------------------------------------------
 // Archivio completo (campi facoltativi di `gna-archive` v1)
 
@@ -782,6 +908,9 @@ impl Database {
 pub(crate) struct ArchiveTask {
     #[serde(default)]
     flagged: bool,
+    /// Regola di ripetizione in JSON (assente negli archivi precedenti).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) recurrence: Option<String>,
     id: String,
     note_id: Option<String>,
     title: String,
@@ -840,7 +969,7 @@ pub(crate) fn export_planner(connection: &Connection) -> Result<PlannerArchive, 
     let tasks = connection
         .prepare(&format!(
             "SELECT id, {ACTIVE_NOTE}, title, description, status, priority, due_date,
-                    completed_at, created_at, updated_at, flagged
+                    completed_at, created_at, updated_at, flagged, recurrence
              FROM tasks WHERE deleted_at IS NULL ORDER BY created_at, id"
         ))?
         .query_map([], |row| {
@@ -856,6 +985,7 @@ pub(crate) fn export_planner(connection: &Connection) -> Result<PlannerArchive, 
                 created_at: row.get(8)?,
                 updated_at: row.get(9)?,
                 flagged: row.get(10)?,
+                recurrence: row.get(11)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -925,6 +1055,13 @@ pub(crate) fn export_planner(connection: &Connection) -> Result<PlannerArchive, 
 /// Esegue un inserimento ignorando le righe che violano i vincoli dello
 /// schema: un elemento non valido dell'archivio viene saltato, gli altri
 /// importati. Restituisce se la riga è stata inserita.
+/// Regola di un'attività importata, solo se valida per la sua scadenza.
+fn archived_recurrence(task: &ArchiveTask) -> Option<String> {
+    let rule = parse_recurrence(task.recurrence.as_deref())?;
+    let due = time::parse_date(task.due_date.as_deref()?).ok()?;
+    serde_json::to_string(&rule.validated(due).ok()?).ok()
+}
+
 fn insert_or_skip(
     connection: &Connection,
     sql: &str,
@@ -959,8 +1096,8 @@ pub(crate) fn import_planner(
             connection,
             &format!(
                 "INSERT OR IGNORE INTO tasks (id, note_id, title, description, status, priority,
-                     due_date, completed_at, created_at, updated_at, flagged)
-                 VALUES (?1, {NOTE_IF_PRESENT}, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"
+                     due_date, completed_at, created_at, updated_at, flagged, recurrence)
+                 VALUES (?1, {NOTE_IF_PRESENT}, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"
             ),
             params![
                 task.id,
@@ -973,7 +1110,8 @@ pub(crate) fn import_planner(
                 task.completed_at,
                 task.created_at,
                 task.updated_at,
-                task.flagged
+                task.flagged,
+                archived_recurrence(task)
             ],
         )?;
         imported += u64::from(inserted);
@@ -1075,6 +1213,7 @@ mod tests {
             due_date: due.map(str::to_owned),
             note_id: None,
             flagged: false,
+            recurrence: None,
         }
     }
 
@@ -1084,6 +1223,160 @@ mod tests {
 
     fn instant(value: &str) -> jiff::Timestamp {
         time::parse_utc(value).expect("instant")
+    }
+
+    fn weekly() -> crate::domain::recurrence::Recurrence {
+        serde_json::from_str(r#"{"frequency":"weekly"}"#).expect("rule")
+    }
+
+    #[test]
+    fn completing_a_recurring_task_schedules_the_next_one_once() {
+        let database = Database::in_memory().expect("database");
+        let rome = Zone::stored("Europe/Rome");
+        let mut input = task("Bollette", Some("2026-10-19"));
+        input.recurrence = Some(weekly());
+        input.priority = 2;
+        let first = database.create_task(&input).expect("task");
+        // Promemoria alle 9:00 di Roma (ora legale: 07:00 UTC).
+        database
+            .create_reminder(
+                ReminderEntity::Task,
+                &first.id,
+                "2026-10-19T09:00",
+                Some("Europe/Rome"),
+                instant("2026-10-18T10:00:00Z"),
+            )
+            .expect("reminder");
+
+        let now = instant("2026-10-19T12:00:00Z");
+        let done = database
+            .set_task_completed(&first.id, true, now, &rome)
+            .expect("done");
+        assert_eq!(done.status, TaskStatus::Done);
+        let open = database
+            .list_tasks(TaskView::Open, date("2026-10-19"), None)
+            .expect("open");
+        assert_eq!(open.len(), 1);
+        let next = &open[0];
+        assert_ne!(next.id, first.id);
+        assert_eq!(next.due_date.as_deref(), Some("2026-10-26"));
+        assert_eq!((next.title.as_str(), next.priority), ("Bollette", 2));
+        assert_eq!(next.recurrence, first.recurrence);
+        // Il promemoria segue la scadenza alla stessa ora locale: dopo la fine
+        // dell'ora legale (25 ottobre) le 9:00 di Roma sono le 08:00 UTC.
+        assert_eq!(
+            next.next_reminder_at.as_deref(),
+            Some("2026-10-26T08:00:00Z")
+        );
+
+        // Riaprirla e completarla di nuovo non crea un doppione.
+        database
+            .set_task_completed(&first.id, false, now, &rome)
+            .expect("reopen");
+        database
+            .set_task_completed(&first.id, true, now, &rome)
+            .expect("done again");
+        let open = database
+            .list_tasks(TaskView::Open, date("2026-10-19"), None)
+            .expect("open");
+        assert_eq!(open.len(), 1);
+        assert_eq!(open[0].id, next.id);
+    }
+
+    #[test]
+    fn overdue_series_skip_missed_dates_and_stop_at_the_end() {
+        let database = Database::in_memory().expect("database");
+        let rome = Zone::stored("Europe/Rome");
+        let mut input = task("Report", Some("2026-10-05"));
+        let mut rule = weekly();
+        rule.until = Some("2026-10-31".to_owned());
+        input.recurrence = Some(rule);
+        let late = database.create_task(&input).expect("task");
+        // Completata giovedì 22: la prossima è lunedì 26, non il 12 o il 19.
+        database
+            .set_task_completed(&late.id, true, instant("2026-10-22T10:00:00Z"), &rome)
+            .expect("done");
+        let open = database
+            .list_tasks(TaskView::Open, date("2026-10-22"), None)
+            .expect("open");
+        assert_eq!(open[0].due_date.as_deref(), Some("2026-10-26"));
+        // Oltre la data di fine la serie termina.
+        database
+            .set_task_completed(&open[0].id, true, instant("2026-10-26T10:00:00Z"), &rome)
+            .expect("done");
+        assert!(
+            database
+                .list_tasks(TaskView::Open, date("2026-10-26"), None)
+                .expect("open")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn recurrence_survives_the_full_archive() {
+        let source = Database::in_memory().expect("database");
+        let mut input = task("Affitto", Some("2026-11-01"));
+        input.recurrence = Some(serde_json::from_str(r#"{"frequency":"monthly"}"#).expect("rule"));
+        let created = source.create_task(&input).expect("task");
+        let archive =
+            super::export_planner(&source.connection().expect("connection")).expect("export");
+        // Una regola alterata nell'archivio viene scartata, l'attività no.
+        let mut tampered = archive.clone();
+        tampered.tasks[0].recurrence = Some(r#"{"frequency":"hourly"}"#.to_owned());
+        let target = Database::in_memory().expect("database");
+        super::import_planner(
+            &target.connection().expect("connection"),
+            &archive,
+            time::now(),
+        )
+        .expect("import");
+        let imported = target.get_task(&created.id).expect("task");
+        assert_eq!(imported.recurrence, created.recurrence);
+        let other = Database::in_memory().expect("database");
+        super::import_planner(
+            &other.connection().expect("connection"),
+            &tampered,
+            time::now(),
+        )
+        .expect("import");
+        assert!(
+            other
+                .get_task(&created.id)
+                .expect("task")
+                .recurrence
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn recurrence_needs_a_due_date_and_can_be_removed() {
+        let database = Database::in_memory().expect("database");
+        let mut input = task("Senza data", None);
+        input.recurrence = Some(weekly());
+        assert!(matches!(
+            database.create_task(&input),
+            Err(StorageError::InvalidTask(_))
+        ));
+        input.due_date = Some("2026-10-22".to_owned());
+        let created = database.create_task(&input).expect("task");
+        assert!(created.recurrence.is_some());
+        input.recurrence = None;
+        let plain = database.update_task(&created.id, &input).expect("update");
+        assert!(plain.recurrence.is_none());
+        database
+            .set_task_completed(
+                &plain.id,
+                true,
+                instant("2026-10-22T10:00:00Z"),
+                &Zone::stored("Europe/Rome"),
+            )
+            .expect("done");
+        assert!(
+            database
+                .list_tasks(TaskView::Open, date("2026-10-22"), None)
+                .expect("open")
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1177,7 +1470,14 @@ mod tests {
             );
         }
 
-        let done = database.set_task_completed(&linked.id, true).expect("done");
+        let done = database
+            .set_task_completed(
+                &linked.id,
+                true,
+                crate::time::now(),
+                &crate::time::Zone::system(),
+            )
+            .expect("done");
         assert_eq!(done.status, TaskStatus::Done);
         assert!(done.completed_at.is_some());
         assert!(
@@ -1194,7 +1494,12 @@ mod tests {
             1
         );
         let reopened = database
-            .set_task_completed(&linked.id, false)
+            .set_task_completed(
+                &linked.id,
+                false,
+                crate::time::now(),
+                &crate::time::Zone::system(),
+            )
             .expect("open");
         assert!(reopened.completed_at.is_none());
 
@@ -1234,6 +1539,7 @@ mod tests {
             due_date: task.due_date.clone(),
             note_id: task.note_id.clone(),
             flagged: false,
+            recurrence: None,
         }
     }
 
@@ -1343,7 +1649,14 @@ mod tests {
         );
 
         database.trash_note(&note.id).expect("trash");
-        database.set_task_completed(&task.id, true).expect("done");
+        database
+            .set_task_completed(
+                &task.id,
+                true,
+                crate::time::now(),
+                &crate::time::Zone::system(),
+            )
+            .expect("done");
         let later = instant("2026-10-14T09:00:00Z");
         assert!(database.take_due_reminders(later).expect("due").is_empty());
         assert!(database.list_reminders().expect("list").is_empty());
@@ -1545,7 +1858,14 @@ mod tests {
             .expect("search");
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].note.id, with_task.id);
-        database.set_task_completed(&linked.id, true).expect("done");
+        database
+            .set_task_completed(
+                &linked.id,
+                true,
+                crate::time::now(),
+                &crate::time::Zone::system(),
+            )
+            .expect("done");
         assert!(
             database
                 .search_notes("has:task", "all", None, 10, 0)

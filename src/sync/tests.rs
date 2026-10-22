@@ -89,6 +89,7 @@ fn library_round_trip_is_complete_and_idempotent() {
             due_date: Some("2026-10-22".to_owned()),
             note_id: Some(note.id.clone()),
             flagged: false,
+            recurrence: None,
         })
         .expect("task");
     let event = a
@@ -155,7 +156,14 @@ fn library_round_trip_is_complete_and_idempotent() {
     b.database
         .update_note(&note.id, "Verbale definitivo", &doc("decisioni sul budget"))
         .expect("edit");
-    b.database.set_task_completed(&task.id, true).expect("done");
+    b.database
+        .set_task_completed(
+            &task.id,
+            true,
+            crate::time::now(),
+            &crate::time::Zone::system(),
+        )
+        .expect("done");
     sync(&b);
     let back = sync(&a);
     // Nota, attività e il promemoria chiuso dal completamento.

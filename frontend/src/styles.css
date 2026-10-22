@@ -6464,3 +6464,30 @@ p {
   resize: vertical;
   font-family: inherit;
 }
+
+/* Ripetizione delle attività */
+
+.repeat-badge {
+  color: var(--soft-ink);
+}
+
+.task-form .repeat-options {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.task-form .repeat-interval {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-form .repeat-interval input {
+  width: 4.5em;
+}
+
+.task-form .repeat-days small,
+.task-form .repeat-options .dialog-field small {
+  color: var(--muted);
+}

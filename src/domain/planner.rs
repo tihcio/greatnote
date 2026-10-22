@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::recurrence::Recurrence;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskStatus {
@@ -44,6 +46,8 @@ pub struct Task {
     pub updated_at: String,
     /// Prossimo promemoria attivo (istante UTC).
     pub next_reminder_at: Option<String>,
+    /// Ripetizione: completando l'attività nasce la successiva.
+    pub recurrence: Option<Recurrence>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,6 +61,9 @@ pub struct TaskInput {
     pub note_id: Option<String>,
     #[serde(default)]
     pub flagged: bool,
+    /// Richiede una scadenza, da cui parte la serie.
+    #[serde(default)]
+    pub recurrence: Option<Recurrence>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -319,9 +319,21 @@ locali.
   MCP configurato dall'utente; non apre porte e non accetta connessioni di
   rete.
 - **Permessi:** database aperto in sola lettura (`SQLITE_OPEN_READ_ONLY` e
-  `query_only`) e quattro strumenti di lettura. Disattivato per
+  `query_only`) e cinque strumenti di lettura. Disattivato per
   impostazione predefinita; l'impostazione, riletta a ogni chiamata,
   revoca l'accesso immediatamente.
+- **Modifiche (facoltative, ADR 0014 aggiornato):** con «Consenti anche le
+  modifiche», disattivato per impostazione predefinita e riletto a ogni
+  chiamata, compaiono quattro strumenti non distruttivi: `create_note`,
+  `append_to_note` (aggiunge in fondo, non riscrive), `create_task`,
+  `complete_task` (reversibile). Nessuno strumento elimina, sposta nel
+  cestino o riscrive. Usano una connessione in scrittura separata, aperta
+  solo allora e senza migrazioni; rispettano i taccuini esclusi; il testo
+  passa dalla stessa conversione Markdown con whitelist delle importazioni
+  e dalla validazione del documento; massimo 100 modifiche per avvio del
+  client. Una modifica a una nota aperta nell'app non va persa: se l'app
+  salva dalla versione precedente, quella MCP resta nella cronologia e tra
+  i conflitti.
 - **Dati esposti:** note attive e archiviate, con taccuino, tag, date e
   testo delle immagini. Mai il cestino né i taccuini esclusi dall'AI, che
   non vengono nemmeno confermati come esistenti. Gli allegati non sono
@@ -330,9 +342,13 @@ locali.
   500 caratteri e analizzate dal parser della ricerca (nessuna
   concatenazione SQL), righe JSON oltre 1 MB rifiutate.
 - **Prompt injection:** il contenuto delle note è dichiarato come dato non
-  attendibile e gli strumenti non possono agire sulle note.
+  attendibile. Senza il permesso di modifica gli strumenti non possono
+  agire sulle note; con il permesso una nota malevola potrebbe indurre il
+  client a creare note o attività, mai a cancellarle: il danno massimo è
+  limitato, visibile nel registro e annullabile.
 - **Registro:** `mcp-audit.jsonl` contiene strumento, esito, conteggio e
-  id della nota letta, mai testo di note o ricerche. Il file vive nella
+  id della nota o dell'attività letta, creata o modificata, mai testo di
+  note o ricerche. Il file vive nella
   cartella dati (0700).
 - **Limite:** ciò che il client legge può essere inviato al suo fornitore
   di AI secondo le sue condizioni. L'utente lo vede nelle impostazioni

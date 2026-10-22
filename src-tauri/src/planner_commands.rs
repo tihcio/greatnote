@@ -129,7 +129,7 @@ pub fn set_task_completed(
     completed: bool,
 ) -> CommandResult<Task> {
     database
-        .set_task_completed(&id, completed)
+        .set_task_completed(&id, completed, time::now(), &Zone::system())
         .map_err(to_message)
 }
 

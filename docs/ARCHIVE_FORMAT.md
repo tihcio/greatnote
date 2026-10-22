@@ -26,13 +26,21 @@ attachments/<uuid-allegato>.<png|jpg|gif|pdf|txt>
 | `app_version` | versione dell'app |
 | `spaces`, `notebooks`, `tags` | elenchi completi con `id`, nomi, descrizioni, ordinamento e date |
 | `notes`, `attachments` | voci `{ "path", "sha256", "size" }` per ogni file |
+| `planner` | facoltativo: `tasks`, `events`, `reminders` (vedi sotto) |
+
+Nel `planner`, ogni attività può avere `recurrence`: la regola di
+ripetizione in JSON (`frequency` `daily`/`weekly`/`monthly`/`yearly`,
+`interval` 1–99, `weekdays` 1–7 per le settimanali, `month_day` per mensili
+e annuali, `until` data di fine facoltativa). In importazione una regola non
+valida per la scadenza dell'attività viene scartata; l'attività resta.
 
 Ogni `notes/<id>.json` contiene: `id`, `notebook_id`, `title`, `content`
 (documento JSON Tiptap v1; le immagini sono nodi `image` con `attachmentId`
 riferito a un allegato della stessa nota, `width` facoltativa e
 `annotations`: forme `pen`, `highlighter`, `arrow`, `rect`, `ellipse`,
 `text` con `color` esadecimale, `size` relativa alla larghezza e `points`
-in coordinate relative 0–1), `created_at`, `updated_at`, `is_pinned`,
+in coordinate relative 0–1; i testi cifrati sono nodi `encryptedText` con
+`ciphertext` nel formato testuale di age e `hint` facoltativo), `created_at`, `updated_at`, `is_pinned`,
 `archived_at`, `tag_ids`, `links` (`target_note_id`, `label`) e
 `attachments` (`id`, `original_filename`, `mime_type`, `size_bytes`,
 `sha256`, `created_at`, `path`).

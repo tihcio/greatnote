@@ -15,12 +15,14 @@ interface McpAuditEntry {
 
 interface McpStatus {
   enabled: boolean;
+  allow_write: boolean;
   command: string;
   args: string[];
   audit: McpAuditEntry[];
 }
 
-const READ_ONLY_TOOLS = ["search_notes", "read_note", "list_notebooks", "list_tags"];
+const READ_ONLY_TOOLS = ["search_notes", "read_note", "list_notebooks", "list_tags", "list_tasks"];
+const WRITE_TOOLS = ["create_note", "append_to_note", "create_task", "complete_task"];
 
 /** Argomento sicuro per la shell (POSIX): tra apici se serve. */
 function shellQuote(value: string): string {
@@ -28,7 +30,8 @@ function shellQuote(value: string): string {
 }
 
 /**
- * Integrazioni: server MCP locale in sola lettura. Il client MCP (Claude
+ * Integrazioni: server MCP locale, in sola lettura salvo che l'utente
+ * consenta le modifiche non distruttive. Il client MCP (Claude
  * Code, Claude Desktop o altri) avvia Greatnote con `--mcp` e comunica
  * tramite stdin/stdout: nessuna porta di rete viene aperta.
  */
@@ -50,6 +53,16 @@ export default function IntegrationsSection() {
     setNotice(null);
     try {
       setStatus(await invoke<McpStatus>("set_mcp_enabled", { enabled }));
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
+  const setAllowWrite = async (allowed: boolean) => {
+    setError(null);
+    setNotice(null);
+    try {
+      setStatus(await invoke<McpStatus>("set_mcp_allow_write", { allowed }));
     } catch (cause) {
       setError(errorMessage(cause));
     }
@@ -94,8 +107,25 @@ export default function IntegrationsSection() {
           <span>{t.mcpEnable}</span>
         </label>
         <p className="data-hint">{status.enabled ? t.mcpEnabledHint : t.mcpDisabledHint}</p>
+        <label className="checkbox-field">
+          <input
+            checked={status.allow_write}
+            disabled={!status.enabled}
+            onChange={(event) => void setAllowWrite(event.target.checked)}
+            type="checkbox"
+          />
+          <span>{t.mcpAllowWrite}</span>
+        </label>
+        <p className="data-hint">{t.mcpAllowWriteHint}</p>
         <p className="data-hint">
-          {t.mcpTools} <code>{READ_ONLY_TOOLS.join(", ")}</code>. {t.mcpNoWriteTools}
+          {t.mcpTools} <code>{READ_ONLY_TOOLS.join(", ")}</code>.{" "}
+          {status.allow_write ? (
+            <>
+              {t.mcpWriteTools} <code>{WRITE_TOOLS.join(", ")}</code>.
+            </>
+          ) : (
+            t.mcpNoWriteTools
+          )}
         </p>
       </fieldset>
       <fieldset>

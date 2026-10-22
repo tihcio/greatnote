@@ -54,3 +54,16 @@ che l'app cerchi le versioni nuove e le installi da sola. Vincoli:
 - Solo Windows riceve aggiornamenti; le installazioni Linux mostrano che non
   sono disponibili.
 - Gli installer restano senza certificato di firma del codice (SmartScreen).
+
+## Aggiornamento: Linux (2026-10-22)
+
+- Il plugin (2.14) aggiorna AppImage, `.deb` e `.rpm` cercando in
+  `latest.json` la voce `linux-x86_64-<formato>`. Il job Linux del workflow
+  firma i pacchetti rinominati con `tauri signer sign --app-version` (stessa
+  chiave e stessa versione vincolata di Windows) e aggiunge le voci al
+  manifest della bozza (`scripts/updater-manifest-linux.sh`).
+- L'AppImage si installa alla chiusura come su Windows. `.deb` e `.rpm`
+  passano da `pkexec` e chiedono la password: si installano solo con
+  «Riavvia e aggiorna» (`installs_on_exit` falso nello stato), e se la
+  richiesta viene annullata il pacchetto resta pronto.
+

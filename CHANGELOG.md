@@ -4,6 +4,31 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.0 — 2026-10-22
+
+Il database passa alla versione 15: all'avvio viene creato il backup
+`greatnote-premigration-…` e, dopo l'aggiornamento, le versioni 0.1.x non
+lo aprono più (vedi «Ritorno alla versione precedente» nella checklist di
+rilascio). Con la sincronizzazione attiva aggiorna tutti i computer.
+
+- **Modifiche dall'app di AI tramite MCP (facoltative).** In Impostazioni ›
+  Integrazioni, **Consenti anche le modifiche** permette a Claude Code e
+  alle altre app MCP di creare note, aggiungere testo in fondo a una nota,
+  creare attività e completarle. Non possono eliminare né riscrivere nulla;
+  il permesso è spento per impostazione predefinita e si revoca subito. Il
+  nuovo strumento `list_tasks` elenca le attività anche in sola lettura.
+- **Attività che si ripetono.** Nella modifica di un'attività, **Ripeti**
+  la ripete ogni giorno, settimana, mese o anno, anche ogni N (per esempio
+  ogni 2 settimane), in giorni della settimana scelti e fino a una data.
+  Completandola compare la successiva, con i promemoria spostati alla nuova
+  data; le scadenze saltate non vengono ricreate. Il database passa alla
+  versione 15 (backup automatico prima dell'aggiornamento).
+- **Aggiornamenti automatici anche su Linux.** Da questa versione la
+  release contiene gli aggiornamenti firmati per AppImage, `.deb` e `.rpm`:
+  Greatnote installato su Linux trova, scarica e verifica da solo le nuove
+  versioni (anche la 0.1.2 trova questa). L'AppImage si aggiorna alla chiusura;
+  con `.deb` e `.rpm` l'installazione parte con **Riavvia e aggiorna** e
+  chiede la password di amministratore.
 - **Pacchetti Linux nei centri software.** Aprendo il `.rpm` o il `.deb`,
   Discover mostrava «Greatnote-0» (il nome del file fino al primo punto).
   Nelle release i pacchetti si chiamano ora `Greatnote.x86_64.rpm`,
@@ -34,6 +59,17 @@ Le modifiche rilevanti sono registrate per rilascio.
   inglese («The user wants me to transcribe…») e a volte non la
   trascrizione. Ora il risultato contiene solo il testo dell'immagine;
   la lettura richiede qualche secondo in più.
+
+Limiti noti:
+
+- gli installer Windows non sono firmati con un certificato di firma del
+  codice: SmartScreen mostra un avviso;
+- le installazioni Linux 0.1.2 da `.deb` o `.rpm` installano questa
+  versione alla chiusura chiedendo la password (comportamento della 0.1.2);
+  dalla 0.2.0 l'installazione dei pacchetti di sistema avviene solo con
+  **Riavvia e aggiorna**;
+- gli eventi del calendario e i promemoria sulle note non si ripetono
+  ancora; gli strumenti MCP non possono eliminare né riscrivere.
 
 ## 0.1.2 — 2026-10-22
 

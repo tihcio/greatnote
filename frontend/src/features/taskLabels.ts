@@ -1,7 +1,25 @@
-import { t } from "../i18n";
+import { language, t } from "../i18n";
 import { formatDay } from "../lib/dates";
 import { formatDate } from "../lib/format";
-import type { Task } from "../types";
+import type { Recurrence, Task } from "../types";
+
+/** Nomi brevi dei giorni ISO 1–7 nella lingua dell'interfaccia. */
+export function weekdayNames(format: "short" | "long" = "short"): string[] {
+  const formatter = new Intl.DateTimeFormat(language, { weekday: format, timeZone: "UTC" });
+  // 5 gennaio 2026 è un lunedì.
+  return Array.from({ length: 7 }, (_, index) => formatter.format(new Date(Date.UTC(2026, 0, 5 + index))));
+}
+
+/** Ripetizione in parole, per l'elenco e il dialog. */
+export function recurrenceLabel(rule: Recurrence): string {
+  let text = t.repeatEvery(rule.frequency, rule.interval);
+  if (rule.frequency === "weekly" && rule.weekdays && rule.weekdays.length > 0) {
+    const names = weekdayNames();
+    text += ` (${rule.weekdays.map((day) => names[day - 1]).join(", ")})`;
+  }
+  if (rule.until) text += `, ${t.repeatUntilShort(formatDay(rule.until))}`;
+  return text;
+}
 
 export function priorityLabels(): string[] {
   return [t.priorityNone, t.priorityLow, t.priorityMedium, t.priorityHigh];

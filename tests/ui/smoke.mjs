@@ -453,6 +453,24 @@ try {
     await pause(400);
     await expectVisible(".task-form");
   });
+  await step("attivita-ricorrente", async () => {
+    await page.type(".task-form input[maxlength='512']", "Bollette");
+    await clickText(".task-form .chip", "Ogni settimana");
+    await pause(200);
+    await expectVisible(".task-form .repeat-options");
+    await page.focus(".task-form .repeat-interval input");
+    await page.keyboard.press("ArrowUp");
+    await clickText(".task-form .repeat-days .chip", "lun");
+    await page.click(".task-form .dialog-submit-button");
+    await pause(400);
+    const log = await page.evaluate(() => window.__SMOKE_LOG__.filter((entry) => entry.startsWith("create_task:")));
+    const input = JSON.parse(log[log.length - 1].slice("create_task:".length));
+    if (!input.due_date) throw new Error("scadenza non impostata per la serie");
+    const rule = input.recurrence;
+    if (rule?.frequency !== "weekly" || rule.interval !== 2 || rule.weekdays?.[0] !== 1) {
+      throw new Error(`regola inattesa: ${JSON.stringify(rule)}`);
+    }
+  });
   await step("schede-e-indietro", async () => {
     await page.keyboard.press("Escape");
     await keys("Alt", "Shift", "KeyT");
@@ -810,6 +828,12 @@ try {
     await pause(200);
     const hint = await page.$eval(".integrations-settings", (element) => element.textContent ?? "");
     if (!hint.includes("revocare")) throw new Error("stato attivo non mostrato");
+    if (hint.includes("create_note")) throw new Error("strumenti di modifica mostrati senza permesso");
+    await clickText(".integrations-settings .checkbox-field", "anche le modifiche");
+    await pause(200);
+    const tools = await page.$eval(".integrations-settings", (element) => element.textContent ?? "");
+    if (!tools.includes("create_note") || !tools.includes("append_to_note"))
+      throw new Error("strumenti di modifica non mostrati");
     await expectVisible(".integration-audit-error");
     await page.keyboard.press("Escape");
   });

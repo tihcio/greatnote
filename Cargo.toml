@@ -1,6 +1,6 @@
 [package]
 name = "greatnote-core"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "Local-first domain and SQLite storage for Greatnote"
@@ -32,7 +32,7 @@ thiserror = "2"
 tracing = "0.1"
 # Client HTTP bloccante per i provider AI (rustls, nessuna libreria TLS di sistema).
 ureq = { version = "3.4", default-features = false, features = ["rustls"] }
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "v8"] }
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 # RAM totale per indicare i modelli AI adatti al computer (già presente tra

@@ -197,6 +197,23 @@ note senza errori.
 Prova reale facoltativa: `GREATNOTE_OCR_IMAGE=immagine.png cargo test --test
 ai_live claude_code_reads -- --ignored --nocapture`.
 
+## Attività ricorrenti
+
+- regola (`domain::recurrence`): passi giornalieri e settimanali con le date
+  saltate, giorni della settimana a settimane alterne, mensile del 31 nei
+  mesi corti (e ritorno al 31), 29 febbraio, data di fine, validazione e JSON
+  rigido;
+- completamento: prossima occorrenza con gli stessi dati, promemoria alla
+  stessa ora locale anche dopo il cambio dell'ora legale, nessun doppione
+  riaprendo e ricompletando, serie terminata, regola senza scadenza
+  rifiutata;
+- archivio completo: la regola sopravvive all'esportazione, una regola
+  alterata viene scartata;
+- sincronizzazione: una colonna assente in un'istantanea (dispositivo con
+  versione precedente) non cancella il valore locale, un `null` esplicito sì;
+- interfaccia: attività settimanale ogni 2 settimane il lunedì, con la
+  scadenza impostata da sola.
+
 ## Testo cifrato
 
 - `secret_text`: andata e ritorno solo con la password giusta, sale diverso
@@ -494,7 +511,14 @@ lettura:
 - server disattivato per impostazione predefinita, connessione che non può
   scrivere, schema diverso non migrato;
 - registro senza testo e rotazione oltre 1 MB; ciclo stdin/stdout fino a
-  EOF.
+  EOF;
+- modifiche: strumenti assenti e rifiutati senza permesso, revoca alla
+  chiamata successiva; nota creata nel taccuino con tag (anche ripetuti con
+  maiuscole diverse) e titolo `#` conservato; taccuino o nota esclusi
+  rifiutati; testo aggiunto in fondo; salvataggio dell'app da una versione
+  precedente che conserva la versione MCP nella cronologia; attività
+  create, elencate e completate; limite di modifiche per sessione; registro
+  con gli id e senza testo.
 
 Prova manuale dell'eseguibile (usa una copia del database, mai
 l'originale):
@@ -509,6 +533,11 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol
 Eseguita il 2026-10-20 su una copia del database reale: risposta
 «disattivato» prima dell'attivazione, poi tag, ricerca e taccuini
 restituiti; il registro conteneva solo strumenti e conteggi.
+
+Strumenti di modifica: eseguita il 2026-10-22 su un database nuovo creato
+con le migrazioni (`for f in migrations/*.sql; do sqlite3 db < $f; done`)
+e `allow_write` attivato: `tools/list` con i nove strumenti, nota con tag e
+attività create, `list_tasks` corretto, registro con soli id.
 
 ## Interfaccia (test automatico)
 

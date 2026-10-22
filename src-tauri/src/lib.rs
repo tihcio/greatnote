@@ -675,6 +675,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             calendar_commands::update_calendar_subscription,
             calendar_commands::remove_calendar_subscription,
             mcp_commands::set_mcp_enabled,
+            mcp_commands::set_mcp_allow_write,
             ai_commands::ai_suggest_tags,
             ai_commands::ai_extract_tasks,
             ai_commands::ai_markdown_to_document,

@@ -49,6 +49,7 @@ export default function NotePlanner({ noteId, onChanged, onOpenNote, refreshKey 
       due_date: null,
       note_id: noteId,
       flagged: false,
+      recurrence: null,
     };
     try {
       await invoke<Task>("create_task", { input });

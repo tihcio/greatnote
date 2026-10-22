@@ -73,7 +73,7 @@
         conflicts: [{ id: "c-1", entity: "notes", entity_key: "11111111-1111-4111-8111-111111111111", title: "Riunione di lunedì", from_device: "Portatile", created_at: now }],
       };
       let mcpStatus = {
-        enabled: false, command: "/opt/Greatnote/greatnote", args: ["--mcp", "--data-dir", "/home/test/.local/share/dev.greatnote.notes"],
+        enabled: false, allow_write: false, command: "/opt/Greatnote/greatnote", args: ["--mcp", "--data-dir", "/home/test/.local/share/dev.greatnote.notes"],
         audit: [{ at: now, tool: "search_notes", ok: true, results: 3 }, { at: now, tool: "read_note", ok: false, results: 0, error: "Nota non trovata o non disponibile" }],
       };
       const remoteProvider = () => aiSettings.provider === "claude-code";
@@ -93,7 +93,7 @@
           model: "modello-finto", host: "localhost", local: true, error: null, created_at: now },
       ];
       let updateStatus = {
-        current_version: "0.1.0", supported: true, auto_update: true, last_check_at: null,
+        current_version: "0.1.0", supported: true, auto_update: true, installs_on_exit: true, last_check_at: null,
         phase: { state: "up-to-date" },
       };
       const aiSource = {
@@ -149,6 +149,10 @@
         list_reminder_history: () => [],
         task_counts: () => ({ today: 1, overdue: 0 }),
         list_tasks: () => [],
+        create_task: (args) => {
+          window.__SMOKE_LOG__.push(`create_task:${JSON.stringify(args.input)}`);
+          return { ...aiTask, id: "task-nuova", title: args.input.title, due_date: args.input.due_date, recurrence: args.input.recurrence };
+        },
         list_events: () => externalEvents,
         get_sync_status: () => syncView,
         // Aggiornamenti in-app: la ricerca trova la 0.2.0, già scaricata.
@@ -299,6 +303,7 @@
         },
         get_mcp_status: () => mcpStatus,
         set_mcp_enabled: (args) => (mcpStatus = { ...mcpStatus, enabled: args.enabled }),
+        set_mcp_allow_write: (args) => (mcpStatus = { ...mcpStatus, allow_write: args.allowed }),
         ai_compare_revision: (args) => {
           const text = "Aggiunto\n- decisioni corrette\n\nRimosso\n- Nessuna modifica";
           stream(args.onDelta, [text]);

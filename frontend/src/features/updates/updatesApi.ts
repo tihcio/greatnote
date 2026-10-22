@@ -19,6 +19,8 @@ export interface UpdateStatus {
   /** Falso nella versione di sviluppo. */
   supported: boolean;
   auto_update: boolean;
+  /** Falso per i pacchetti `.deb`/`.rpm`: si installano solo su richiesta. */
+  installs_on_exit: boolean;
   last_check_at: string | null;
   phase: UpdatePhase;
 }

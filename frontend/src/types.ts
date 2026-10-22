@@ -223,6 +223,21 @@ export interface Task {
   created_at: string;
   updated_at: string;
   next_reminder_at: string | null;
+  recurrence: Recurrence | null;
+}
+
+export type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "yearly";
+
+/** Ripetizione di un'attività (`domain::recurrence::Recurrence`). */
+export interface Recurrence {
+  frequency: RecurrenceFrequency;
+  interval: number;
+  /** Solo settimanale: 1 = lunedì … 7 = domenica; vuoto = giorno della scadenza. */
+  weekdays?: number[];
+  /** Mensile/annuale: giorno del mese, scelto dal backend se assente. */
+  month_day?: number | null;
+  /** Ultima data possibile, inclusa. */
+  until?: string | null;
 }
 
 export interface TaskInput {
@@ -232,6 +247,7 @@ export interface TaskInput {
   due_date: string | null;
   note_id: string | null;
   flagged: boolean;
+  recurrence: Recurrence | null;
 }
 
 export interface TaskCounts {

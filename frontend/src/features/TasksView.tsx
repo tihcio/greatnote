@@ -97,6 +97,7 @@ export default function TasksView({
       due_date: dueDate || null,
       note_id: null,
       flagged: false,
+      recurrence: null,
     };
     try {
       await invoke<Task>("create_task", { input });

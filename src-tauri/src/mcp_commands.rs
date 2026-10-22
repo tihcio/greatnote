@@ -70,6 +70,8 @@ pub fn run_mcp(args: &[String]) -> Result<(), Box<dyn Error>> {
 #[derive(Debug, Serialize)]
 pub struct McpStatus {
     pub enabled: bool,
+    /// Strumenti di modifica consentiti.
+    pub allow_write: bool,
     /// Programma da avviare nella configurazione del client MCP.
     pub command: String,
     pub args: Vec<String>,
@@ -95,6 +97,7 @@ fn status(database: &Database) -> CommandResult<McpStatus> {
         .map_err(|error| error.to_string())?;
     Ok(McpStatus {
         enabled: settings.enabled,
+        allow_write: settings.allow_write,
         command: executable(),
         args: vec![
             MCP_FLAG.to_owned(),
@@ -113,10 +116,28 @@ pub fn get_mcp_status(database: State<'_, Database>) -> CommandResult<McpStatus>
 #[tauri::command]
 pub fn set_mcp_enabled(app: AppHandle, enabled: bool) -> CommandResult<McpStatus> {
     let database = app.state::<Database>();
+    let current = database.mcp_settings().map_err(|error| error.to_string())?;
     database
-        .set_mcp_settings(&McpSettings { enabled })
+        .set_mcp_settings(&McpSettings { enabled, ..current })
         .map_err(|error| error.to_string())?;
     tracing::info!(enabled, "server MCP aggiornato");
+    status(&database)
+}
+
+/// Consente o blocca gli strumenti di modifica (creare note, aggiungere
+/// testo, creare e completare attività). Ha effetto alla chiamata
+/// successiva del client.
+#[tauri::command]
+pub fn set_mcp_allow_write(app: AppHandle, allowed: bool) -> CommandResult<McpStatus> {
+    let database = app.state::<Database>();
+    let current = database.mcp_settings().map_err(|error| error.to_string())?;
+    database
+        .set_mcp_settings(&McpSettings {
+            allow_write: allowed,
+            ..current
+        })
+        .map_err(|error| error.to_string())?;
+    tracing::info!(allowed, "modifiche del server MCP aggiornate");
     status(&database)
 }
 

@@ -163,6 +163,7 @@ pub(crate) const TABLES: &[SyncTable] = &[
             "updated_at",
             "deleted_at",
             "flagged",
+            "recurrence",
         ],
         filter: None,
         references: &[reference("note_id", "notes", Missing::SetNull)],
@@ -345,6 +346,11 @@ pub(crate) enum Applied {
 
 /// Inserisce o aggiorna la riga con i valori dell'istantanea. Le chiavi
 /// vengono dalla chiave dell'operazione, non dai dati.
+///
+/// Una colonna assente dall'istantanea (dispositivo con una versione
+/// precedente, che non la conosce) non viene toccata: in inserimento vale il
+/// default dello schema, in aggiornamento resta il valore locale. Un `null`
+/// esplicito invece la svuota.
 pub(crate) fn upsert(
     connection: &Connection,
     table: &SyncTable,
@@ -358,16 +364,30 @@ pub(crate) fn upsert(
         .iter()
         .map(|part| SqlValue::Text((*part).to_owned()))
         .collect();
-    for column in table.columns {
-        values.push(json_to_sql(object.get(*column).unwrap_or(&Value::Null)).ok_or_else(invalid)?);
+    let columns: Vec<&str> = table
+        .columns
+        .iter()
+        .copied()
+        .filter(|column| object.contains_key(*column))
+        .collect();
+    for column in &columns {
+        values.push(json_to_sql(&object[*column]).ok_or_else(invalid)?);
     }
     // Riferimenti a entità assenti: NULL o scarto, come i vincoli dello schema.
-    let all_columns: Vec<&str> = table.keys.iter().chain(table.columns).copied().collect();
+    let all_columns: Vec<&str> = table
+        .keys
+        .iter()
+        .copied()
+        .chain(columns.iter().copied())
+        .collect();
     for reference in table.references {
-        let index = all_columns
+        // Colonna assente: in aggiornamento resta quella locale, già valida.
+        let Some(index) = all_columns
             .iter()
             .position(|column| *column == reference.column)
-            .ok_or_else(invalid)?;
+        else {
+            continue;
+        };
         let SqlValue::Text(target) = &values[index] else {
             continue;
         };
@@ -390,13 +410,12 @@ pub(crate) fn upsert(
         .map(|index| format!("?{index}"))
         .collect::<Vec<_>>()
         .join(", ");
-    let action = if table.columns.is_empty() {
+    let action = if columns.is_empty() {
         "NOTHING".to_owned()
     } else {
         format!(
             "UPDATE SET {}",
-            table
-                .columns
+            columns
                 .iter()
                 .map(|column| format!("{column} = excluded.{column}"))
                 .collect::<Vec<_>>()
@@ -468,6 +487,47 @@ mod tests {
                 .expect("triggers");
             assert_eq!(triggers, 3, "{}", table.name);
         }
+    }
+
+    /// Un dispositivo con una versione precedente non conosce le colonne
+    /// nuove (es. `recurrence`): le sue modifiche non le cancellano.
+    #[test]
+    fn absent_columns_keep_the_local_value() {
+        let database = Database::in_memory().expect("db");
+        let connection = database.connection().expect("connection");
+        connection
+            .execute(
+                "INSERT INTO tasks (id, title, due_date, recurrence)
+                 VALUES ('t1', 'Bollette', '2026-10-22', '{\"frequency\":\"monthly\"}')",
+                [],
+            )
+            .expect("task");
+        let tasks = table("tasks").expect("tasks");
+        let mut old = snapshot(&connection, tasks, "t1")
+            .expect("snapshot")
+            .expect("row");
+        old.as_object_mut().expect("object").remove("recurrence");
+        old["title"] = json!("Bollette luce");
+        upsert(&connection, tasks, "t1", &old).expect("upsert");
+        let after = snapshot(&connection, tasks, "t1")
+            .expect("snapshot")
+            .expect("row");
+        assert_eq!(after["title"], "Bollette luce");
+        assert_eq!(after["recurrence"], "{\"frequency\":\"monthly\"}");
+        // Una riga nuova senza la colonna prende il default dello schema.
+        upsert(&connection, tasks, "t2", &old).expect("insert");
+        let fresh = snapshot(&connection, tasks, "t2")
+            .expect("snapshot")
+            .expect("row");
+        assert_eq!(fresh["recurrence"], Value::Null);
+        // Un null esplicito invece la svuota.
+        let mut cleared = after.clone();
+        cleared["recurrence"] = Value::Null;
+        upsert(&connection, tasks, "t1", &cleared).expect("upsert");
+        let after = snapshot(&connection, tasks, "t1")
+            .expect("snapshot")
+            .expect("row");
+        assert_eq!(after["recurrence"], Value::Null);
     }
 
     #[test]

@@ -4,11 +4,11 @@ import { t } from "../i18n";
 import { askConfirmation } from "../lib/confirm";
 import { addDays, suggestedReminder, toIsoDate, toLocalInput } from "../lib/dates";
 import { errorMessage } from "../lib/format";
-import type { Reminder, SearchResult, Task, TaskInput } from "../types";
+import type { Recurrence, RecurrenceFrequency, Reminder, SearchResult, Task, TaskInput } from "../types";
 import DateTimeField from "./DateTimeField";
 import EntityReminders from "./EntityReminders";
 import PlannerDialog from "./PlannerDialog";
-import { priorityLabels } from "./taskLabels";
+import { priorityLabels, weekdayNames } from "./taskLabels";
 
 interface TaskDialogProps {
   /** Attività da modificare; `null` per crearne una nuova. */
@@ -47,6 +47,11 @@ export default function TaskDialog({
   );
   const [priority, setPriority] = useState(task?.priority ?? 0);
   const [flagged, setFlagged] = useState(task?.flagged ?? false);
+  const [repeat, setRepeat] = useState<RecurrenceFrequency | null>(task?.recurrence?.frequency ?? null);
+  const [repeatInterval, setRepeatInterval] = useState(task?.recurrence?.interval ?? 1);
+  const [repeatDays, setRepeatDays] = useState<number[]>(task?.recurrence?.weekdays ?? []);
+  const [repeatUntil, setRepeatUntil] = useState(task?.recurrence?.until ?? "");
+  const [repeatNotice, setRepeatNotice] = useState(false);
   const [noteId, setNoteId] = useState<string | null>(task?.note_id ?? defaults?.noteId ?? null);
   const [noteOptions, setNoteOptions] = useState<{ id: string; title: string }[]>([]);
   const [reminderChoice, setReminderChoice] = useState<ReminderChoice>("none");
@@ -81,6 +86,28 @@ export default function TaskDialog({
     }
   };
 
+  /** Regola dai campi; il giorno del mese resta quello già salvato. */
+  const recurrence = (): Recurrence | null => {
+    if (!repeat) return null;
+    const keepDay = task?.recurrence?.frequency === repeat ? task.recurrence.month_day ?? null : null;
+    return {
+      frequency: repeat,
+      interval: Math.min(99, Math.max(1, Math.round(repeatInterval) || 1)),
+      weekdays: repeat === "weekly" ? repeatDays : [],
+      month_day: repeat === "monthly" || repeat === "yearly" ? keepDay : null,
+      until: repeatUntil || null,
+    };
+  };
+
+  const chooseRepeat = (frequency: RecurrenceFrequency | null) => {
+    setRepeat(frequency);
+    // La serie parte dalla scadenza: senza, si usa oggi.
+    if (frequency && !dueDate) {
+      setDueDate(today);
+      setRepeatNotice(true);
+    }
+  };
+
   const save = async () => {
     const input: TaskInput = {
       title,
@@ -89,6 +116,7 @@ export default function TaskDialog({
       due_date: dueDate || null,
       note_id: noteId,
       flagged,
+      recurrence: recurrence(),
     };
     setBusy(true);
     try {
@@ -224,6 +252,8 @@ export default function TaskDialog({
               chip(false, t.noDueDate, () => {
                 setCustomDue(false);
                 setDueDate("");
+                // Senza scadenza la serie non ha un punto di partenza.
+                setRepeat(null);
               })}
           </div>
           {customDue && (
@@ -233,6 +263,58 @@ export default function TaskDialog({
               type="date"
               value={dueDate}
             />
+          )}
+        </div>
+
+        <div className="dialog-field">
+          <span>{t.repeatLabel}</span>
+          <div className="chip-row">
+            {chip(repeat === null, t.repeatNever, () => chooseRepeat(null))}
+            {chip(repeat === "daily", t.repeatDaily, () => chooseRepeat("daily"))}
+            {chip(repeat === "weekly", t.repeatWeekly, () => chooseRepeat("weekly"))}
+            {chip(repeat === "monthly", t.repeatMonthly, () => chooseRepeat("monthly"))}
+            {chip(repeat === "yearly", t.repeatYearly, () => chooseRepeat("yearly"))}
+          </div>
+          {repeat && (
+            <div className="repeat-options">
+              <label className="repeat-interval">
+                <span>{t.repeatIntervalLabel}</span>
+                <input
+                  max={99}
+                  min={1}
+                  onChange={(event) => setRepeatInterval(Number(event.target.value))}
+                  type="number"
+                  value={repeatInterval}
+                />
+                <span>{t.repeatUnit(repeat, repeatInterval)}</span>
+              </label>
+              {repeat === "weekly" && (
+                <div className="repeat-days" role="group" aria-label={t.repeatOnDays}>
+                  <small>{t.repeatOnDays}</small>
+                  <div className="chip-row">
+                    {weekdayNames().map((name, index) =>
+                      chip(repeatDays.includes(index + 1), name, () =>
+                        setRepeatDays((current) =>
+                          current.includes(index + 1)
+                            ? current.filter((day) => day !== index + 1)
+                            : [...current, index + 1].sort(),
+                        ),
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
+              <label className="dialog-field">
+                <small>{t.repeatUntil}</small>
+                <input
+                  min={dueDate || undefined}
+                  onChange={(event) => setRepeatUntil(event.target.value)}
+                  type="date"
+                  value={repeatUntil}
+                />
+              </label>
+              <small className="data-hint">{repeatNotice ? t.repeatNeedsDue : t.repeatHint}</small>
+            </div>
           )}
         </div>
 

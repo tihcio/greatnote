@@ -71,7 +71,7 @@ export default function UpdatesSection({ status, onStatus, onInstall }: UpdatesS
             {phase.state === "ready" && (
               <>
                 {phase.notes && <p className="update-notes">{phase.notes}</p>}
-                <p className="data-hint">{t.updateReadyHint}</p>
+                <p className="data-hint">{status.installs_on_exit ? t.updateReadyHint : t.updateReadyHintPackage}</p>
               </>
             )}
             <div className="ai-inline-actions">

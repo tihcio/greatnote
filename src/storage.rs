@@ -35,7 +35,8 @@ const MIGRATION_11: &str = include_str!("../migrations/0011_image_text.sql");
 const MIGRATION_12: &str = include_str!("../migrations/0012_external_calendars.sql");
 const MIGRATION_13: &str = include_str!("../migrations/0013_calendar_subscriptions.sql");
 const MIGRATION_14: &str = include_str!("../migrations/0014_sync.sql");
-pub const CURRENT_SCHEMA_VERSION: u32 = 14;
+const MIGRATION_15: &str = include_str!("../migrations/0015_task_recurrence.sql");
+pub const CURRENT_SCHEMA_VERSION: u32 = 15;
 const MAX_TITLE_LENGTH: usize = 512;
 const MAX_ORGANIZATION_NAME_LENGTH: usize = 200;
 const MAX_TAG_NAME_LENGTH: usize = 100;
@@ -194,7 +195,23 @@ impl Database {
         })
     }
 
-    /// Connessione già aperta in sola lettura (server MCP), senza migrazioni.
+    /// Apre in scrittura un database esistente senza migrazioni (strumenti
+    /// di modifica del server MCP): lo schema deve essere quello atteso,
+    /// altrimenti va aperta prima l'app aggiornata.
+    pub(crate) fn open_existing_for_writes(path: &Path) -> Result<Self, StorageError> {
+        let connection = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        configure_connection(&connection)?;
+        let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version != CURRENT_SCHEMA_VERSION {
+            return Err(StorageError::IncompatibleSchema(version));
+        }
+        Ok(Self::from_read_only(connection, path.to_path_buf()))
+    }
+
+    /// Connessione già aperta (server MCP), senza migrazioni.
     pub(crate) fn from_read_only(connection: Connection, path: PathBuf) -> Self {
         Self {
             connection: Mutex::new(connection),
@@ -1640,6 +1657,10 @@ fn migrate(connection: &Connection) -> Result<(), StorageError> {
         connection.execute_batch(MIGRATION_14)?;
         version = 14;
     }
+    if version == 14 {
+        connection.execute_batch(MIGRATION_15)?;
+        version = 15;
+    }
     if version == CURRENT_SCHEMA_VERSION {
         repair_ai_index_schema(connection)?;
     }
@@ -1978,6 +1999,7 @@ mod tests {
                 due_date: None,
                 note_id: Some(doomed.id.clone()),
                 flagged: false,
+                recurrence: None,
             })
             .expect("task");
         database

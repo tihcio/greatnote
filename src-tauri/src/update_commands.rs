@@ -7,6 +7,12 @@
 //! viene installato quando l'utente sceglie «Riavvia e aggiorna» oppure alla
 //! chiusura dell'app. Nelle build di sviluppo gli aggiornamenti sono
 //! disattivati.
+//!
+//! Su Linux il plugin aggiorna AppImage, `.deb` e `.rpm` (voci
+//! `linux-x86_64-<formato>` di `latest.json`). I pacchetti di sistema si
+//! installano con `pkexec` e chiedono la password di amministratore: solo
+//! con «Riavvia e aggiorna», mai alla chiusura, quando una richiesta di
+//! password comparirebbe a finestra già chiusa.
 
 use std::{
     sync::{
@@ -61,6 +67,9 @@ pub struct UpdateStatus {
     /// Falso nelle build di sviluppo.
     pub supported: bool,
     pub auto_update: bool,
+    /// Il pacchetto pronto si installa da solo alla chiusura (falso per
+    /// `.deb` e `.rpm`, che chiedono la password).
+    pub installs_on_exit: bool,
     pub last_check_at: Option<String>,
     pub phase: UpdatePhase,
 }
@@ -99,6 +108,20 @@ fn supported() -> bool {
     !cfg!(debug_assertions)
 }
 
+/// Installazione alla chiusura senza interazione: ovunque tranne i pacchetti
+/// di sistema Linux.
+fn installs_on_exit() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        use tauri::utils::{config::BundleType, platform::bundle_type};
+        !matches!(bundle_type(), Some(BundleType::Deb | BundleType::Rpm))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
+}
+
 fn auto_update(app: &AppHandle) -> bool {
     app.state::<Database>()
         .update_settings()
@@ -113,6 +136,7 @@ fn status(app: &AppHandle) -> UpdateStatus {
         current_version: app.package_info().version.to_string(),
         supported: supported(),
         auto_update: auto_update(app),
+        installs_on_exit: installs_on_exit(),
         last_check_at: inner.last_check_at.clone(),
         phase: inner.phase.clone().unwrap_or(UpdatePhase::Idle),
     }
@@ -134,6 +158,9 @@ fn describe(error: &tauri_plugin_updater::Error) -> String {
         }
         Error::ReleaseNotFound => {
             "Nessuna versione pubblicata trovata: riprova più tardi".to_owned()
+        }
+        Error::PackageInstallFailed => {
+            "Installazione annullata o non riuscita: serve la password di amministratore".to_owned()
         }
         Error::Reqwest(_) | Error::Network(_) => {
             "Server degli aggiornamenti non raggiungibile: controlla la connessione".to_owned()
@@ -261,6 +288,11 @@ pub fn spawn_update_checker(app: &AppHandle) {
 /// Alla chiusura dell'app installa il pacchetto pronto, senza riaprirla.
 /// Su Windows l'installer parte in modalità passiva e il processo termina.
 pub fn install_on_exit(app: &AppHandle) {
+    if !installs_on_exit() {
+        // `.deb`/`.rpm`: resta per «Riavvia e aggiorna» al prossimo avvio
+        // (verrà riscaricato), senza una richiesta di password a sorpresa.
+        return;
+    }
     let Some(state) = app.try_state::<UpdateState>() else {
         return;
     };
@@ -317,15 +349,15 @@ pub fn install_update_now(app: AppHandle) -> CommandResult<()> {
     crate::builtin_ai_commands::shutdown();
     // Su Windows `install` avvia l'installer, che riapre l'app, e termina il
     // processo; altrove sostituisce i file e l'app va riavviata.
-    if let Err(error) = update.install(bytes) {
+    if let Err(error) = update.install(&bytes) {
         tracing::error!("installazione dell'aggiornamento non riuscita: {error}");
         let message = describe(&error);
-        set_phase(
-            &app,
-            UpdatePhase::Error {
-                message: message.clone(),
-            },
-        );
+        // Password annullata o errore: il pacchetto resta pronto per
+        // riprovare, senza scaricarlo di nuovo.
+        let version = update.version.clone();
+        let notes = update.body.clone().filter(|body| !body.trim().is_empty());
+        app.state::<UpdateState>().lock().pending = Some(Pending { update, bytes });
+        set_phase(&app, UpdatePhase::Ready { version, notes });
         return Err(message);
     }
     app.restart();

@@ -16,6 +16,30 @@ const messages = {
     showWeekOf: "Mostra la settimana",
     copyFileName: "Copia il nome del file",
     showNotesWithTag: "Mostra le note con questo tag",
+    repeatLabel: "Ripeti",
+    repeatNever: "Mai",
+    repeatDaily: "Ogni giorno",
+    repeatWeekly: "Ogni settimana",
+    repeatMonthly: "Ogni mese",
+    repeatYearly: "Ogni anno",
+    repeatIntervalLabel: "Ogni",
+    repeatUnit: (frequency: string, count: number) =>
+      ({
+        daily: count === 1 ? "giorno" : "giorni",
+        weekly: count === 1 ? "settimana" : "settimane",
+        monthly: count === 1 ? "mese" : "mesi",
+        yearly: count === 1 ? "anno" : "anni",
+      })[frequency] ?? "",
+    repeatEvery: (frequency: string, count: number) =>
+      count === 1
+        ? ({ daily: "Ogni giorno", weekly: "Ogni settimana", monthly: "Ogni mese", yearly: "Ogni anno" })[frequency] ?? ""
+        : `Ogni ${count} ${({ daily: "giorni", weekly: "settimane", monthly: "mesi", yearly: "anni" })[frequency] ?? ""}`,
+    repeatOnDays: "Nei giorni (nessuno: quello della scadenza)",
+    repeatUntil: "Fino al (facoltativo)",
+    repeatUntilShort: (date: string) => `fino al ${date}`,
+    repeatHint:
+      "Quando completi l'attività compare la successiva, con i suoi promemoria spostati alla nuova data. Le scadenze saltate non vengono ricreate.",
+    repeatNeedsDue: "Per ripetere un'attività serve una scadenza: è stata impostata a oggi.",
     closeOtherTabs: "Chiudi le altre schede",
     closeTabsToRight: "Chiudi le schede a destra",
     openLink: "Apri collegamento",
@@ -729,6 +753,8 @@ const messages = {
     updateReadyShort: (version: string) => `Aggiornamento ${version} pronto`,
     updateReadyHint:
       "Verrà installata alla chiusura di Greatnote. Puoi anche installarla subito: le note aperte vengono salvate e l'app si riavvia.",
+    updateReadyHintPackage:
+      "Premi «Riavvia e aggiorna» per installarla: le note aperte vengono salvate, il sistema chiede la password di amministratore e l'app si riavvia.",
     updateInstalling: "Installazione in corso: Greatnote si riavvierà…",
     updateInstallNow: "Riavvia e aggiorna",
     updateCheckNow: "Cerca aggiornamenti",
@@ -942,12 +968,16 @@ const messages = {
     mcpTitle: "Server MCP locale",
     mcpIntro:
       "Permette alle app di AI compatibili con MCP (Claude Code, Claude Desktop e altre) di cercare e leggere le tue note. L'app di AI avvia Greatnote in background e comunica direttamente con esso: nessuna porta di rete viene aperta e niente passa da server di Greatnote. Le note nel cestino e quelle dei taccuini esclusi dall'AI non sono mai accessibili.",
-    mcpEnable: "Consenti l'accesso alle note tramite MCP (sola lettura)",
+    mcpEnable: "Consenti l'accesso alle note tramite MCP",
     mcpEnabledHint:
       "Attivo. Ciò che l'app di AI legge può essere inviato al suo fornitore secondo le sue condizioni. Togli la spunta per revocare l'accesso: vale subito, anche per le sessioni già aperte.",
     mcpDisabledHint: "Disattivato: il server rifiuta ogni richiesta anche se è configurato in un'app di AI.",
-    mcpTools: "Strumenti disponibili, tutti in sola lettura:",
-    mcpNoWriteTools: "Gli strumenti di modifica non sono disponibili.",
+    mcpTools: "Strumenti di lettura:",
+    mcpNoWriteTools: "Le modifiche sono disattivate: l'app di AI può solo leggere.",
+    mcpAllowWrite: "Consenti anche le modifiche",
+    mcpAllowWriteHint:
+      "L'app di AI potrà creare note, aggiungere testo in fondo a una nota, creare attività e completarle. Non può eliminare, spostare nel cestino né riscrivere il testo esistente, né toccare i taccuini esclusi dall'AI. Al massimo 100 modifiche per sessione. Se hai la nota aperta in Greatnote mentre viene modificata, la versione dell'app di AI resta nella cronologia della nota.",
+    mcpWriteTools: "Strumenti di modifica:",
     mcpSetup: "Configurazione",
     mcpSetupClaudeCode: "Claude Code: esegui questo comando nel terminale.",
     mcpSetupOther: "Altre app (configurazione JSON dei server MCP):",
@@ -1321,6 +1351,30 @@ const messages = {
     showWeekOf: "Show the week",
     copyFileName: "Copy file name",
     showNotesWithTag: "Show notes with this tag",
+    repeatLabel: "Repeat",
+    repeatNever: "Never",
+    repeatDaily: "Every day",
+    repeatWeekly: "Every week",
+    repeatMonthly: "Every month",
+    repeatYearly: "Every year",
+    repeatIntervalLabel: "Every",
+    repeatUnit: (frequency: string, count: number) =>
+      ({
+        daily: count === 1 ? "day" : "days",
+        weekly: count === 1 ? "week" : "weeks",
+        monthly: count === 1 ? "month" : "months",
+        yearly: count === 1 ? "year" : "years",
+      })[frequency] ?? "",
+    repeatEvery: (frequency: string, count: number) =>
+      count === 1
+        ? ({ daily: "Every day", weekly: "Every week", monthly: "Every month", yearly: "Every year" })[frequency] ?? ""
+        : `Every ${count} ${({ daily: "days", weekly: "weeks", monthly: "months", yearly: "years" })[frequency] ?? ""}`,
+    repeatOnDays: "On these days (none: the due date's day)",
+    repeatUntil: "Until (optional)",
+    repeatUntilShort: (date: string) => `until ${date}`,
+    repeatHint:
+      "When you complete the task the next one appears, with its reminders moved to the new date. Missed dates are not recreated.",
+    repeatNeedsDue: "A repeating task needs a due date: it has been set to today.",
     closeOtherTabs: "Close other tabs",
     closeTabsToRight: "Close tabs to the right",
     openLink: "Open link",
@@ -2030,6 +2084,8 @@ const messages = {
     updateReadyShort: (version: string) => `Update ${version} ready`,
     updateReadyHint:
       "It will be installed when you close Greatnote. You can also install it now: open notes are saved and the app restarts.",
+    updateReadyHintPackage:
+      "Press “Restart and update” to install it: open notes are saved, the system asks for the administrator password and the app restarts.",
     updateInstalling: "Installing: Greatnote will restart…",
     updateInstallNow: "Restart and update",
     updateCheckNow: "Check for updates",
@@ -2242,12 +2298,16 @@ const messages = {
     mcpTitle: "Local MCP server",
     mcpIntro:
       "Lets MCP-compatible AI apps (Claude Code, Claude Desktop and others) search and read your notes. The AI app starts Greatnote in the background and talks to it directly: no network port is opened and nothing goes through Greatnote servers. Notes in the trash and in notebooks excluded from AI are never accessible.",
-    mcpEnable: "Allow access to notes through MCP (read-only)",
+    mcpEnable: "Allow access to notes through MCP",
     mcpEnabledHint:
       "On. Whatever the AI app reads may be sent to its provider under its terms. Uncheck to revoke access: it applies immediately, even to sessions already open.",
     mcpDisabledHint: "Off: the server refuses every request even if an AI app is configured to use it.",
-    mcpTools: "Available tools, all read-only:",
-    mcpNoWriteTools: "Editing tools are not available.",
+    mcpTools: "Reading tools:",
+    mcpNoWriteTools: "Editing is off: the AI app can only read.",
+    mcpAllowWrite: "Also allow changes",
+    mcpAllowWriteHint:
+      "The AI app will be able to create notes, append text to the end of a note, create tasks and complete them. It cannot delete, move to the trash or rewrite existing text, nor touch notebooks excluded from AI. At most 100 changes per session. If the note is open in Greatnote while it is changed, the AI app's version stays in the note history.",
+    mcpWriteTools: "Editing tools:",
     mcpSetup: "Setup",
     mcpSetupClaudeCode: "Claude Code: run this command in a terminal.",
     mcpSetupOther: "Other apps (MCP servers JSON configuration):",

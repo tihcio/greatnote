@@ -129,7 +129,12 @@ dai test automatici; resta la verifica manuale nella finestra nativa.
 - [ ] Verificare manualmente notifiche e flussi nella finestra desktop.
 - [ ] Promemoria con app chiusa (servizio in background o timer di sistema):
       non implementato, documentato come limite.
-- [ ] Attività e promemoria ricorrenti; vista calendario a griglia oraria.
+- [x] Attività ricorrenti (ADR 0026): ogni giorno/settimana/mese/anno con
+      intervallo, giorni della settimana e data di fine; completandole nasce
+      la successiva con id deterministico (nessun doppione tra dispositivi) e
+      i promemoria spostati alla stessa ora locale; migrazione v15.
+- [ ] Eventi ricorrenti del calendario locale e promemoria ricorrenti sulle
+      note; vista calendario a griglia oraria.
 
 **Accettazione:** promemoria e scadenze persistono e sono visualizzati
 correttamente. Verificato dai test automatici; resta la verifica manuale
@@ -209,8 +214,13 @@ reale su server locale (`tests/ai_live.rs`).
       lettura nota, taccuini e tag; disattivato per impostazione
       predefinita, revoca immediata, esclusioni AI rispettate, registro
       senza contenuti (ADR 0014).
-- [ ] Strumenti MCP di modifica separati, disattivati per impostazione
-      predefinita e con conferma nell'app (solo se richiesti).
+- [x] Strumenti MCP di modifica non distruttivi (`create_note`,
+      `append_to_note`, `create_task`, `complete_task`) e `list_tasks`, dietro
+      un permesso separato disattivato per impostazione predefinita;
+      connessione in scrittura separata, esclusioni rispettate, limite per
+      sessione, modifiche concorrenti conservate nella cronologia.
+- [ ] Strumenti MCP distruttivi (cestino, riscrittura del testo) con
+      conferma nell'app, solo se richiesti (ADR 0014).
 - [x] Importazione da Evernote (ENEX), Joplin (JEX) e Obsidian (vault) con
       struttura dei taccuini, tag, allegati e collegamenti (ADR 0011).
 - [x] Valutate le integrazioni esterne: scelti solo i calendari (Google,
@@ -302,7 +312,12 @@ Dropbox…), senza server né account (ADR 0017).
 - [x] Pacchetti Linux compilati dal workflow `installers.yml` (Ubuntu
       22.04) e allegati alla stessa release in bozza degli installer
       Windows.
-- [ ] Aggiornamenti in-app anche per le installazioni Linux (AppImage).
+- [x] Aggiornamenti in-app anche per le installazioni Linux: AppImage alla
+      chiusura, `.deb`/`.rpm` con «Riavvia e aggiorna» e password
+      (`pkexec`), pacchetti firmati e voci `linux-x86_64-*` in
+      `latest.json` dal workflow.
+- [ ] Prova reale di aggiornamento Linux da una release all'altra (AppImage
+      e `.rpm`).
 - [ ] Firmare gli installer Windows con un certificato di firma del codice
       (SmartScreen e Smart App Control).
 - [x] Hardening: CSP più restrittiva, `cargo audit` nella CI, vulnerabilità

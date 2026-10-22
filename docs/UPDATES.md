@@ -1,8 +1,10 @@
 # Aggiornamenti in-app e pubblicazione delle versioni
 
-Greatnote installato da un installer Windows cerca da solo le versioni
-nuove, le scarica in background, ne verifica la firma e le installa alla
-chiusura dell'app (oppure subito con **Riavvia e aggiorna**). Decisione e
+Greatnote installato dall'installer Windows o dai pacchetti Linux
+(AppImage, `.deb`, `.rpm`) cerca da solo le versioni nuove, le scarica in
+background, ne verifica la firma e le installa alla chiusura dell'app
+(oppure subito con **Riavvia e aggiorna**; per `.deb` e `.rpm` solo così,
+vedi sotto). Decisione e
 motivazioni: [ADR 0023](decisions/0023-in-app-updates.md).
 
 ## Come funziona
@@ -20,6 +22,13 @@ motivazioni: [ADR 0023](decisions/0023-in-app-updates.md).
    **Aggiornamento X pronto**; in Impostazioni › Aggiornamenti si leggono le
    novità e si può installare subito. Altrimenti l'installer parte, in
    modalità passiva (solo barra di avanzamento), quando si chiude l'app.
+   **Linux:** l'app sceglie la voce di `latest.json` del proprio formato
+   (`linux-x86_64-appimage`, `-deb`, `-rpm`; il formato è scritto nel
+   programma al momento del pacchetto). L'AppImage viene sostituita sul
+   posto alla chiusura, senza password. `.deb` e `.rpm` si installano con
+   `pkexec dpkg -i` / `pkexec rpm -U`, che chiedono la password di
+   amministratore: per questo solo con **Riavvia e aggiorna**, mai alla
+   chiusura. Se la password viene annullata l'aggiornamento resta pronto.
 4. L'installer sostituisce i programmi e non tocca la cartella dati. Se la
    nuova versione cambia lo schema del database, all'avvio viene creato il
    backup `greatnote-premigration-…` prima della migrazione.
@@ -89,9 +98,11 @@ che quella versione va installata a mano.
      (`scripts/updater-manifest.ps1`);
    - crea una release **in bozza** con installer `.exe`, firma `.sig`,
      `.msi` e `latest.json`;
-   - nel job Linux, aggiunge alla stessa bozza `.deb`, `.rpm` e AppImage
-     (senza aggiornamento in-app: su Linux si installa la nuova versione
-     a mano).
+   - nel job Linux, compila `.deb`, `.rpm` e AppImage, li rinomina
+     (`Greatnote.x86_64.rpm`, …), li firma con la versione vincolata e
+     aggiunge le voci `linux-x86_64-*` a `latest.json`
+     (`scripts/updater-manifest-linux.sh`), poi carica pacchetti, firme e
+     manifest nella stessa bozza.
 4. Controlla la bozza in GitHub › Releases, scrivi le note e premi
    **Publish release**. Solo da quel momento le app installate la trovano.
 
@@ -101,9 +112,13 @@ prima di pubblicarla, senza toccare `version`, `url` e `signature`.
 
 ## Limiti
 
-- **Solo Windows.** Il workflow pubblica solo l'installer Windows; sulle
-  installazioni Linux (`.deb`, AppImage) l'app indica che non ci sono
-  aggiornamenti automatici per quel tipo di installazione.
+- **Linux fino alla 0.1.2:** le release precedenti non avevano le voci
+  Linux in `latest.json`, quindi quelle installazioni vedono «Non ci sono
+  aggiornamenti automatici per questo tipo di installazione» finché non
+  esce una versione con le voci Linux; da lì si aggiornano da sole.
+- **`.deb`/`.rpm`:** serve un agente polkit (presente in KDE e GNOME) per
+  la richiesta di password di `pkexec`; senza, il plugin prova `zenity` o
+  `kdialog` e infine `sudo` nel terminale.
 - **Installer non firmati con un certificato di firma del codice:** la firma
   minisign protegge l'aggiornamento, ma SmartScreen può mostrare un avviso
   per l'installer.

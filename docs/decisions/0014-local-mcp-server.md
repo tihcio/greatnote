@@ -75,3 +75,26 @@ injection.
   fornitore: le impostazioni lo dicono esplicitamente all'attivazione.
 - Su Windows l'eseguibile usa il sottosistema grafico in release. Le pipe
   stdio ereditate dal client funzionano, ma va verificato nella Fase 8.
+
+## Aggiornamento: strumenti di modifica (2026-10-22)
+
+- Nuovo permesso `allow_write` («Consenti anche le modifiche»), separato
+  dall'attivazione e disattivato per impostazione predefinita, riletto a
+  ogni chiamata. Senza, `tools/list` non mostra gli strumenti di modifica e
+  `tools/call` li rifiuta.
+- Solo operazioni **non distruttive**, così non serve una conferma che MCP
+  non sa chiedere dentro Greatnote: `create_note` (Markdown, taccuino, tag),
+  `append_to_note` (solo in fondo), `create_task`, `complete_task`
+  (reversibile; per le ricorrenti nasce la successiva). Nuovo strumento di
+  lettura `list_tasks`.
+- La connessione in sola lettura resta per tutte le letture. Le modifiche
+  usano una seconda connessione aperta alla prima modifica, senza
+  migrazioni e solo se lo schema coincide. I taccuini esclusi dall'AI sono
+  trattati come inesistenti. Limite di 100 modifiche per avvio del client.
+- `append_to_note` registra la nota come modificata da fuori
+  (`sync_remote_edits`): se l'app, con la nota aperta, salva dalla versione
+  precedente, la versione MCP viene conservata nella cronologia e tra i
+  conflitti, come per la sincronizzazione.
+- Rimandati: strumenti distruttivi (cestino, riscrittura del testo), che
+  richiederebbero una conferma nell'app con una coda di richieste.
+

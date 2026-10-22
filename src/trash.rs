@@ -352,6 +352,7 @@ mod tests {
             due_date: Some("2026-10-14".to_owned()),
             note_id: None,
             flagged: false,
+            recurrence: None,
         }
     }
 

@@ -203,6 +203,17 @@ bordo, poi frecce sinistra/destra (con Maiusc a passi più grandi).
   quelle di oggi e in ritardo. Il cerchio a sinistra completa o riapre
   un'attività; il titolo apre la modifica (descrizione, scadenza, priorità,
   promemoria, eliminazione definitiva con conferma).
+- **Attività che si ripetono:** nella modifica di un'attività scegli
+  **Ripeti** (ogni giorno, settimana, mese o anno), l'intervallo («ogni 2
+  settimane»), per le settimanali i giorni (per esempio lunedì e giovedì) e,
+  se vuoi, una data di fine. Nell'elenco compare «↻ Ogni settimana». Quando
+  la completi resta tra le completate e compare la successiva alla prossima
+  data, con i promemoria spostati agli stessi giorni e alla stessa ora. Se la
+  completi in ritardo, le scadenze già passate vengono saltate. Una
+  ripetizione mensile del 31 cade il 30 o il 28 nei mesi più corti e torna
+  al 31 dopo. Serve una scadenza: se non c'è, viene impostata a oggi. Con la
+  sincronizzazione aggiorna Greatnote su tutti i computer: una versione
+  precedente mostra l'attività ma completandola non crea la successiva.
 - **Attività di una nota:** nel pannello "Attività" sotto la nota puoi
   aggiungere attività collegate. Dall'elenco delle attività il nome della nota
   la apre. Se la nota va nel cestino, l'attività resta.
@@ -732,19 +743,30 @@ modifica prevale e la nota resta.
 ## Integrazioni: server MCP locale
 
 Le app di AI compatibili con MCP (Claude Code, Claude Desktop e altre)
-possono cercare e leggere le tue note, senza modificarle.
+possono cercare e leggere le tue note e, se lo consenti, crearne di nuove e
+aggiungere attività.
 
 1. Apri **Impostazioni › Integrazioni** e spunta **Consenti l'accesso alle
-   note tramite MCP (sola lettura)**.
+   note tramite MCP**.
 2. Per Claude Code copia il comando mostrato (`claude mcp add greatnote --
    … --mcp --data-dir …`) ed eseguilo nel terminale. Per altre app copia la
    configurazione JSON nella loro configurazione dei server MCP.
 3. Nell'app di AI chiedi per esempio «cerca nelle mie note di Greatnote il
    verbale di lunedì».
 
-Strumenti disponibili: `search_notes` (stessa sintassi della ricerca:
-`tag:`, `notebook:`, `is:pinned`, date…), `read_note`, `list_notebooks` e
-`list_tags`. Le note nel cestino e quelle dei taccuini esclusi dall'AI non
+Strumenti di lettura: `search_notes` (stessa sintassi della ricerca:
+`tag:`, `notebook:`, `is:pinned`, date…), `read_note`, `list_notebooks`,
+`list_tags` e `list_tasks`.
+
+**Modifiche:** spuntando anche **Consenti anche le modifiche**, l'app di AI
+può creare note (con taccuino e tag), aggiungere testo **in fondo** a una
+nota, creare attività e completarle (per esempio «aggiungi alla nota del
+trasloco l'elenco delle cose da comprare» o «crea un'attività per venerdì»).
+Non può eliminare, spostare nel cestino né riscrivere il testo esistente, e
+i taccuini esclusi dall'AI restano intoccabili. Al massimo 100 modifiche
+per sessione dell'app di AI. Se la nota è aperta in Greatnote mentre viene
+modificata, riaprila per vedere il testo aggiunto; se la salvi prima, la
+versione dell'app di AI resta comunque nella **Cronologia** della nota. Le note nel cestino e quelle dei taccuini esclusi dall'AI non
 sono mai accessibili. **Attività recenti** mostra le ultime richieste
 (strumento ed esito, senza testo). Togliendo la spunta l'accesso viene
 revocato subito. Per rimuovere anche la configurazione dal client:
@@ -756,7 +778,8 @@ avviarlo in background.
 
 ## Aggiornamenti
 
-Greatnote installato con l'installer Windows si aggiorna da solo:
+Greatnote installato con l'installer Windows o con i pacchetti Linux
+(AppImage, `.deb`, `.rpm`) si aggiorna da solo:
 
 - all'avvio e ogni 6 ore cerca una versione nuova e, se c'è, la scarica in
   background e ne verifica la firma;
@@ -769,9 +792,14 @@ Greatnote installato con l'installer Windows si aggiorna da solo:
 - le note, gli allegati e le impostazioni restano dove sono; se serve
   aggiornare il database, prima viene creato un backup.
 
+Con il pacchetto `.deb` o `.rpm` l'installazione richiede la password di
+amministratore: avviene solo quando premi **Riavvia e aggiorna**, mai da
+sola alla chiusura. Se annulli la richiesta, l'aggiornamento resta pronto
+per un altro tentativo. L'AppImage si aggiorna alla chiusura, senza
+password.
+
 In Impostazioni › Aggiornamenti vedi la versione installata, puoi cercare
-subito gli aggiornamenti o disattivare quelli automatici. Le installazioni
-Linux non si aggiornano ancora da sole.
+subito gli aggiornamenti o disattivare quelli automatici.
 
 ## Dati
 

@@ -2308,6 +2308,7 @@ mod tests {
                 due_date: Some("2026-11-01".to_owned()),
                 note_id: Some(first.id.clone()),
                 flagged: false,
+                recurrence: None,
             })
             .expect("task");
         let orphan_task = source
@@ -2318,11 +2319,17 @@ mod tests {
                 due_date: None,
                 note_id: Some(trashed.id.clone()),
                 flagged: false,
+                recurrence: None,
             })
             .expect("task");
         source.trash_note(&trashed.id).expect("trash");
         source
-            .set_task_completed(&orphan_task.id, true)
+            .set_task_completed(
+                &orphan_task.id,
+                true,
+                crate::time::now(),
+                &crate::time::Zone::system(),
+            )
             .expect("done");
         let event = source
             .create_event(&crate::domain::planner::EventInput {

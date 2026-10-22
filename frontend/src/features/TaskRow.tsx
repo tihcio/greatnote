@@ -5,7 +5,7 @@ import { askConfirmation } from "../lib/confirm";
 import { openContextMenu } from "../lib/contextMenu";
 import { errorMessage, formatDateTime } from "../lib/format";
 import type { Task } from "../types";
-import { dueLabel, dueState, priorityLabels } from "./taskLabels";
+import { dueLabel, dueState, priorityLabels, recurrenceLabel } from "./taskLabels";
 
 interface TaskRowProps {
   task: Task;
@@ -102,6 +102,12 @@ export default function TaskRow({
             </span>
           )}
           {due && <span className={`due-badge ${dueState(task, today)}`}>{due}</span>}
+          {task.recurrence && task.status === "open" && (
+            <span className="repeat-badge">
+              <span aria-hidden="true">↻ </span>
+              {recurrenceLabel(task.recurrence)}
+            </span>
+          )}
           {task.priority > 0 && (
             <span className={`priority-badge p${task.priority}`}>
               {t.taskPriorityLabel}: {priorityLabels()[task.priority]}
