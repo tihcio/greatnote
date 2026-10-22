@@ -27,7 +27,7 @@ locale non si può compilare.
   - **MSI** (WiX), per l'installazione gestita dall'IT.
 - **WebView2** con `downloadBootstrapper` silenzioso. L'installer resta
   piccolo, e WebView2 è già presente su Windows 10/11 aggiornati.
-- **Build su GitHub Actions** (`windows-installer.yml`) con un runner
+- **Build su GitHub Actions** (`windows-installer.yml`, poi `installers.yml` con ADR 0024) con un runner
   `windows-latest`. Il workflow parte a mano o con un tag `v*`, esegue
   `cargo test --workspace` prima del bundle e pubblica gli installer come
   artefatti. Non crea release pubbliche.

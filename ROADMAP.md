@@ -273,7 +273,7 @@ Dropbox…), senza server né account (ADR 0017).
       l'icona compaia su Wayland).
 - [x] Configurare CI per frontend e Rust su Linux e Windows.
 - [x] Configurare gli installer Windows x64 (NSIS per utente e MSI) e il
-      workflow `windows-installer.yml` che li pubblica come artefatti.
+      workflow `installers.yml` che li pubblica come artefatti.
 - [ ] Verificare l'installer su un PC Windows pulito: installazione,
       avvio, notifiche, portachiavi (Credential Manager), apertura allegati,
       percorsi con spazi e caratteri Unicode, aggiornamento e
@@ -288,6 +288,9 @@ Dropbox…), senza server né account (ADR 0017).
 - [x] Pacchetti Linux (.deb, .rpm, AppImage) con il motore AI integrato
       (llama.cpp Vulkan, `scripts/fetch-llama.sh`). Verificato su Fedora 44
       con RTX 3070 il 2026-10-22.
+- [x] Pacchetti Linux compilati dal workflow `installers.yml` (Ubuntu
+      22.04) e allegati alla stessa release in bozza degli installer
+      Windows.
 - [ ] Aggiornamenti in-app anche per le installazioni Linux (AppImage).
 - [ ] Firmare gli installer Windows con un certificato di firma del codice
       (SmartScreen e Smart App Control).

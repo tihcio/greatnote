@@ -82,13 +82,16 @@ che quella versione va installata a mano.
    git push origin v0.2.0
    ```
 
-3. Il workflow **Windows installer**:
+3. Il workflow **Installers** (`installers.yml`):
    - compila e firma gli installer (`--config src-tauri/tauri.updater.conf.json`);
    - controlla che il tag corrisponda alla versione e che la firma contenga
      la versione, rifirmando l'installer se manca
      (`scripts/updater-manifest.ps1`);
    - crea una release **in bozza** con installer `.exe`, firma `.sig`,
-     `.msi` e `latest.json`.
+     `.msi` e `latest.json`;
+   - nel job Linux, aggiunge alla stessa bozza `.deb`, `.rpm` e AppImage
+     (senza aggiornamento in-app: su Linux si installa la nuova versione
+     a mano).
 4. Controlla la bozza in GitHub › Releases, scrivi le note e premi
    **Publish release**. Solo da quel momento le app installate la trovano.
 

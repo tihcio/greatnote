@@ -131,11 +131,12 @@ Control attivo, può bloccare l'installazione o la compilazione locale.
 
 #### Build tramite GitHub Actions
 
-Il workflow `.github/workflows/windows-installer.yml` consente di
-compilare l'app su un runner Windows e pubblicare gli installer come
-artefatto `greatnote-windows-x64`.
+Il workflow `.github/workflows/installers.yml` compila l'app su un runner
+Windows e su uno Ubuntu 22.04 e pubblica gli installer come artefatti
+`greatnote-windows-x64` (`.exe`, `.msi`) e `greatnote-linux-x64` (`.deb`,
+`.rpm`, AppImage).
 
-Puoi avviarlo da **Actions → Windows installer → Run workflow**, oppure
+Puoi avviarlo da **Actions → Installers → Run workflow**, oppure
 creare e pubblicare un tag Git, ad esempio:
 
 ``` sh

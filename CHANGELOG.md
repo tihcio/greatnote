@@ -4,6 +4,11 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.1.2 — 2026-10-22
+
+Prima versione con pacchetti Linux (.deb, .rpm, AppImage) allegati alla
+release, insieme agli installer Windows.
+
 - **Linux con il motore AI integrato.** I pacchetti Linux (.deb, .rpm,
   AppImage) includono lo stesso motore llama.cpp della versione Windows:
   - nessun Ollama o altro server da installare;
@@ -15,6 +20,17 @@ Le modifiche rilevanti sono registrate per rilascio.
 - **Sincronizzazione più reattiva.** Durante l'invio e la ricezione in rete
   (cartella o Dropbox) il database non resta più bloccato, quindi l'app
   risponde anche mentre sincronizza molti allegati.
+- **Voce di menu su Linux.** Greatnote compare tra le applicazioni da
+  ufficio, con una descrizione in italiano, invece che in «Altro».
+
+Limiti noti:
+
+- su Linux l'app non si aggiorna da sola: scarica il nuovo pacchetto dalla
+  pagina della release e installalo sopra quello vecchio (i dati restano).
+  In Impostazioni › Aggiornamenti il controllo risponde «Non ci sono
+  aggiornamenti automatici per questo tipo di installazione»;
+- gli installer Windows non sono firmati con un certificato di firma del
+  codice: SmartScreen mostra un avviso.
 
 ## 0.1.1 — 2026-10-22
 

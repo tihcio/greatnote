@@ -69,7 +69,8 @@ un account utente di prova o una macchina virtuale.
 
 ### Linux
 
-- [ ] `npx tauri build` produce `.deb` e AppImage.
+- [ ] `npx tauri build` produce `.deb`, `.rpm` e AppImage con
+      `llama-server` incluso (`resources/llama`).
 - [ ] Installazione del `.deb` su una distribuzione Debian/Ubuntu e avvio
       dal menu; icona visibile anche su Wayland
       (`StartupWMClass=dev.greatnote.notes`).
@@ -78,7 +79,7 @@ un account utente di prova o una macchina virtuale.
 
 ### Windows
 
-- [ ] Workflow *Windows installer* verde; scaricati `.exe` (NSIS) e `.msi`.
+- [ ] Workflow *Installers* verde; scaricati `.exe` (NSIS) e `.msi`.
 - [ ] Su un PC o una VM puliti: installazione senza permessi di
       amministratore (NSIS), avvio, notifica di un promemoria, credenziale
       salvata in Gestione credenziali, apertura di un allegato.
@@ -102,11 +103,12 @@ un account utente di prova o una macchina virtuale.
 
 ## 6. Pubblicazione
 
-- [ ] Tag `vX.Y.Z` sul commit verificato; il workflow *Windows installer*
+- [ ] Tag `vX.Y.Z` sul commit verificato; il workflow *Installers*
       parte dal tag, firma gli installer e crea la release in bozza con
       `latest.json` ([UPDATES.md](./UPDATES.md)).
 - [ ] Nella bozza: `latest.json` indica la versione giusta e l'URL
-      dell'installer della stessa release.
+      dell'installer della stessa release; ci sono anche `.deb`, `.rpm` e
+      AppImage del job Linux.
 - [ ] Prova di aggiornamento: su un PC con la versione precedente
       installata, dopo la pubblicazione **Cerca aggiornamenti** trova la
       nuova versione, **Riavvia e aggiorna** la installa e le note restano.
