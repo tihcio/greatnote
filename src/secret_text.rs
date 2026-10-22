@@ -103,7 +103,10 @@ pub fn encrypt(plaintext: &str, passphrase: &str) -> Result<String, SecretTextEr
         .and_then(ArmoredWriter::finish)
         .map_err(|_| SecretTextError::Invalid)?;
     let armored = String::from_utf8(output).map_err(|_| SecretTextError::Invalid)?;
-    let armored = armored.trim_end().to_owned();
+    // `age` usa l'a capo della piattaforma (`\r\n` su Windows): nella nota
+    // il formato è uno solo, così lo stesso testo cifrato è identico su ogni
+    // sistema e nella sincronizzazione.
+    let armored = armored.replace("\r\n", "\n").trim_end().to_owned();
     if !is_armored_ciphertext(&armored) {
         return Err(SecretTextError::TooLong);
     }
@@ -115,6 +118,8 @@ pub fn decrypt(armored: &str, passphrase: &str) -> Result<String, SecretTextErro
     if !is_armored_ciphertext(armored) {
         return Err(SecretTextError::Invalid);
     }
+    // Testi incollati o creati altrove possono avere `\r\n`.
+    let armored = armored.replace("\r\n", "\n");
     let decryptor = age::Decryptor::new(ArmoredReader::new(armored.as_bytes()))
         .map_err(|_| SecretTextError::Invalid)?;
     if !decryptor.is_scrypt() {
@@ -176,6 +181,12 @@ mod tests {
     fn round_trip_with_the_right_password_only() {
         let armored = encrypt("PIN banca: 1234\r\nconto 42", "password lunga").expect("encrypt");
         assert!(armored.starts_with(ARMOR_BEGIN) && armored.ends_with(ARMOR_END));
+        // Stesso formato su ogni sistema (Windows compreso).
+        assert!(!armored.contains('\r'));
+        assert_eq!(
+            decrypt(&armored.replace('\n', "\r\n"), "password lunga").expect("crlf"),
+            "PIN banca: 1234\nconto 42"
+        );
         assert!(!armored.contains("1234"));
         assert!(is_armored_ciphertext(&armored));
         assert_eq!(

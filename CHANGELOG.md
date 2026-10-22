@@ -4,7 +4,18 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
-## 0.2.0 — 2026-10-22
+## 0.2.1 — 2026-10-22
+
+Sostituisce la 0.2.0, che non è stata pubblicata: i test su Windows
+fallivano. Contiene tutte le novità della 0.2.0 (vedi sotto).
+
+- **Testo cifrato uguale su Windows e Linux.** Su Windows il testo cifrato
+  veniva scritto con a capo diversi da Linux: lo stesso blocco risultava
+  diverso tra i computer sincronizzati e non coincideva dopo
+  un'esportazione in Markdown. Ora il formato è uno solo; i blocchi con a
+  capo di Windows si aprono comunque.
+
+## 0.2.0 — 2026-10-22 (non pubblicata)
 
 Il database passa alla versione 15: all'avvio viene creato il backup
 `greatnote-premigration-…` e, dopo l'aggiornamento, le versioni 0.1.x non
