@@ -478,8 +478,10 @@ fn parse_embeddings(value: &Value, expected: usize) -> Result<Vec<Vec<f32>>, AiE
     Ok(indexed.into_iter().map(|(_, vector)| vector).collect())
 }
 
-/// Filtra il testo in uscita: rimuove il ragionamento `<think>…</think>` che
-/// alcuni modelli locali premettono alla risposta e limita la lunghezza.
+/// Filtra il testo in uscita: rimuove il ragionamento che alcuni modelli
+/// locali premettono alla risposta (`<think>…</think>`, oppure
+/// `<|channel>thought…<channel|>` di Gemma 4 quando il server non lo separa)
+/// e limita la lunghezza.
 #[derive(Default)]
 struct OutputFilter {
     text: String,
@@ -491,12 +493,14 @@ struct OutputFilter {
 enum ThinkState {
     #[default]
     Start,
-    Thinking,
+    /// Dentro il ragionamento, fino al marcatore di chiusura indicato.
+    Thinking(&'static str),
     Answer,
 }
 
-const THINK_OPEN: &str = "<think>";
-const THINK_CLOSE: &str = "</think>";
+/// Marcatori di apertura e chiusura del ragionamento.
+const THINK_MARKERS: [(&str, &str); 2] =
+    [("<think>", "</think>"), ("<|channel>thought", "<channel|>")];
 
 impl OutputFilter {
     fn push(&mut self, delta: &str, on_delta: &mut dyn FnMut(&str)) -> Result<(), AiError> {
@@ -505,25 +509,29 @@ impl OutputFilter {
             match self.state {
                 ThinkState::Start => {
                     let trimmed = self.pending.trim_start();
-                    if let Some(rest) = trimmed.strip_prefix(THINK_OPEN) {
+                    if let Some((rest, close)) = THINK_MARKERS
+                        .iter()
+                        .find_map(|(open, close)| Some((trimmed.strip_prefix(open)?, *close)))
+                    {
                         self.pending = rest.to_owned();
-                        self.state = ThinkState::Thinking;
-                    } else if THINK_OPEN.starts_with(trimmed) {
-                        // Potrebbe essere l'inizio di `<think>`: si attende.
+                        self.state = ThinkState::Thinking(close);
+                    } else if THINK_MARKERS
+                        .iter()
+                        .any(|(open, _)| open.starts_with(trimmed))
+                    {
+                        // Potrebbe essere l'inizio di un marcatore: si attende.
                         return Ok(());
                     } else {
                         self.state = ThinkState::Answer;
                     }
                 }
-                ThinkState::Thinking => {
-                    if let Some(end) = self.pending.find(THINK_CLOSE) {
-                        self.pending = self.pending[end + THINK_CLOSE.len()..]
-                            .trim_start()
-                            .to_owned();
+                ThinkState::Thinking(close) => {
+                    if let Some(end) = self.pending.find(close) {
+                        self.pending = self.pending[end + close.len()..].trim_start().to_owned();
                         self.state = ThinkState::Answer;
                     } else {
                         // Conserva solo una coda utile a trovare la chiusura.
-                        let keep = self.pending.len().saturating_sub(THINK_CLOSE.len());
+                        let keep = self.pending.len().saturating_sub(close.len());
                         let boundary = (keep..=self.pending.len())
                             .find(|index| self.pending.is_char_boundary(*index))
                             .unwrap_or(self.pending.len());
@@ -818,5 +826,33 @@ mod tests {
             .expect("push");
         assert_eq!(filter.finish().expect("finish"), "<b>grassetto");
         assert_eq!(seen, "<b>grassetto");
+    }
+
+    /// Formato di Gemma 4 quando il server non separa il ragionamento:
+    /// canale vuoto (ragionamento disattivato) o pieno, anche spezzato.
+    #[test]
+    fn output_filter_strips_gemma_thought_channel() {
+        let filter = |parts: &[&str]| {
+            let mut filter = OutputFilter::default();
+            let mut seen = String::new();
+            for part in parts {
+                filter
+                    .push(part, &mut |delta| seen.push_str(delta))
+                    .expect("push");
+            }
+            (filter.finish().expect("finish"), seen)
+        };
+        let empty = filter(&["<|channel>thought<channel|>RICAMBI\nEPOCA"]);
+        assert_eq!(
+            empty,
+            ("RICAMBI\nEPOCA".to_owned(), "RICAMBI\nEPOCA".to_owned())
+        );
+        let split = filter(&[
+            "<|chan",
+            "nel>thought\nThe user wants me to transcribe",
+            " the text.<chan",
+            "nel|>\nRICAMBI",
+        ]);
+        assert_eq!(split, ("RICAMBI".to_owned(), "RICAMBI".to_owned()));
     }
 }

@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { t } from "../i18n";
+import { startEncryptedText } from "./encryptedText";
 
 export interface BlockCommand {
   id: string;
@@ -100,6 +101,13 @@ export function blockCommands(): BlockCommand[] {
       keywords: "ora data adesso time now",
       icon: "🕘",
       run: (editor) => editor.chain().focus().insertContent(today(true)).run(),
+    },
+    {
+      id: "encrypted-text",
+      label: t.encryptText,
+      keywords: "cifra cifrato password segreto encrypt encrypted secret",
+      icon: "🔒",
+      run: (editor) => startEncryptedText(editor),
     },
   ];
 }

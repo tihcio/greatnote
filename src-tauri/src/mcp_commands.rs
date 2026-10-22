@@ -155,6 +155,21 @@ mod tests {
         }
     }
 
+    /// Discover e GNOME Software mostrano la versione dai metadati AppStream
+    /// dei pacchetti Linux: ogni rilascio deve comparire in `<releases>`.
+    #[test]
+    fn appstream_metadata_lists_the_current_version() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("config");
+        let version = config["version"].as_str().expect("version");
+        let metainfo = include_str!("../linux/dev.greatnote.notes.metainfo.xml");
+        assert!(metainfo.contains(&format!("<id>{APP_IDENTIFIER}</id>")));
+        assert!(
+            metainfo.contains(&format!("<release version=\"{version}\"")),
+            "aggiungere la versione {version} in linux/dev.greatnote.notes.metainfo.xml"
+        );
+    }
+
     #[test]
     fn explicit_data_directory() {
         let args = vec![

@@ -7,7 +7,10 @@ use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag};
 use scraper::{ElementRef, Html, Node};
 use serde_json::{Map, Value, json};
 
-use crate::domain::note::{FONT_FAMILIES, FONT_SIZES, is_hex_color};
+use crate::{
+    domain::note::{FONT_FAMILIES, FONT_SIZES, is_hex_color},
+    secret_text::is_armored_ciphertext,
+};
 
 /// Profondità massima dei contenitori di blocco (documento incluso): mantiene
 /// i documenti importati entro il limite di annidamento della validazione.
@@ -15,6 +18,42 @@ const MAX_BLOCK_STACK: usize = 14;
 const MAX_HTML_DEPTH: usize = 256;
 const MAX_LINK_LENGTH: usize = 2048;
 const MARK_ORDER: [&str; 6] = ["link", "bold", "italic", "strike", "underline", "code"];
+/// Linguaggio dei blocchi di codice che contengono un testo cifrato: in
+/// Markdown e HTML il nodo `encryptedText` diventa un blocco `age`, e un
+/// blocco `age` valido importato torna a essere un testo cifrato.
+const ENCRYPTED_TEXT_LANGUAGE: &str = "age";
+/// Segnaposto del testo cifrato nel testo semplice (ricerca, AI, anteprime).
+const ENCRYPTED_TEXT_PLACEHOLDER: &str = "🔒";
+
+/// Testo age del nodo `encryptedText`, se valido.
+fn ciphertext(node: &Value) -> Option<&str> {
+    attr_str(node, "ciphertext").filter(|text| is_armored_ciphertext(text))
+}
+
+/// Copia del documento in cui ogni testo cifrato è un blocco di codice `age`
+/// con il testo cifrato: per l'esportazione in testo semplice, che
+/// altrimenti mostrerebbe solo il segnaposto.
+pub fn encrypted_text_as_code(document: &Value) -> Value {
+    match document {
+        Value::Object(object)
+            if object.get("type").and_then(Value::as_str) == Some("encryptedText") =>
+        {
+            json!({
+                "type": "codeBlock",
+                "attrs": { "language": ENCRYPTED_TEXT_LANGUAGE },
+                "content": [{ "type": "text", "text": ciphertext(document).unwrap_or_default() }],
+            })
+        }
+        Value::Object(object) => Value::Object(
+            object
+                .iter()
+                .map(|(key, value)| (key.clone(), encrypted_text_as_code(value)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(encrypted_text_as_code).collect()),
+        other => other.clone(),
+    }
+}
 
 /// Metadati opzionali scritti nel front matter Markdown.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -164,6 +203,7 @@ fn block_to_plain(node: &Value) -> String {
     match node_type(node) {
         "paragraph" | "heading" => inline_to_plain(children(node)),
         "codeBlock" => inline_to_plain(children(node)),
+        "encryptedText" => ENCRYPTED_TEXT_PLACEHOLDER.to_owned(),
         "horizontalRule" => "----------".to_owned(),
         // Come il segnaposto degli allegati importati.
         "image" => {
@@ -354,6 +394,10 @@ fn block_to_markdown(node: &Value) -> String {
                 .unwrap_or("");
             format!("{fence}{language}\n{code}\n{fence}")
         }
+        "encryptedText" => format!(
+            "```{ENCRYPTED_TEXT_LANGUAGE}\n{}\n```",
+            ciphertext(node).unwrap_or_default()
+        ),
         "horizontalRule" => "---".to_owned(),
         "image" => {
             let alt = escape_markdown_text(&image_alt(node), false).replace(['[', ']'], "");
@@ -644,6 +688,10 @@ fn blocks_to_html(blocks: &[Value]) -> String {
             "codeBlock" => output.push_str(&format!(
                 "<pre><code>{}</code></pre>\n",
                 escape_html(&inline_to_plain(children(node)))
+            )),
+            "encryptedText" => output.push_str(&format!(
+                "<pre><code class=\"language-{ENCRYPTED_TEXT_LANGUAGE}\">{}</code></pre>\n",
+                escape_html(ciphertext(node).unwrap_or_default())
             )),
             "horizontalRule" => output.push_str("<hr>\n"),
             "image" => {
@@ -1084,6 +1132,22 @@ fn finish_frame(frame: Frame) -> Option<Value> {
                 } else {
                     last["text"] = Value::String(trimmed);
                 }
+            }
+            // Un blocco `age` con un testo cifrato valido (esportato
+            // dall'app o creato con `age -p -a`) torna un testo cifrato.
+            let language = attrs
+                .as_ref()
+                .and_then(|attrs| attrs.get("language"))
+                .and_then(Value::as_str);
+            if language == Some(ENCRYPTED_TEXT_LANGUAGE)
+                && let [text] = content.as_slice()
+                && let Some(text) = text.get("text").and_then(Value::as_str)
+                && is_armored_ciphertext(text.trim())
+            {
+                return Some(json!({
+                    "type": "encryptedText",
+                    "attrs": { "ciphertext": text.trim(), "hint": null },
+                }));
             }
         }
         "listItem" => {
@@ -1894,5 +1958,65 @@ let b = 2;</code></pre>
         assert!(is_utc_timestamp("2026-10-14T08:00:00.123Z"));
         assert!(!is_utc_timestamp("2026-10-14 08:00:00"));
         assert!(!is_utc_timestamp("2026-10-14T08:00:00.Z"));
+    }
+
+    #[test]
+    fn encrypted_text_is_validated_hidden_and_round_trips_through_exports() {
+        use crate::{domain::note::validate_document, secret_text};
+        let armored = secret_text::encrypt("PIN 4321", "password lunga").expect("encrypt");
+        let document = |attrs: Value| {
+            json!({"type": "doc", "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "Conto"}]},
+                {"type": "encryptedText", "attrs": attrs},
+            ]})
+        };
+        let valid = document(json!({"ciphertext": armored, "hint": "il solito"}));
+        validate_document(&valid).expect("valid encrypted text");
+        for invalid in [
+            json!({"hint": "senza testo cifrato"}),
+            json!({"ciphertext": "PIN 4321"}),
+            json!({"ciphertext": armored, "hint": "a\nb"}),
+            json!({"ciphertext": armored, "plaintext": "PIN 4321"}),
+        ] {
+            assert!(
+                validate_document(&document(invalid.clone())).is_err(),
+                "{invalid}"
+            );
+        }
+        let with_content = json!({"type": "doc", "content": [{"type": "encryptedText",
+            "attrs": {"ciphertext": armored}, "content": [{"type": "text", "text": "PIN"}]}]});
+        assert!(validate_document(&with_content).is_err());
+
+        // Ricerca, AI e anteprime vedono solo il segnaposto.
+        assert_eq!(to_plain_text(&valid), "Conto\n\n🔒");
+        // Il testo semplice esportato conserva il testo cifrato.
+        assert!(to_plain_text(&encrypted_text_as_code(&valid)).contains(&armored));
+
+        let markdown = to_markdown("Banca", &valid, &FrontMatter::default());
+        assert!(markdown.contains(&format!("```age\n{armored}\n```")));
+        assert!(!markdown.contains("4321"));
+        let imported = markdown_to_document(&markdown).document;
+        validate_document(&imported).expect("valid import");
+        assert_eq!(imported["content"][1]["type"], "encryptedText");
+        assert_eq!(imported["content"][1]["attrs"]["ciphertext"], armored);
+
+        let html = to_html("Banca", &valid, "it");
+        assert!(!html.contains("4321"));
+        let imported = html_to_document(&html).document;
+        validate_document(&imported).expect("valid import");
+        let found = imported["content"]
+            .as_array()
+            .expect("content")
+            .iter()
+            .any(|node| node["type"] == "encryptedText" && node["attrs"]["ciphertext"] == armored);
+        assert!(found, "{imported}");
+        assert_eq!(
+            secret_text::decrypt(&armored, "password lunga").expect("decrypt"),
+            "PIN 4321"
+        );
+
+        // Un blocco `age` che non contiene un testo cifrato resta codice.
+        let plain = markdown_to_document("```age\nnon cifrato\n```").document;
+        assert_eq!(plain["content"][0]["type"], "codeBlock");
     }
 }

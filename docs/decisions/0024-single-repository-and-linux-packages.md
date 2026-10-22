@@ -63,3 +63,15 @@ copia del primo allo stato "fase 7". In due giorni si erano già prodotti:
 - Ogni correzione si fa una volta. La CI controlla già Linux e Windows.
 - Il vecchio repository `tihcio/Greatnote` va archiviato o rinominato:
   serve anche a liberare il nome `greatnote`.
+
+## Aggiornamento: centri software (2026-10-22)
+
+- KDE Discover mostra un pacchetto locale con il nome del file fino al
+  primo punto (`QFileInfo::baseName()`) e senza icona: i pacchetti delle
+  release si chiamano `Greatnote.x86_64.rpm`, `Greatnote.amd64.deb` e
+  `Greatnote.x86_64.AppImage`. La versione resta nei metadati del pacchetto.
+- `.deb` e `.rpm` installano i metadati AppStream
+  (`/usr/share/metainfo/dev.greatnote.notes.metainfo.xml`, validati con
+  `appstreamcli`) e le icone a 32, 128 e 512 px: dopo l'installazione
+  Discover e GNOME Software mostrano l'app con icona, descrizione e
+  versione. Un test controlla che la versione dell'app sia in `<releases>`.

@@ -5,19 +5,40 @@
     "beforeBuildCommand": "npm run build && bash scripts/fetch-llama.sh"
   },
   "bundle": {
-    "targets": ["deb", "rpm", "appimage"],
+    "targets": [
+      "deb",
+      "rpm",
+      "appimage"
+    ],
     "resources": {
       "resources/llama/*": "llama/"
     },
     "linux": {
       "deb": {
         "desktopTemplate": "linux/greatnote.desktop",
-        "depends": ["libvulkan1", "libssl3"]
+        "depends": [
+          "libvulkan1",
+          "libssl3"
+        ],
+        "files": {
+          "/usr/share/metainfo/dev.greatnote.notes.metainfo.xml": "linux/dev.greatnote.notes.metainfo.xml"
+        }
       },
       "rpm": {
         "desktopTemplate": "linux/greatnote.desktop",
-        "depends": ["vulkan-loader", "openssl-libs"]
+        "depends": [
+          "vulkan-loader",
+          "openssl-libs"
+        ],
+        "files": {
+          "/usr/share/metainfo/dev.greatnote.notes.metainfo.xml": "linux/dev.greatnote.notes.metainfo.xml"
+        }
       }
-    }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.png"
+    ]
   }
 }

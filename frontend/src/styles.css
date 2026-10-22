@@ -6415,3 +6415,52 @@ p {
   font-size: 13px;
   font-weight: 600;
 }
+
+/* Testo cifrato nella nota */
+
+.note-editor .note-secret {
+  margin: 10px 0;
+}
+
+.note-editor .note-secret-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 8px 14px;
+  border: 1px dashed var(--soft-ink);
+  border-radius: 8px;
+  background: var(--hover);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.note-editor .note-secret-button:hover {
+  border-color: var(--accent);
+}
+
+.note-editor .note-secret-button:focus-visible,
+.note-editor .note-secret.ProseMirror-selectednode .note-secret-button {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.note-editor .note-secret-label {
+  font-weight: 600;
+}
+
+.note-editor .note-secret-hint {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.secret-dialog textarea {
+  width: 100%;
+  min-height: 7em;
+  resize: vertical;
+  font-family: inherit;
+}

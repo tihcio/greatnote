@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Metadati AppStream: Discover e GNOME Software mostrano Greatnote con
+     nome, icona e descrizione tra le applicazioni installate. A ogni
+     rilascio aggiungere la versione in <releases> (ADR 0024). -->
+<component type="desktop-application">
+  <id>dev.greatnote.notes</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>Greatnote</name>
+  <summary>Notes, tasks and calendar on your computer</summary>
+  <summary xml:lang="it">Note, attività e calendario sul tuo computer</summary>
+  <developer id="dev.greatnote">
+    <name>Tiziano Angeli</name>
+  </developer>
+  <description>
+    <p>Greatnote keeps notes, notebooks, tags, tasks, reminders and a calendar on your computer. It works offline and without an account.</p>
+    <p xml:lang="it">Greatnote conserva note, taccuini, tag, attività, promemoria e calendario sul tuo computer. Funziona offline e senza account.</p>
+    <ul>
+      <li>Rich text notes with images, attachments, tables, checklists and password-protected text</li>
+      <li xml:lang="it">Note con testo formattato, immagini, allegati, tabelle, checklist e testo protetto da password</li>
+      <li>Full-text search with filters</li>
+      <li xml:lang="it">Ricerca nel testo con filtri</li>
+      <li>Optional AI assistant with a built-in local engine</li>
+      <li xml:lang="it">Assistente AI facoltativo con un motore locale integrato</li>
+      <li>Optional sync through a shared folder or Dropbox, backups and open export formats</li>
+      <li xml:lang="it">Sincronizzazione facoltativa con una cartella condivisa o Dropbox, backup ed esportazione in formati aperti</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">Greatnote.desktop</launchable>
+  <icon type="stock">greatnote-desktop</icon>
+  <categories>
+    <category>Office</category>
+  </categories>
+  <keywords>
+    <keyword>notes</keyword>
+    <keyword>tasks</keyword>
+    <keyword>calendar</keyword>
+    <keyword xml:lang="it">note</keyword>
+    <keyword xml:lang="it">attività</keyword>
+    <keyword xml:lang="it">calendario</keyword>
+  </keywords>
+  <url type="homepage">https://github.com/tihcio/greatnote</url>
+  <url type="bugtracker">https://github.com/tihcio/greatnote/issues</url>
+  <provides>
+    <binary>greatnote-desktop</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.2" date="2026-10-22"/>
+    <release version="0.1.1" date="2026-10-22"/>
+    <release version="0.1.0" date="2026-10-21"/>
+  </releases>
+</component>

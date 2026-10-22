@@ -1,3 +1,4 @@
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n";
@@ -13,6 +14,8 @@ interface HomeViewProps {
   onCreateTask: () => void;
   onCreateEvent: () => void;
   onOpenNote: (note: Note) => void;
+  /** Menu contestuale di una nota (apri, nuova scheda, nuova finestra). */
+  onNoteMenu?: (event: ReactMouseEvent, note: Note) => void;
   onOpenTasks: () => void;
   onOpenCalendar: () => void;
   onOpenReminders: () => void;
@@ -98,7 +101,12 @@ export default function HomeView(props: HomeViewProps) {
             <ul className="home-note-grid">
               {recent.map((note) => (
                 <li key={note.id}>
-                  <button className="home-note" onClick={() => props.onOpenNote(note)} type="button">
+                  <button
+                    className="home-note"
+                    onClick={() => props.onOpenNote(note)}
+                    onContextMenu={(event) => props.onNoteMenu?.(event, note)}
+                    type="button"
+                  >
                     <strong>{note.title || t.untitled}</strong>
                     <span>{plainPreview(note) || "—"}</span>
                     <small>{formatDate(note.updated_at)}</small>
@@ -122,7 +130,12 @@ export default function HomeView(props: HomeViewProps) {
             <ul className="home-list">
               {shortcuts.map((note) => (
                 <li key={note.id}>
-                  <button className="text-button home-link" onClick={() => props.onOpenNote(note)} type="button">
+                  <button
+                    className="text-button home-link"
+                    onClick={() => props.onOpenNote(note)}
+                    onContextMenu={(event) => props.onNoteMenu?.(event, note)}
+                    type="button"
+                  >
                     ★ {note.title || t.untitled}
                   </button>
                 </li>

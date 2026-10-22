@@ -50,8 +50,34 @@ una nota aperta) sono disattivate. **Aiuto › Scorciatoie da tastiera**
   scheda (`Ctrl+W`), riduci a icona (`Ctrl+M`).
 - **Strumenti:** impostazioni (`Ctrl+,`), dati e backup, controllo
   d'integrità.
-- **Menu contestuale:** tasto destro (o `Shift+F10`) su una nota
-  nell'elenco, oppure il pulsante **⋯** sopra la nota.
+- **Menu contestuale:** tasto destro (o il tasto Menu / `Shift+F10`)
+  quasi ovunque, con le azioni utili per quell'elemento:
+  - **barra laterale:** **Apri** e **Apri in una nuova scheda** su ogni
+    voce; sul **Cestino** anche **Svuota cestino**; su Attività e
+    Calendario **Nuova attività** e **Nuovo evento**; su spazi, taccuini e
+    tag la creazione (per esempio **Nuova nota in questo taccuino** o **Nuova
+    nota con questo tag**), **Rinomina** ed **Elimina**; sulle intestazioni
+    (Spazi, Taccuini, Tag) la creazione e **Comprimi**/**Espandi**; sulle
+    note recenti anche **Apri in una nuova finestra**;
+  - **elenco delle note:** le azioni sulla nota (anche dal pulsante **⋯**
+    sopra la nota); nello spazio vuoto **Nuova nota** e il cambio tra
+    elenco e schede, nel Cestino **Svuota cestino**;
+  - **schede:** nuova, duplica, chiudi, chiudi le altre, chiudi quelle a
+    destra;
+  - **testo della nota:** annulla e ripeti, taglia, copia, incolla (anche
+    senza formattazione), seleziona tutto; su un collegamento **Apri
+    collegamento** (nel browser, solo `http`, `https` e `mailto`), copia,
+    modifica e rimuovi; con del testo selezionato **Formato**; dentro una
+    tabella righe e colonne; **Testo cifrato**, le funzioni AI e **Trova e
+    sostituisci**;
+  - **campi di testo** (ricerca, titoli, dialog): taglia, copia, incolla,
+    elimina, seleziona tutto;
+  - **attività, promemoria, eventi del calendario, giorni del calendario,
+    file, modelli, allegati, collegamenti tra note, tag della nota e
+    elementi del cestino:** apri o modifica, le azioni rapide (completa,
+    rinvia, ripristina…) ed elimina.
+
+  Il menu del browser integrato («Ricarica», «Indietro»…) non compare più.
 
 **Barra laterale:** Home (note recenti, scorciatoie, attività di oggi,
 prossimi eventi, promemoria da gestire), Scorciatoie, Tutte le note,
@@ -332,6 +358,43 @@ Claude Code, che riceve l'immagine) oppure Tesseract installato sul computer
 (`sudo dnf install tesseract tesseract-langpack-ita`, nessun invio). Puoi
 leggere automaticamente le immagini appena allegate o tutte quelle già
 presenti.
+
+## Testo cifrato con password
+
+Per proteggere solo una parte di una nota (un PIN, una combinazione, dei
+dati di accesso) usa **Testo cifrato**: dal menu `/`, da **＋ Inserisci**,
+oppure seleziona il testo e scegli **Modifica › Cifra il testo
+selezionato…** (`Ctrl+Shift+X`).
+
+Nel dialog scrivi (o controlla) il testo, scegli una password di almeno 8
+caratteri, ripetila e, se vuoi, aggiungi un suggerimento per ricordarla.
+Il suggerimento è visibile a chiunque apra la nota. Nella nota resta un
+riquadro con il lucchetto.
+
+Per leggere il testo fai clic sul riquadro e inserisci la password. Nel
+dialog puoi:
+
+- **Copia**: copia il testo negli appunti (attenzione: alcuni gestori degli
+  appunti ne conservano la cronologia);
+- modificarlo e **Salva modifiche**: viene cifrato di nuovo con la stessa
+  password;
+- **Rimuovi cifratura**: il testo torna normale nella nota.
+
+Chiudendo il dialog il testo torna nascosto. La password non viene salvata
+da nessuna parte: **se la dimentichi, il testo non è recuperabile**.
+
+**Testo già scritto nella nota.** Se cifri un testo che era già nella nota,
+le versioni precedenti (Nota › Cronologia) lo contengono ancora in chiaro.
+Il dialog propone di eliminarle, ed è l'opzione predefinita. I backup e,
+con la sincronizzazione attiva, la cronologia nella cartella condivisa
+possono comunque conservarlo. Per un segreto nuovo scrivilo direttamente nel
+dialog: così non passa mai dalla nota in chiaro.
+
+Il testo cifrato non compare nella ricerca e non viene mai inviato
+all'assistente AI. Esportando in Markdown, HTML o testo resta cifrato (un
+blocco `age`) e reimportando il Markdown o l'HTML torna un testo cifrato. Il
+formato è quello aperto di [age](https://age-encryption.org): il blocco si
+può decifrare anche senza Greatnote, con `age -d` e la stessa password.
 
 ## Assistente AI (facoltativo)
 

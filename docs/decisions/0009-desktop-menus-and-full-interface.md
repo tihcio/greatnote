@@ -21,8 +21,9 @@ configurati (account, cloud, AI).
   menu contestuali ed elenco delle scorciatoie.
 - Un unico modello (`frontend/src/app/buildMenus.ts`) definisce File,
   Modifica, Visualizza, Nota, Finestra, Strumenti e Aiuto. Da esso derivano
-  la barra, il menu contestuale delle note, il gestore delle scorciatoie
-  (`findAction`) e il dialog "Scorciatoie da tastiera": un'azione non può
+  la barra, il menu contestuale delle note (poi esteso a tutta l'app con
+  `openContextMenu` e `ContextMenuHost`, che blocca il menu della
+  webview), il gestore delle scorciatoie (`findAction`) e il dialog "Scorciatoie da tastiera": un'azione non può
   esistere in un posto e mancare nell'altro.
 - Le scorciatoie native di modifica (annulla, copia, incolla, seleziona
   tutto, Canc) sono solo mostrate: le gestisce il campo attivo. Le

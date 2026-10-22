@@ -388,6 +388,18 @@ impl Database {
         Ok(revisions)
     }
 
+    /// Elimina tutte le revisioni di una nota (per esempio dopo averne
+    /// cifrato una parte, che le revisioni conservano in chiaro). Con
+    /// `secure_delete` SQLite sovrascrive anche le pagine liberate.
+    pub fn delete_note_revisions(&self, note_id: &str) -> Result<usize, StorageError> {
+        let connection = self.connection()?;
+        connection.pragma_update(None, "secure_delete", true)?;
+        let deleted =
+            connection.execute("DELETE FROM note_revisions WHERE note_id = ?1", [note_id]);
+        connection.pragma_update(None, "secure_delete", false)?;
+        Ok(deleted?)
+    }
+
     pub fn get_note_revision(&self, revision_id: &str) -> Result<NoteRevisionDetail, StorageError> {
         let connection = self.connection()?;
         let (id, note_id, title, content_json, created_at): (
@@ -989,6 +1001,35 @@ mod tests {
             database.restore_note_revision("missing"),
             Err(StorageError::RevisionNotFound)
         ));
+    }
+
+    #[test]
+    fn revisions_of_one_note_can_be_deleted() {
+        let database = Database::in_memory().expect("database");
+        let note = database
+            .create_note("Segreto", &document("PIN 1"))
+            .expect("note");
+        let other = database.create_note("Altra", &document("a")).expect("note");
+        for (id, text) in [(&note.id, "PIN 2"), (&other.id, "b")] {
+            age(&database, id);
+            database
+                .update_note(id, "x", &document(text))
+                .expect("save");
+        }
+        assert_eq!(database.delete_note_revisions(&note.id).expect("delete"), 1);
+        assert!(
+            database
+                .list_note_revisions(&note.id)
+                .expect("revisions")
+                .is_empty()
+        );
+        assert_eq!(
+            database
+                .list_note_revisions(&other.id)
+                .expect("revisions")
+                .len(),
+            1
+        );
     }
 
     #[test]

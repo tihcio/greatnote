@@ -28,8 +28,8 @@ use crate::{
         read_zip_entry, zip_options,
     },
     content::{
-        FrontMatter, html_to_document, is_utc_timestamp, markdown_to_document, text_to_document,
-        to_html, to_markdown, to_plain_text,
+        FrontMatter, encrypted_text_as_code, html_to_document, is_utc_timestamp,
+        markdown_to_document, text_to_document, to_html, to_markdown, to_plain_text,
     },
     domain::{
         note::{Note, validate_document},
@@ -406,7 +406,8 @@ impl Database {
                 to_html(&data.note.title, &data.note.content, language),
             ),
             ExportFormat::Text => {
-                let body = to_plain_text(&data.note.content);
+                // Il testo cifrato resta nel file (cifrato), non solo il segnaposto.
+                let body = to_plain_text(&encrypted_text_as_code(&data.note.content));
                 ("txt", format!("{}\n\n{body}\n", data.note.title))
             }
         };

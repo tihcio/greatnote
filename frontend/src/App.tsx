@@ -43,18 +43,20 @@ import { updatesApi, useUpdateStatus } from "./features/updates/updatesApi";
 import TasksView from "./features/TasksView";
 import { buildMenus, noteItems } from "./app/buildMenus";
 import type { ExportKind, MenuContext } from "./app/buildMenus";
-import { findAction } from "./app/menu";
+import { findAction, separator } from "./app/menu";
 import type { MenuEntry } from "./app/menu";
+import { openContextMenu } from "./lib/contextMenu";
 import { LIST_WIDTH, MIN_EDITOR_WIDTH, SIDEBAR_WIDTH, nextZoom, usePreferences } from "./app/preferences";
 import type { NoteLayout, SidebarSection } from "./app/preferences";
 import { blockCommands } from "./editor/commands";
 import type { BlockCommand } from "./editor/commands";
 import EditorToolbar from "./editor/EditorToolbar";
+import { openEditorContextMenu } from "./editor/editorContextMenu";
 import { editorExtensions } from "./editor/extensions";
 import FindReplaceBar from "./editor/FindReplaceBar";
 import { sanitizeDocument } from "./editor/sanitize";
 import SlashMenu from "./editor/SlashMenu";
-import ContextMenu from "./features/ContextMenu";
+import ContextMenu, { ContextMenuHost } from "./features/ContextMenu";
 import type { ContextMenuState } from "./features/ContextMenu";
 import FilesView from "./features/FilesView";
 import { AboutDialog, ShortcutsDialog } from "./features/HelpDialogs";
@@ -71,6 +73,7 @@ import SettingsDialog from "./features/SettingsDialog";
 import { SYNC_FINISHED_EVENT } from "./features/SyncSection";
 import type { SyncView } from "./features/SyncSection";
 import TagBar from "./features/TagBar";
+import EncryptedTextHost from "./features/EncryptedTextDialog";
 import ImageAnnotationHost from "./features/ImageAnnotator";
 import Icon from "./components/Icon";
 import ColumnResizer from "./components/ColumnResizer";
@@ -700,7 +703,9 @@ export default function App() {
     [drafts, flushDraft, selectedView],
   );
 
-  const createNote = useCallback(async () => {
+  /** Nuova nota nella vista attuale, oppure nel taccuino o con il tag indicati
+   * (menu contestuali della barra laterale). */
+  const createNote = useCallback(async (target?: { notebookId?: string; tag?: Tag }) => {
     if (isCreating) {
       return;
     }
@@ -710,7 +715,7 @@ export default function App() {
     }
     setIsCreating(true);
     try {
-      const notebookId = selectedView.kind === "notebook" ? selectedView.id : null;
+      const notebookId = target?.notebookId ?? (selectedView.kind === "notebook" ? selectedView.id : null);
       const note = await invoke<Note>("create_note", {
         title: t.untitled,
         content: EMPTY_DOCUMENT,
@@ -726,10 +731,16 @@ export default function App() {
       dirtyRef.current = false;
       setActiveNote(note);
       setNoteTags([]);
+      if (target?.tag) {
+        await invoke("set_note_tags", { noteId: note.id, tagIds: [target.tag.id] });
+        setNoteTags([target.tag]);
+      }
       setTitle(note.title);
       setSearch("");
       setWorkspace("notes");
-      if (selectedView.kind !== "notebook") {
+      if (target?.notebookId) {
+        setSelectedView({ kind: "notebook", id: target.notebookId });
+      } else if (selectedView.kind !== "notebook") {
         setSelectedView({ kind: "all" });
       }
       setError(null);
@@ -1605,6 +1616,42 @@ export default function App() {
     await goTo(next.history[next.index]);
   };
 
+  /** Tiene solo alcune schede (menu contestuale: chiudi le altre o quelle a
+   * destra); se la scheda attiva viene chiusa si passa a `keepId`. */
+  const keepTabs = async (keepId: string, keep: (tab: TabState, index: number) => boolean) => {
+    const remaining = tabs.filter(keep);
+    if (remaining.length === tabs.length) return;
+    if (!remaining.some((tab) => tab.id === activeTabId)) {
+      const target = remaining.find((tab) => tab.id === keepId);
+      if (!target || !(await flushDraft(activeNoteRef.current))) return;
+      setActiveTabId(target.id);
+      await goTo(target.history[target.index]);
+    }
+    setTabs(remaining);
+  };
+
+  const tabMenu = (event: ReactMouseEvent, tab: TabState, label: string) => {
+    const index = tabs.findIndex((item) => item.id === tab.id);
+    openContextMenu(event, label, [
+      { id: "ctx-tab-new", label: t.menuNewTab, accelerator: "Alt+Shift+T", run: () => void openTab() },
+      { id: "ctx-tab-duplicate", label: t.duplicateTab, run: () => void openTab(tab.history[tab.index]) },
+      separator,
+      { id: "ctx-tab-close", label: t.menuCloseTab, enabled: tabs.length > 1, run: () => void closeTab(tab.id) },
+      {
+        id: "ctx-tab-close-others",
+        label: t.closeOtherTabs,
+        enabled: tabs.length > 1,
+        run: () => void keepTabs(tab.id, (item) => item.id === tab.id),
+      },
+      {
+        id: "ctx-tab-close-right",
+        label: t.closeTabsToRight,
+        enabled: index < tabs.length - 1,
+        run: () => void keepTabs(tab.id, (_, position) => position <= index),
+      },
+    ]);
+  };
+
   // Vista iniziale scelta nelle impostazioni (una sola volta, all'avvio).
   useEffect(() => {
     if (!preferencesLoaded || startViewAppliedRef.current || !isDesktop) return;
@@ -2042,14 +2089,20 @@ export default function App() {
     const size = editor.state.doc.content.size;
     const from = Math.min(aiRangeRef.current.from, size);
     const to = Math.min(aiRangeRef.current.to, size);
-    if (mode === "replace") {
+    // L'AI non vede i testi cifrati: sostituirli li cancellerebbe.
+    let hasSecret = false;
+    editor.state.doc.nodesBetween(from, to, (node) => {
+      if (node.type.name === "encryptedText") hasSecret = true;
+      return !hasSecret;
+    });
+    if (mode === "replace" && !hasSecret) {
       editor.chain().focus().insertContentAt({ from, to }, content).run();
     } else {
       // Dopo il blocco che contiene la fine della selezione.
       const end = editor.state.doc.resolve(to);
       editor.chain().focus().insertContentAt(end.depth >= 1 ? end.after(1) : to, content).run();
     }
-    setNotice(t.aiApplied);
+    setNotice(mode === "replace" && hasSecret ? t.aiInsertedKeepingSecret : t.aiApplied);
   };
 
   const askAiAboutNote = async () => {
@@ -2247,6 +2300,19 @@ export default function App() {
           aria-current={selected ? "page" : undefined}
           className={`navigation-item organization-select${selected ? " selected" : ""}`}
           onClick={() => void changeView({ kind: "notebook", id: notebook.id })}
+          onContextMenu={(event) =>
+            sidebarMenu(
+              event,
+              noteViewLocation({ kind: "notebook", id: notebook.id }, notebook.name),
+              () => void changeView({ kind: "notebook", id: notebook.id }),
+              [
+                { id: "ctx-new-note", label: t.newNoteInNotebook, run: () => void createNote({ notebookId: notebook.id }) },
+                separator,
+                { id: "ctx-edit", label: t.editItem, run: () => void editNotebook(notebook) },
+                { id: "ctx-delete", label: t.deleteItem, destructive: true, run: () => void deleteNotebook(notebook) },
+              ],
+            )
+          }
           type="button"
         >
           <span className="navigation-icon" aria-hidden="true"><Icon name="notebook" size={17} /></span>
@@ -2283,11 +2349,64 @@ export default function App() {
         : [...preferences.collapsedSidebarSections, section],
     });
   };
-  const sidebarSectionHeader = (section: SidebarSection, label: string, action?: ReactNode) => {
+  /** Apre una nota (non necessariamente quella attiva) in una finestra. */
+  const openNoteIdInWindow = async (note: Note) => {
+    try {
+      if (activeNoteRef.current?.id === note.id) {
+        if (!(await flushDraft(note))) return;
+        clearActiveNote();
+      }
+      await invoke("open_note_window", { noteId: note.id, title: note.title || t.untitled });
+      setNotice(t.noteOpenedInWindow);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
+  /** Menu contestuale di una voce della barra laterale: Apri, Apri in una
+   * nuova scheda e le azioni proprie della voce. */
+  const sidebarMenu = (
+    event: ReactMouseEvent,
+    location: Location,
+    open: () => void,
+    extra: MenuEntry[] = [],
+  ) =>
+    openContextMenu(event, location.label, [
+      { id: "ctx-open", label: t.actionOpen, run: open },
+      { id: "ctx-open-tab", label: t.menuOpenInNewTab, run: () => void openTab(location) },
+      separator,
+      ...extra,
+    ]);
+
+  const noteViewLocation = (view: NoteView, label: string): Location => ({
+    workspace: "notes",
+    view,
+    noteId: null,
+    label,
+  });
+
+  const sidebarSectionHeader = (
+    section: SidebarSection,
+    label: string,
+    action?: ReactNode,
+    create?: { label: string; run: () => void },
+  ) => {
     const collapsed = isSidebarSectionCollapsed(section);
     const contentId = `sidebar-section-${section}`;
     return (
-      <div className="sidebar-section-heading">
+      <div
+        className="sidebar-section-heading"
+        onContextMenu={(event) =>
+          openContextMenu(event, label, [
+            ...(create ? [{ id: "ctx-section-new", label: create.label, run: create.run }, separator] : []),
+            {
+              id: "ctx-section-toggle",
+              label: collapsed ? t.expandSidebarSection(label) : t.collapseSidebarSection(label),
+              run: () => toggleSidebarSection(section),
+            },
+          ])
+        }
+      >
         <button
           aria-controls={contentId}
           aria-expanded={!collapsed}
@@ -2345,7 +2464,11 @@ export default function App() {
             const label = tab.history[tab.index]?.label || t.homeNav;
             const selected = tab.id === activeTabId;
             return (
-              <div className={`tab${selected ? " selected" : ""}`} key={tab.id}>
+              <div
+                className={`tab${selected ? " selected" : ""}`}
+                key={tab.id}
+                onContextMenu={(event) => tabMenu(event, tab, label)}
+              >
                 <button
                   aria-selected={selected}
                   className="tab-label"
@@ -2461,6 +2584,20 @@ export default function App() {
                 className={`navigation-item${workspace === target ? " selected" : ""}`}
                 key={target}
                 onClick={() => void openWorkspace(target)}
+                onContextMenu={(event) =>
+                  sidebarMenu(
+                    event,
+                    { workspace: target, view: { kind: "all" }, noteId: null, label },
+                    () => void openWorkspace(target),
+                    target === "tasks"
+                      ? [{ id: "ctx-new-task", label: t.newTaskAction, run: () => void startNewTask() }]
+                      : target === "calendar"
+                        ? [{ id: "ctx-new-event", label: t.newEvent, run: () => void startNewEvent() }]
+                        : target === "home"
+                          ? [{ id: "ctx-new-note", label: t.newNote, accelerator: "Ctrl+N", run: () => void createNote() }]
+                          : [],
+                  )
+                }
                 title={label}
                 type="button"
               >
@@ -2479,6 +2616,26 @@ export default function App() {
                   className={`navigation-item${selected ? " selected" : ""}`}
                   key={view.kind}
                   onClick={() => void changeView(view)}
+                  onContextMenu={(event) =>
+                    sidebarMenu(
+                      event,
+                      noteViewLocation(view, label),
+                      () => void changeView(view),
+                      view.kind === "trash"
+                        ? [
+                            {
+                              id: "ctx-empty-trash",
+                              label: t.emptyTrashAction,
+                              destructive: true,
+                              enabled: (sidebarCounts?.trash ?? trashItems.length) > 0,
+                              run: () => void emptyTrash(),
+                            },
+                          ]
+                        : view.kind === "archived"
+                          ? []
+                          : [{ id: "ctx-new-note", label: t.newNote, accelerator: "Ctrl+N", run: () => void createNote() }],
+                    )
+                  }
                   title={label}
                   type="button"
                 >
@@ -2572,6 +2729,14 @@ export default function App() {
                   className={`navigation-item organization-select recent-note${activeNote?.id === note.id ? " selected" : ""}`}
                   key={note.id}
                   onClick={() => void openNoteById(note.id)}
+                  onContextMenu={(event) =>
+                    sidebarMenu(
+                      event,
+                      { workspace: "notes", view: { kind: "recent" }, noteId: note.id, label: note.title || t.untitled },
+                      () => void openNoteById(note.id),
+                      [{ id: "ctx-open-window", label: t.menuOpenInNewWindow, run: () => void openNoteIdInWindow(note) }],
+                    )
+                  }
                   title={note.title || t.untitled}
                   type="button"
                 >
@@ -2596,7 +2761,7 @@ export default function App() {
             >
               +
             </button>
-          ))}
+          ), { label: t.addSpace, run: () => void createSpace() })}
           <div className="sidebar-section-content" hidden={isSidebarSectionCollapsed("spaces")} id="sidebar-section-spaces">
           {spaces.map((space) => (
             <div key={space.id}>
@@ -2605,6 +2770,19 @@ export default function App() {
                   aria-current={workspace === "notes" && selectedView.kind === "space" && selectedView.id === space.id ? "page" : undefined}
                   className={`navigation-item organization-select${workspace === "notes" && selectedView.kind === "space" && selectedView.id === space.id ? " selected" : ""}`}
                   onClick={() => void changeView({ kind: "space", id: space.id })}
+                  onContextMenu={(event) =>
+                    sidebarMenu(
+                      event,
+                      noteViewLocation({ kind: "space", id: space.id }, space.name),
+                      () => void changeView({ kind: "space", id: space.id }),
+                      [
+                        { id: "ctx-new-notebook", label: t.addNotebook, run: () => void createNotebook(space.id) },
+                        separator,
+                        { id: "ctx-edit", label: t.editItem, run: () => void editSpace(space) },
+                        { id: "ctx-delete", label: t.deleteItem, destructive: true, run: () => void deleteSpace(space) },
+                      ],
+                    )
+                  }
                   type="button"
                 >
                   <span className="navigation-icon" aria-hidden="true"><Icon name="space" size={17} /></span>
@@ -2654,7 +2832,7 @@ export default function App() {
             >
               +
             </button>
-          ))}
+          ), { label: t.addNotebook, run: () => void createNotebook() })}
           <div className="sidebar-section-content" hidden={isSidebarSectionCollapsed("notebooks")} id="sidebar-section-notebooks">
           {notebooks
             .filter((notebook) => preferences.showNotebooksInSpaces || !notebook.space_id)
@@ -2663,6 +2841,9 @@ export default function App() {
             aria-current={workspace === "notes" && selectedView.kind === "unfiled" ? "page" : undefined}
             className={`navigation-item organization-select${workspace === "notes" && selectedView.kind === "unfiled" ? " selected" : ""}`}
             onClick={() => void changeView({ kind: "unfiled" })}
+            onContextMenu={(event) =>
+              sidebarMenu(event, noteViewLocation({ kind: "unfiled" }, t.uncategorized), () => void changeView({ kind: "unfiled" }))
+            }
             type="button"
           >
             <span className="navigation-icon" aria-hidden="true"><Icon name="inbox" size={17} /></span>
@@ -2683,7 +2864,7 @@ export default function App() {
             >
               +
             </button>
-          ))}
+          ), { label: t.addTag, run: () => void createTag() })}
           <div className="sidebar-section-content" hidden={isSidebarSectionCollapsed("tags")} id="sidebar-section-tags">
           {tags.map((tag) => (
             <div className="organization-entry" key={tag.id}>
@@ -2691,6 +2872,19 @@ export default function App() {
                 aria-current={workspace === "notes" && selectedView.kind === "tag" && selectedView.id === tag.id ? "page" : undefined}
                 className={`navigation-item organization-select${workspace === "notes" && selectedView.kind === "tag" && selectedView.id === tag.id ? " selected" : ""}`}
                 onClick={() => void changeView({ kind: "tag", id: tag.id })}
+                onContextMenu={(event) =>
+                  sidebarMenu(
+                    event,
+                    noteViewLocation({ kind: "tag", id: tag.id }, tag.name),
+                    () => void changeView({ kind: "tag", id: tag.id }),
+                    [
+                      { id: "ctx-new-note", label: t.newNoteWithTag, run: () => void createNote({ tag }) },
+                      separator,
+                      { id: "ctx-edit", label: t.editItem, run: () => void editTag(tag) },
+                      { id: "ctx-delete", label: t.deleteItem, destructive: true, run: () => void deleteTag(tag) },
+                    ],
+                  )
+                }
                 type="button"
               >
                 <span className="navigation-icon" aria-hidden="true"><Icon name="tag" size={17} /></span>
@@ -2758,6 +2952,14 @@ export default function App() {
           onCreateNote={() => void createNote()}
           onCreateTask={() => void startNewTask()}
           onOpenCalendar={() => void openWorkspace("calendar")}
+          onNoteMenu={(event, note) =>
+            sidebarMenu(
+              event,
+              { workspace: "notes", view: { kind: "recent" }, noteId: note.id, label: note.title || t.untitled },
+              () => void openNoteById(note.id),
+              [{ id: "ctx-open-window", label: t.menuOpenInNewWindow, run: () => void openNoteIdInWindow(note) }],
+            )
+          }
           onOpenNote={(note) => void openNoteById(note.id)}
           onOpenReminders={() => void openWorkspace("reminders")}
           onOpenShortcuts={() => void changeView({ kind: "pinned" })}
@@ -2887,7 +3089,37 @@ export default function App() {
           </div>
         </div>
 
-        <div className="notes-scroll-area">
+        <div
+          className="notes-scroll-area"
+          onContextMenu={(event) => {
+            // Le voci dell'elenco hanno il proprio menu.
+            if (event.nativeEvent.defaultPrevented) return;
+            openContextMenu(
+              event,
+              viewTitle,
+              isTrashView
+                ? [
+                    {
+                      id: "ctx-empty-trash",
+                      label: t.emptyTrashAction,
+                      destructive: true,
+                      enabled: filteredNotes.length > 0 || trashItems.length > 0,
+                      run: () => void emptyTrash(),
+                    },
+                  ]
+                : [
+                    { id: "ctx-new-note", label: t.newNote, accelerator: "Ctrl+N", run: () => void createNote() },
+                    separator,
+                    {
+                      id: "ctx-list-mode",
+                      label: preferences.noteListMode === "cards" ? t.listModeList : t.listModeCards,
+                      run: () =>
+                        updatePreferences({ noteListMode: preferences.noteListMode === "cards" ? "list" : "cards" }),
+                    },
+                  ],
+            );
+          }}
+        >
           {isTrashView && (
             <TrashItemsPanel items={trashItems} onChanged={() => void handleTrashItemsChanged()} />
           )}
@@ -3127,7 +3359,18 @@ export default function App() {
                 {isFindOpen && editor && (
                   <FindReplaceBar editor={editor} onClose={() => setIsFindOpen(false)} readOnly={isTrashView} />
                 )}
-                <EditorContent editor={editor} />
+                <EditorContent
+                  editor={editor}
+                  onContextMenu={(event) => {
+                    if (!editor) return;
+                    openEditorContextMenu(event, editor, {
+                      paste: (plain) => void pasteText(plain),
+                      findReplace: () => setIsFindOpen(true),
+                      aiItems: isDesktop && !isTrashView ? aiItems : undefined,
+                      onError: setError,
+                    });
+                  }}
+                />
                 {editor && <SlashMenu editor={editor} enabled={preferences.slashCommands && !isTrashView} />}
                 <div className="note-details-below">
                 {!isTrashView && (
@@ -3159,7 +3402,33 @@ export default function App() {
                       ) : (
                         <ul className="attachment-list">
                           {attachments.map((attachment) => (
-                            <li key={attachment.id}>
+                            <li
+                              key={attachment.id}
+                              onContextMenu={(event) => {
+                                const image = attachment.mime_type.startsWith("image/");
+                                openContextMenu(event, attachment.original_filename, [
+                                  { id: "ctx-open", label: t.openAttachment, run: () => void openAttachment(attachment) },
+                                  ...(image
+                                    ? [
+                                        { id: "ctx-insert", label: t.insertImageInText, run: () => insertImage(attachment) },
+                                        {
+                                          id: "ctx-ocr",
+                                          label: attachment.ocr_status === "done" ? t.imageTextReread : t.imageTextReadAction,
+                                          enabled: !readingImages.has(attachment.id),
+                                          run: () => void readImageText(attachment),
+                                        },
+                                      ]
+                                    : []),
+                                  separator,
+                                  {
+                                    id: "ctx-remove",
+                                    label: t.removeAttachment,
+                                    destructive: true,
+                                    run: () => void removeAttachment(attachment),
+                                  },
+                                ]);
+                              }}
+                            >
                               <button
                                 className="attachment-open-button"
                                 onClick={() => void openAttachment(attachment)}
@@ -3260,7 +3529,32 @@ export default function App() {
                       ) : (
                         <ul className="note-link-list">
                           {noteLinks.map((link) => (
-                            <li key={link.target_note_id}>
+                            <li
+                              key={link.target_note_id}
+                              onContextMenu={(event) =>
+                                openContextMenu(event, link.label || link.title, [
+                                  { id: "ctx-open", label: t.openLinkedNote, run: () => void openLinkedNote(link.target_note_id) },
+                                  {
+                                    id: "ctx-open-tab",
+                                    label: t.menuOpenInNewTab,
+                                    run: () =>
+                                      void openTab({
+                                        workspace: "notes",
+                                        view: selectedView,
+                                        noteId: link.target_note_id,
+                                        label: link.label || link.title,
+                                      }),
+                                  },
+                                  separator,
+                                  {
+                                    id: "ctx-remove",
+                                    label: t.removeNoteLink,
+                                    destructive: true,
+                                    run: () => void removeNoteLink(link.target_note_id),
+                                  },
+                                ])
+                              }
+                            >
                               <button
                                 className="note-link-open-button"
                                 onClick={() => void openLinkedNote(link.target_note_id)}
@@ -3315,6 +3609,7 @@ export default function App() {
                 disabled={isTrashView}
                 onChange={setActiveNoteTags}
                 onCreate={createTagNamed}
+                onOpen={(tag) => void changeView({ kind: "tag", id: tag.id })}
                 selected={noteTags}
                 tags={tags}
               />
@@ -3483,6 +3778,7 @@ export default function App() {
         />
       )}
       <ImageAnnotationHost />
+      <EncryptedTextHost flush={() => flushDraft(activeNoteRef.current)} noteId={activeNote?.id ?? null} />
       {isShortcutsOpen && <ShortcutsDialog menus={menus} onClose={() => setIsShortcutsOpen(false)} />}
       {isAboutOpen && <AboutDialog onClose={() => setIsAboutOpen(false)} />}
       {isNoteInfoOpen && activeNote && (
@@ -3532,6 +3828,7 @@ export default function App() {
       )}
       <PromptHost />
       <ConfirmHost />
+      <ContextMenuHost />
       {notice && (
         <div className="notice-toast" role="status">
           {notice}

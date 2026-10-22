@@ -7,6 +7,7 @@ import type { JSONContent } from "@tiptap/react";
 import { t } from "../i18n";
 import { usePreferences } from "../app/preferences";
 import EditorToolbar from "../editor/EditorToolbar";
+import { openEditorContextMenu } from "../editor/editorContextMenu";
 import { editorExtensions } from "../editor/extensions";
 import FindReplaceBar from "../editor/FindReplaceBar";
 import { sanitizeDocument } from "../editor/sanitize";
@@ -14,6 +15,8 @@ import SlashMenu from "../editor/SlashMenu";
 import { errorMessage } from "../lib/format";
 import type { Note, NoteDraft, SaveState } from "../types";
 import ConfirmHost from "./ConfirmHost";
+import { ContextMenuHost } from "./ContextMenu";
+import EncryptedTextHost from "./EncryptedTextDialog";
 import ImageAnnotationHost from "./ImageAnnotator";
 import PromptHost from "./PromptHost";
 
@@ -199,13 +202,20 @@ export default function NoteWindow({ noteId }: { noteId: string }) {
           {isFindOpen && editor && (
             <FindReplaceBar editor={editor} onClose={() => setIsFindOpen(false)} readOnly={false} />
           )}
-          <EditorContent editor={editor} />
+          <EditorContent
+            editor={editor}
+            onContextMenu={(event) => {
+              if (editor) openEditorContextMenu(event, editor, { findReplace: () => setIsFindOpen(true), onError: setError });
+            }}
+          />
           {editor && <SlashMenu editor={editor} enabled={preferences.slashCommands} />}
         </div>
       </div>
       <ImageAnnotationHost />
+      <EncryptedTextHost flush={flush} noteId={noteId} />
       <PromptHost />
       <ConfirmHost />
+      <ContextMenuHost />
     </div>
   );
 }

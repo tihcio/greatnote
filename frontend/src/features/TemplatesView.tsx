@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { language, t } from "../i18n";
+import { separator } from "../app/menu";
 import { askConfirmation } from "../lib/confirm";
+import { openContextMenu } from "../lib/contextMenu";
 import { errorMessage, formatDate } from "../lib/format";
 import { askText } from "../lib/prompt";
 import type { Template } from "../types";
@@ -76,7 +78,24 @@ export default function TemplatesView({ refreshKey, onUse, onChanged }: Template
   const builtin = templates.filter((template) => template.builtin);
   const own = templates.filter((template) => !template.builtin);
   const card = (template: Template) => (
-    <li className="template-card" key={template.id}>
+    <li
+      className="template-card"
+      key={template.id}
+      onContextMenu={(event) =>
+        openContextMenu(event, template.name, [
+          { id: "ctx-use", label: t.useTemplate, run: () => onUse(template) },
+          separator,
+          { id: "ctx-rename", label: t.renameTemplate, enabled: !template.builtin, run: () => void rename(template) },
+          {
+            id: "ctx-trash",
+            label: t.actionMoveToTrash,
+            destructive: true,
+            enabled: !template.builtin,
+            run: () => void trash(template),
+          },
+        ])
+      }
+    >
       <div className="template-body">
         <strong>{template.name}</strong>
         <p>{preview(template) || "—"}</p>

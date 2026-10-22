@@ -303,6 +303,53 @@ try {
     await expectVisible(".slash-menu");
     await page.keyboard.press("Escape");
   });
+  await step("testo-cifrato", async () => {
+    await page.click(".note-editor");
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("PIN 4321");
+    await keys("Shift", "Home");
+    await keys("Control", "Shift", "KeyX");
+    await pause(300);
+    const initial = await page.$eval(".secret-dialog textarea", (area) => area.value);
+    if (initial !== "PIN 4321") throw new Error(`testo selezionato non proposto: «${initial}»`);
+    await expectVisible(".secret-dialog .checkbox-field input:checked");
+    const fields = await page.$$(".secret-dialog input[type=password]");
+    await fields[0].type("password segreta");
+    await fields[1].type("password segreta");
+    await page.screenshot({ path: `${output}/testo-cifrato-crea.png` });
+    await page.click(".secret-dialog .dialog-submit-button");
+    await pause(500);
+    if (await page.$(".secret-dialog")) throw new Error("dialog di cifratura ancora aperto");
+    const text = await page.$eval(".note-editor", (editor) => editor.textContent ?? "");
+    if (text.includes("PIN 4321")) throw new Error("il testo in chiaro è rimasto nella nota");
+    await expectVisible(".note-editor .note-secret");
+    const log = await page.evaluate(() => window.__SMOKE_LOG__.join(" "));
+    // La nota con il testo cifrato viene salvata prima di eliminare la cronologia.
+    const saved = log.lastIndexOf("update_note");
+    const cleared = log.lastIndexOf("delete_note_revisions");
+    if (cleared < 0 || saved < 0 || saved > cleared) throw new Error("cronologia non eliminata dopo il salvataggio");
+
+    await page.click(".note-editor .note-secret-button");
+    await pause(300);
+    const password = await page.$(".secret-dialog input[type=password]");
+    await password.type("sbagliata");
+    await page.click(".secret-dialog .dialog-submit-button");
+    await pause(300);
+    const error = await page.$eval(".secret-dialog .dialog-error", (element) => element.textContent ?? "");
+    if (!error.includes("Password errata")) throw new Error(`errore inatteso: «${error}»`);
+    await password.click({ count: 3 });
+    await page.keyboard.press("Backspace");
+    await password.type("password segreta");
+    await page.click(".secret-dialog .dialog-submit-button");
+    await pause(300);
+    const revealed = await page.$eval(".secret-dialog textarea", (area) => area.value);
+    if (revealed !== "PIN 4321") throw new Error(`testo decifrato inatteso: «${revealed}»`);
+    await page.screenshot({ path: `${output}/testo-cifrato-aperto.png` });
+    await page.keyboard.press("Escape");
+    await pause(200);
+    if (await page.$(".secret-dialog")) throw new Error("dialog non chiuso con Esc");
+  });
   await step("trova-sostituisci", async () => {
     await keys("Control", "KeyH");
     await page.keyboard.type("giorno");
@@ -316,6 +363,60 @@ try {
     await page.mouse.click(box.x + 40, box.y + 20, { button: "right" });
     await pause(400);
     await expectVisible(".context-menu-layer .menu-list");
+  });
+  // Tasto destro nei vari moduli: menu dell'app, mai quello della webview.
+  const rightClick = async (selector, text) => {
+    await page.keyboard.press("Escape");
+    await pause(150);
+    for (const handle of await page.$$(selector)) {
+      const value = await handle.evaluate((element) => element.textContent ?? "");
+      if (text === undefined || value.includes(text)) {
+        const box = await handle.boundingBox();
+        await page.mouse.click(box.x + Math.min(30, box.width / 2), box.y + box.height / 2, { button: "right" });
+        await pause(300);
+        return;
+      }
+    }
+    throw new Error(`elemento non trovato: ${selector} «${text}»`);
+  };
+  const menuLabels = () =>
+    page.$$eval(".context-menu-layer .menu-item", (items) => items.map((item) => item.textContent?.trim() ?? ""));
+  const expectMenu = async (...labels) => {
+    const found = await menuLabels();
+    for (const label of labels) {
+      if (!found.some((entry) => entry.includes(label))) throw new Error(`voce «${label}» assente: ${found.join(" | ")}`);
+    }
+  };
+  await step("tasto-destro-cestino", async () => {
+    await rightClick(".navigation-item", "Cestino");
+    await expectMenu("Apri", "Apri in una nuova scheda", "Svuota cestino");
+  });
+  await step("tasto-destro-taccuino", async () => {
+    await rightClick(".organization-entry .navigation-item", "Progetti");
+    await expectMenu("Nuova nota in questo taccuino", "Rinomina", "Elimina");
+  });
+  await step("tasto-destro-tag-e-sezione", async () => {
+    await rightClick(".sidebar-section-heading", "TAG");
+    await expectMenu("Crea tag", "Comprimi");
+  });
+  await step("tasto-destro-scheda", async () => {
+    await rightClick(".tab");
+    await expectMenu("Nuova scheda", "Duplica scheda", "Chiudi le altre schede");
+  });
+  await step("tasto-destro-editor", async () => {
+    await rightClick(".note-editor p");
+    await expectMenu("Taglia", "Copia", "Incolla", "Seleziona tutto", "Testo cifrato", "Trova e sostituisci");
+    // Una voce esegue l'azione e chiude il menu.
+    await clickText(".context-menu-layer .menu-item", "Seleziona tutto");
+    await pause(200);
+    if (await page.$(".context-menu-layer")) throw new Error("menu non chiuso dopo l'azione");
+    const selected = await page.evaluate(() => window.getSelection()?.toString().length ?? 0);
+    if (selected === 0) throw new Error("Seleziona tutto non ha selezionato il testo");
+  });
+  await step("tasto-destro-campo-di-testo", async () => {
+    await rightClick(".search-field input");
+    await expectMenu("Taglia", "Copia", "Incolla", "Seleziona tutto");
+    await page.keyboard.press("Escape");
   });
   await step("info-nota", async () => {
     await page.keyboard.press("Escape");

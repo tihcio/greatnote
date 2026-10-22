@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { t } from "../i18n";
 import Icon from "../components/Icon";
+import { openContextMenu } from "../lib/contextMenu";
 import type { Tag } from "../types";
 
 interface TagBarProps {
@@ -11,6 +12,8 @@ interface TagBarProps {
   onChange: (next: Tag[]) => Promise<void>;
   /** Crea un nuovo tag con questo nome e lo restituisce. */
   onCreate: (name: string) => Promise<Tag | null>;
+  /** Mostra le note con il tag (menu contestuale dell'etichetta). */
+  onOpen?: (tag: Tag) => void;
 }
 
 const MAX_SUGGESTIONS = 8;
@@ -20,7 +23,7 @@ const MAX_SUGGESTIONS = 8;
  * rimovibili, e un campo "Aggiungi tag" con suggerimenti dai tag esistenti.
  * Invio aggiunge (o crea) il tag, Backspace sul campo vuoto toglie l'ultimo.
  */
-export default function TagBar({ tags, selected, disabled, onChange, onCreate }: TagBarProps) {
+export default function TagBar({ tags, selected, disabled, onChange, onCreate, onOpen }: TagBarProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
@@ -69,7 +72,16 @@ export default function TagBar({ tags, selected, disabled, onChange, onCreate }:
     <div className="tag-bar" aria-label={t.noteTags} role="group">
       <Icon className="tag-bar-icon" name="tag" size={17} />
       {selected.map((tag) => (
-        <span className="tag-chip" key={tag.id}>
+        <span
+          className="tag-chip"
+          key={tag.id}
+          onContextMenu={(event) =>
+            openContextMenu(event, tag.name, [
+              ...(onOpen ? [{ id: "ctx-open-tag", label: t.showNotesWithTag, run: () => onOpen(tag) }] : []),
+              { id: "ctx-remove-tag", label: t.removeTagNamed(tag.name), enabled: !disabled, run: () => remove(tag) },
+            ])
+          }
+        >
           {tag.name}
           {!disabled && (
             <button

@@ -4,6 +4,7 @@ mod calendar_commands;
 mod data_commands;
 mod mcp_commands;
 mod planner_commands;
+mod secret_commands;
 mod sync_commands;
 mod ui_commands;
 mod update_commands;
@@ -614,6 +615,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             planner_commands::dismiss_reminder,
             planner_commands::delete_reminder,
             ui_commands::list_note_revisions,
+            ui_commands::delete_note_revisions,
+            ui_commands::open_note_link,
+            secret_commands::encrypt_note_text,
+            secret_commands::decrypt_note_text,
             ui_commands::get_note_revision,
             ui_commands::restore_note_revision,
             ui_commands::list_templates,

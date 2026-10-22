@@ -27,7 +27,8 @@ attendibile (prompt injection).
   girano in thread separati dalla UI. Nessun reindirizzamento seguito (la
   chiave non deve finire su un altro host); il proxy di sistema è ignorato
   per i server locali. Il ragionamento `<think>…</think>` di alcuni modelli
-  locali è rimosso dall'output.
+  locali (e `<|channel>thought…<channel|>` di Gemma 4) è rimosso
+  dall'output.
 - Nessun modello viene scaricato: l'utente indica modelli già installati e
   può provare la connessione (che chiede solo l'elenco dei modelli).
 

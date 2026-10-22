@@ -263,6 +263,16 @@ export function buildMenus(context: MenuContext): Menu[] {
           accelerator: "Ctrl+H",
           enabled: note && context.editorAvailable,
         }),
+        separator,
+        item(
+          "encrypt-selection",
+          t.encryptSelection,
+          () => {
+            const command = context.blockCommands.find((entry) => entry.id === "encrypted-text");
+            if (command) context.runBlockCommand(command);
+          },
+          { accelerator: "Ctrl+Shift+X", enabled: note && editable && context.editorAvailable },
+        ),
       ],
     },
     {

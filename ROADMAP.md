@@ -150,6 +150,17 @@ delle notifiche nella finestra nativa.
       schermo intero, finestra separata, stampa.
 - [ ] Importazione Markdown/HTML di checklist e tabelle come nodi nativi.
 - [ ] Modelli e revisioni nell'archivio completo `gna-archive`.
+- [x] Testo cifrato con password dentro una nota (ADR 0025): formato age,
+      dialog per cifrare, mostrare, modificare e rimuovere la cifratura,
+      eliminazione della cronologia, esportazioni e reimportazione del blocco
+      `age`, testi cifrati esclusi da ricerca e AI.
+- [x] Menu contestuali (tasto destro) in tutta l'app, con le azioni utili
+      di ogni elemento e il menu standard dei campi di testo; il menu della
+      webview è bloccato.
+- [ ] Verificare nella finestra nativa WebKitGTK i menu contestuali
+      (taglia/copia/incolla nell'editor, apertura dei collegamenti).
+- [ ] Verificare nella finestra nativa il testo cifrato e la decifratura di
+      un blocco esportato con la CLI `age`.
 
 ## Fase 5 — AI locale/remota e ricerca semantica
 

@@ -46,7 +46,9 @@ incluso nelle risorse con lo stesso percorso (`llama/`).
   dipendenza da API di KDE.
 
 Le note usano UUID e timestamp UTC. Il contenuto è JSON strutturato, versionato
-e validato in Rust; non si usa HTML arbitrario come fonte di verità. Il
+e validato in Rust; non si usa HTML arbitrario come fonte di verità. Il nodo
+`encryptedText` contiene solo un testo cifrato con password nel formato age,
+creato e letto dal backend (`secret_text`, ADR 0025). Il
 database è collocato nella directory dati dell'app fornita da Tauri, quindi
 segue le convenzioni della piattaforma (XDG su Linux). La shell mantiene le
 decorazioni standard della finestra, lasciando gestione e integrazione al

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n";
 import { askConfirmation } from "../lib/confirm";
+import { openContextMenu } from "../lib/contextMenu";
 import { errorMessage, formatDateTime } from "../lib/format";
 import type { TrashItem, TrashKind } from "../types";
 
@@ -85,7 +86,22 @@ export default function TrashItemsPanel({ items, onChanged }: TrashItemsPanelPro
         {items.map((item) => {
           const related = relatedText(item);
           return (
-            <li className="trash-item" key={`${item.kind}-${item.id}`}>
+            <li
+              className="trash-item"
+              key={`${item.kind}-${item.id}`}
+              onContextMenu={(event) =>
+                openContextMenu(event, item.title, [
+                  { id: "ctx-restore", label: t.actionRestore, enabled: busy === null, run: () => void act(item, "restore_trash_item") },
+                  {
+                    id: "ctx-delete",
+                    label: t.actionDeletePermanently,
+                    destructive: true,
+                    enabled: busy === null,
+                    run: () => void act(item, "delete_trash_item"),
+                  },
+                ])
+              }
+            >
               <span className="trash-item-icon" aria-hidden="true">
                 {kindIcons[item.kind]}
               </span>

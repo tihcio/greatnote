@@ -71,6 +71,13 @@ un account utente di prova o una macchina virtuale.
 
 - [ ] `npx tauri build` produce `.deb`, `.rpm` e AppImage con
       `llama-server` incluso (`resources/llama`).
+- [ ] Nuova versione in `<releases>` di
+      `src-tauri/linux/dev.greatnote.notes.metainfo.xml` (lo controlla un
+      test) e `appstreamcli validate --no-net` su quel file.
+- [ ] Nella release i pacchetti Linux si chiamano `Greatnote.x86_64.rpm`,
+      `Greatnote.amd64.deb` e `Greatnote.x86_64.AppImage`; aprendo il
+      `.rpm` in Discover compare «Greatnote», e dopo l'installazione l'app
+      ha icona e descrizione tra le installate.
 - [ ] Installazione del `.deb` su una distribuzione Debian/Ubuntu e avvio
       dal menu; icona visibile anche su Wayland
       (`StartupWMClass=dev.greatnote.notes`).

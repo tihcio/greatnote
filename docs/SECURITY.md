@@ -93,6 +93,25 @@ locali.
   esclusione dei taccuini, entro 5 MB. Il testo letto è trattato come dato
   (istruzioni nell'immagine ignorate) ed è salvato nel database locale.
 
+## Testo cifrato nelle note
+
+- Formato age con password (scrypt + ChaCha20-Poly1305, crate `age`), in
+  forma testuale; nessuna crittografia propria (ADR 0025). Cifratura e
+  decifratura avvengono in Rust; il frontend riceve il testo in chiaro solo
+  dopo la password e lo tiene nello stato del dialog, mai nel documento.
+- Password e testo non sono salvati né registrati; gli errori dei comandi
+  sono codici senza contenuto. Password di almeno 8 caratteri; la robustezza
+  dipende dalla password (scrypt rallenta i tentativi, non li impedisce).
+- Il documento ammette per `encryptedText` solo il testo age (controllo
+  strutturale, ≤ 64 KiB) e un suggerimento breve in chiaro.
+- Ricerca, indice semantico, AI e anteprime vedono solo «🔒»; le
+  esportazioni e la sincronizzazione contengono solo il testo cifrato.
+- Limiti: un testo salvato in chiaro prima di essere cifrato resta nei
+  backup, nei lotti di sincronizzazione già scritti e, se l'utente non
+  elimina la cronologia (con `secure_delete`), nelle revisioni; il WAL e le
+  pagine libere di SQLite possono conservarlo finché non vengono
+  sovrascritti. Il testo copiato finisce negli appunti di sistema.
+
 ## Funzioni AI
 
 - **Disattivate per impostazione predefinita.** Nessun dato esce dal

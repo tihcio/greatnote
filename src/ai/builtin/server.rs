@@ -113,9 +113,14 @@ impl ServerSpec {
                 "--ubatch-size".to_owned(),
                 batch,
             ]);
-        } else {
-            // Risposte dirette: il ragionamento dei modelli piccoli su CPU
-            // allunga molto i tempi senza migliorare abbastanza i risultati.
+        } else if self.projector_file.is_none() {
+            // Chat con risposte dirette: il ragionamento dei modelli piccoli
+            // su CPU allunga molto i tempi senza migliorare abbastanza i
+            // risultati. Non vale per la visione: senza poter ragionare nel
+            // suo canale Gemma 4 ragiona nel testo della risposta (in
+            // inglese, a volte senza la trascrizione). Con il canale aperto
+            // llama-server separa il ragionamento in `reasoning_content`,
+            // che non viene letto.
             arguments.extend(["--reasoning-budget", "0"].map(str::to_owned));
         }
         if !gpu {
@@ -483,6 +488,9 @@ mod tests {
         assert!(joined.contains("--mmproj"));
         assert!(joined.contains("--device none"));
         assert!(!joined.contains("--embedding"));
+        assert!(!joined.contains("--reasoning-budget"));
+        let chat_arguments = chat_spec.arguments(&store, 4321, true).join(" ");
+        assert!(chat_arguments.contains("--reasoning-budget 0"));
         // La chiave non compare mai tra gli argomenti.
         assert!(!joined.contains("api-key"));
         let embedding_arguments = embedding_spec.arguments(&store, 4321, true).join(" ");

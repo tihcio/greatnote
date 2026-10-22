@@ -82,7 +82,12 @@ export default function NotePlanner({ noteId, onChanged, onOpenNote, refreshKey 
               <TaskRow
                 compact
                 key={task.id}
+                onDeleted={() => {
+                  void load();
+                  onChanged();
+                }}
                 onEdit={setEditing}
+                onError={setError}
                 onToggle={(item) => void toggle(item)}
                 task={task}
                 today={toIsoDate(new Date())}

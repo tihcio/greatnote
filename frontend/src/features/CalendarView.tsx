@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { t } from "../i18n";
@@ -15,6 +15,10 @@ import {
   weekDays,
   weekdayNames,
 } from "../lib/dates";
+import { separator } from "../app/menu";
+import type { MenuEntry } from "../app/menu";
+import { askConfirmation } from "../lib/confirm";
+import { openContextMenu } from "../lib/contextMenu";
 import { errorMessage } from "../lib/format";
 import type { CalendarEvent, Task } from "../types";
 import { CALENDAR_SYNC_EVENT, calendarApi, calendarIndex, safeColor } from "./calendar/calendarApi";
@@ -218,12 +222,54 @@ export default function CalendarView({
     return color ? ({ "--event-color": color } as CSSProperties) : undefined;
   };
 
+  /** Evento locale nel cestino (gli eventi esterni si eliminano dal dialog,
+   * che avvisa che la cancellazione arriva al calendario d'origine). */
+  const trashEvent = async (event: CalendarEvent) => {
+    const confirmed = await askConfirmation({
+      title: t.titleDeleteEvent,
+      message: t.confirmDeleteEvent(event.title),
+      confirmLabel: t.actionMoveToTrash,
+    });
+    if (!confirmed) return;
+    try {
+      await invoke("move_item_to_trash", { kind: "event", id: event.id });
+      changed();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
+  const eventMenu = (pointer: ReactMouseEvent, event: CalendarEvent) => {
+    const local = !event.calendar_provider;
+    const items: MenuEntry[] = [
+      { id: "ctx-open", label: event.read_only ? t.actionOpen : t.editEvent, run: () => setEventDialog({ event, day: anchor }) },
+      {
+        id: "ctx-note",
+        label: t.openLinkedNote,
+        enabled: Boolean(event.note_id),
+        run: () => {
+          if (event.note_id) onOpenNote(event.note_id);
+        },
+      },
+    ];
+    if (local) {
+      items.push(separator, {
+        id: "ctx-delete",
+        label: t.actionMoveToTrash,
+        destructive: true,
+        run: () => void trashEvent(event),
+      });
+    }
+    openContextMenu(pointer, event.title, items);
+  };
+
   const renderItem = (item: DayItem) =>
     item.kind === "event" ? (
       <li key={`e-${item.event.id}`}>
         <button
           className={`calendar-item event${item.event.all_day ? " all-day" : ""}${item.event.calendar_provider ? " external" : ""}`}
           onClick={() => setEventDialog({ event: item.event, day: anchor })}
+          onContextMenu={(pointer) => eventMenu(pointer, item.event)}
           style={eventStyle(item.event)}
           title={
             item.event.calendar_provider
@@ -240,7 +286,16 @@ export default function CalendarView({
         </button>
       </li>
     ) : (
-      <li key={`t-${item.task.id}`} className="calendar-task-entry">
+      <li
+        key={`t-${item.task.id}`}
+        className="calendar-task-entry"
+        onContextMenu={(pointer) =>
+          openContextMenu(pointer, item.task.title, [
+            { id: "ctx-task-done", label: t.taskMenuComplete, run: () => void toggleTask(item.task) },
+            { id: "ctx-task-edit", label: t.editTask, run: () => setEditingTask(item.task) },
+          ])
+        }
+      >
         <button
           aria-label={t.completeTask(item.task.title)}
           className="calendar-task-check"
@@ -348,6 +403,24 @@ export default function CalendarView({
                   aria-label={label}
                   className={`calendar-day${outside ? " outside" : ""}${day === today ? " today" : ""}`}
                   key={day}
+                  onContextMenu={(pointer) => {
+                    if (pointer.nativeEvent.defaultPrevented) return;
+                    openContextMenu(pointer, formatDay(day, { year: "numeric" }), [
+                      { id: "ctx-new-event", label: t.newEvent, run: () => setEventDialog({ event: null, day }) },
+                      ...(mode === "month"
+                        ? [
+                            {
+                              id: "ctx-week",
+                              label: t.showWeekOf,
+                              run: () => {
+                                setAnchor(day);
+                                setMode("week");
+                              },
+                            },
+                          ]
+                        : []),
+                    ]);
+                  }}
                   role="gridcell"
                 >
                   <div className="calendar-day-header">

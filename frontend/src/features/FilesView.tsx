@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n";
 import { askConfirmation } from "../lib/confirm";
+import { openContextMenu } from "../lib/contextMenu";
 import { errorMessage, formatDate, formatFileSize } from "../lib/format";
 import type { FileEntry } from "../types";
 
@@ -103,7 +104,23 @@ export default function FilesView({ refreshKey, onOpenNote }: FilesViewProps) {
             </thead>
             <tbody>
               {files.map((file) => (
-                <tr key={file.id}>
+                <tr
+                  key={file.id}
+                  onContextMenu={(event) =>
+                    openContextMenu(event, file.original_filename, [
+                      { id: "ctx-open-file", label: t.openAttachment, run: () => void open(file) },
+                      { id: "ctx-open-note", label: t.openLinkedNote, run: () => onOpenNote(file.note_id) },
+                      {
+                        id: "ctx-copy-name",
+                        label: t.copyFileName,
+                        run: () =>
+                          void invoke("write_clipboard_text", { text: file.original_filename }).catch((cause: unknown) =>
+                            setError(errorMessage(cause)),
+                          ),
+                      },
+                    ])
+                  }
+                >
                   <td>
                     <button className="text-button" onClick={() => void open(file)} type="button">
                       {file.original_filename}

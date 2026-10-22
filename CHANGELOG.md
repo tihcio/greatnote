@@ -4,6 +4,37 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+- **Pacchetti Linux nei centri software.** Aprendo il `.rpm` o il `.deb`,
+  Discover mostrava «Greatnote-0» (il nome del file fino al primo punto).
+  Nelle release i pacchetti si chiamano ora `Greatnote.x86_64.rpm`,
+  `Greatnote.amd64.deb` e `Greatnote.x86_64.AppImage`. Dopo
+  l'installazione Discover e GNOME Software mostrano Greatnote con icona,
+  descrizione e versione (metadati AppStream), e il menu delle applicazioni
+  ha l'icona anche nelle dimensioni piccole.
+- **Tasto destro in tutta l'app.** Il menu a comparsa offre le azioni utili
+  dell'elemento cliccato, come nelle app desktop: **Svuota cestino** sul
+  Cestino, **Nuova nota in questo taccuino** sui taccuini, rinomina ed
+  elimina su spazi, taccuini e tag, **Apri in una nuova scheda** sulle voci
+  della barra laterale, taglia/copia/incolla e formato nel testo della
+  nota, **Apri collegamento** sui link, chiudi le altre schede, e azioni
+  rapide su attività, promemoria, eventi, file, modelli, allegati ed
+  elementi del cestino. Nei campi di testo compare il menu standard con
+  taglia, copia e incolla. Il menu del browser integrato («Ricarica»,
+  «Indietro») non compare più.
+- **Testo cifrato nelle note.** Una parte di una nota (un PIN, dei dati di
+  accesso) si può proteggere con una password: dal menu `/`, da
+  **＋ Inserisci** o selezionando il testo e premendo `Ctrl+Shift+X`. Nella
+  nota resta un riquadro con il lucchetto; con un clic e la password il
+  testo si legge, si copia, si modifica o torna normale. La password non
+  viene salvata e il testo cifrato non compare nella ricerca né viene
+  inviato all'AI. Il formato è quello aperto di age, decifrabile anche con
+  `age -d`.
+- **Testo dalle immagini con Gemma.** Con il motore integrato, leggendo il
+  testo di un'immagine Gemma 4 scriveva anche il proprio ragionamento in
+  inglese («The user wants me to transcribe…») e a volte non la
+  trascrizione. Ora il risultato contiene solo il testo dell'immagine;
+  la lettura richiede qualche secondo in più.
+
 ## 0.1.2 — 2026-10-22
 
 Prima versione con pacchetti Linux (.deb, .rpm, AppImage) allegati alla

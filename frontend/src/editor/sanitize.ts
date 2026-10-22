@@ -1,5 +1,6 @@
 import type { JSONContent } from "@tiptap/react";
 import { FONT_FAMILIES, FONT_SIZES, isSafeLink } from "./extensions";
+import { cleanHint, isArmoredCiphertext } from "./encryptedText";
 import { sanitizeAnnotations } from "./imageAnnotations";
 
 const HEX_COLOR = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -68,6 +69,16 @@ export function sanitizeDocument(node: JSONContent): JSONContent {
         width: width !== null && width >= 40 && width <= 2400 ? width : null,
         annotations: sanitizeAnnotations(attrs.annotations),
       },
+    };
+  }
+  if (node.type === "encryptedText") {
+    const attrs = (node.attrs ?? {}) as Record<string, unknown>;
+    // Un testo cifrato non valido non può essere ricostruito: resta un
+    // paragrafo vuoto invece di bloccare il salvataggio della nota.
+    if (!isArmoredCiphertext(attrs.ciphertext)) return { type: "paragraph" };
+    return {
+      type: "encryptedText",
+      attrs: { ciphertext: attrs.ciphertext.trimEnd(), hint: cleanHint(attrs.hint) },
     };
   }
   const next: JSONContent = { ...node };

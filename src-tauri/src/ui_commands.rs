@@ -14,6 +14,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Manager, State, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_opener::OpenerExt;
 
 type CommandResult<T> = Result<T, String>;
 
@@ -34,6 +35,23 @@ fn data_directory(database: &Database) -> CommandResult<std::path::PathBuf> {
 }
 
 // ---------------------------------------------------------------------------
+// Collegamenti
+
+/// Apre nel browser (o nel client di posta) un collegamento della nota, dal
+/// menu contestuale dell'editor. Solo gli schemi ammessi nei documenti
+/// (`http`, `https`, `mailto`): mai `file:` o altri gestori del sistema.
+#[tauri::command]
+pub fn open_note_link(app: AppHandle, href: String) -> CommandResult<()> {
+    let href = href.trim();
+    if !greatnote_core::content::is_safe_link(href) {
+        return Err("Collegamento non valido o non sicuro".to_owned());
+    }
+    app.opener()
+        .open_url(href, None::<&str>)
+        .map_err(to_message)
+}
+
+// ---------------------------------------------------------------------------
 // Revisioni e modelli
 
 #[tauri::command]
@@ -42,6 +60,16 @@ pub fn list_note_revisions(
     note_id: String,
 ) -> CommandResult<Vec<NoteRevision>> {
     database.list_note_revisions(&note_id).map_err(to_message)
+}
+
+/// Elimina la cronologia di una nota (offerta dopo aver cifrato un testo che
+/// le revisioni conservano in chiaro).
+#[tauri::command]
+pub fn delete_note_revisions(
+    database: State<'_, Database>,
+    note_id: String,
+) -> CommandResult<usize> {
+    database.delete_note_revisions(&note_id).map_err(to_message)
 }
 
 #[tauri::command]

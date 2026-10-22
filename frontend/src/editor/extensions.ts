@@ -4,6 +4,7 @@ import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table
 import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
 import StarterKit from "@tiptap/starter-kit";
 import { AttachmentImage } from "./attachmentImage";
+import { EncryptedText } from "./encryptedText";
 import { SearchHighlight } from "./searchHighlight";
 
 /** Schemi ammessi per i link, gli stessi della validazione Rust. */
@@ -36,6 +37,7 @@ export const editorExtensions = [
   FontFamily,
   FontSize,
   AttachmentImage,
+  EncryptedText,
   SearchHighlight,
 ];
 

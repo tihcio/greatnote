@@ -197,6 +197,27 @@ note senza errori.
 Prova reale facoltativa: `GREATNOTE_OCR_IMAGE=immagine.png cargo test --test
 ai_live claude_code_reads -- --ignored --nocapture`.
 
+## Testo cifrato
+
+- `secret_text`: andata e ritorno solo con la password giusta, sale diverso
+  a ogni cifratura, password corta, testo vuoto o oltre 32 KiB, testo
+  alterato o non age, suggerimenti su una riga;
+- documento: `encryptedText` solo con testo age valido e suggerimento (testo
+  in chiaro, attributi estranei e contenuto figlio rifiutati); testo
+  semplice con il solo «🔒»; Markdown e HTML con il blocco `age` che torna
+  testo cifrato all'importazione; un blocco `age` non cifrato resta codice;
+- revisioni: eliminazione della cronologia di una sola nota;
+- interfaccia: cifratura della selezione con `Ctrl+Shift+X`, nota senza il
+  testo in chiaro, cronologia eliminata dopo il salvataggio, password errata
+  e giusta, chiusura con Esc.
+
+## Menu contestuali
+
+Test dell'interfaccia: tasto destro sul Cestino (con **Svuota cestino**), su
+un taccuino, sull'intestazione dei tag, su una scheda, nel testo della nota
+(la voce **Seleziona tutto** esegue l'azione e chiude il menu) e nel campo
+di ricerca (menu standard dei campi di testo).
+
 ## Funzioni AI
 
 I test del modulo `src/ai/` usano server HTTP finti (`provider::fake_server`)

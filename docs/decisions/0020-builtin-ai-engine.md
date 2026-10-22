@@ -72,7 +72,11 @@ Abbiamo valutato tre strade:
   - Il contesto della chat è ricavato dal limite di caratteri delle
     impostazioni (da 8192 a 32768 token).
   - Il ragionamento esplicito è disattivato (`--reasoning-budget 0`) per
-    risposte rapide anche su CPU.
+    risposte rapide anche su CPU, ma solo per la chat. Il modello per le
+    immagini può ragionare: con il canale chiuso Gemma 4 ragionava nel
+    testo della trascrizione (in inglese, a volte senza la trascrizione).
+    llama-server mette il ragionamento in `reasoning_content`, che l'app
+    non legge; costa qualche secondo in più per immagine.
 - **Impostazioni.** Il provider `builtin` è sempre locale, quindi non
   richiede consenso. I campi `chat_model`, `embedding_model` e
   `vision_model` contengono gli id del catalogo, controllati per ruolo

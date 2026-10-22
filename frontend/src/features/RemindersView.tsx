@@ -4,6 +4,8 @@ import { t } from "../i18n";
 import { formatTime } from "../lib/dates";
 import { errorMessage, formatDateTime } from "../lib/format";
 import { askConfirmation } from "../lib/confirm";
+import { openContextMenu } from "../lib/contextMenu";
+import { separator } from "../app/menu";
 import type { Reminder, ReminderEntity, SnoozePreset } from "../types";
 
 export const entityLabels: Record<ReminderEntity, () => string> = {
@@ -111,7 +113,16 @@ interface HistoryItemProps {
 /** Promemoria gestito: orario previsto, momento della gestione, apri o elimina. */
 function HistoryItem({ reminder, onOpen, onDelete }: HistoryItemProps) {
   return (
-    <li className="reminder-row done">
+    <li
+      className="reminder-row done"
+      onContextMenu={(event) =>
+        openContextMenu(event, reminder.entity_title || t.untitled, [
+          { id: "ctx-open", label: t.openItem, run: () => onOpen(reminder) },
+          separator,
+          { id: "ctx-delete", label: t.deleteReminder, destructive: true, run: () => onDelete(reminder) },
+        ])
+      }
+    >
       <div className="reminder-main">
         <span className="reminder-kind">{entityLabels[reminder.entity_type]()}</span>
         <strong>{reminder.entity_title || t.untitled}</strong>
@@ -144,8 +155,45 @@ function ReminderItem({
   onChanged,
   onError,
 }: ReminderActionsProps) {
+  const act = (task: () => Promise<unknown>) => async () => {
+    try {
+      await task();
+      onChanged();
+    } catch (cause) {
+      onError(errorMessage(cause));
+    }
+  };
+  const snooze = (preset: SnoozePreset) => act(() => invoke("snooze_reminder", { id: reminder.id, preset }));
   return (
-    <li className={`reminder-row ${reminder.status}`}>
+    <li
+      className={`reminder-row ${reminder.status}`}
+      onContextMenu={(event) =>
+        openContextMenu(event, reminder.entity_title || t.untitled, [
+          { id: "ctx-open", label: t.openItem, run: () => onOpen(reminder) },
+          separator,
+          { id: "ctx-snooze-10", label: t.snoozeTenMinutes, run: snooze("ten-minutes") },
+          { id: "ctx-snooze-60", label: t.snoozeOneHour, run: snooze("one-hour") },
+          { id: "ctx-snooze-day", label: t.snoozeTomorrow, run: snooze("tomorrow") },
+          {
+            id: "ctx-done",
+            label: t.reminderDone,
+            enabled: reminder.status === "fired",
+            run: act(() =>
+              reminder.entity_type === "task"
+                ? invoke("set_task_completed", { id: reminder.entity_id, completed: true })
+                : invoke("dismiss_reminder", { id: reminder.id }),
+            ),
+          },
+          separator,
+          {
+            id: "ctx-delete",
+            label: t.deleteReminder,
+            destructive: true,
+            run: act(() => invoke("delete_reminder", { id: reminder.id })),
+          },
+        ])
+      }
+    >
       <div className="reminder-main">
         <span className="reminder-kind">{entityLabels[reminder.entity_type]()}</span>
         <strong>{reminder.entity_title || t.untitled}</strong>

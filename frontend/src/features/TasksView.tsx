@@ -238,7 +238,12 @@ export default function TasksView({
             {tasks.map((task) => (
               <TaskRow
                 key={task.id}
+                onDeleted={() => {
+                  void load();
+                  onChanged();
+                }}
                 onEdit={setEditing}
+                onError={setError}
                 onOpenNote={onOpenNote}
                 onToggle={(item) => void toggle(item)}
                 task={task}

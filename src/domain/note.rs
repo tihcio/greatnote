@@ -159,6 +159,40 @@ fn validate_image(object: &serde_json::Map<String, Value>) -> Result<(), &'stati
     Ok(())
 }
 
+/// Testo cifrato con password (`crate::secret_text`): solo il testo age
+/// armored e un suggerimento facoltativo, nessun contenuto figlio.
+fn validate_encrypted_text(object: &serde_json::Map<String, Value>) -> Result<(), &'static str> {
+    const INVALID: &str = "Il documento contiene un testo cifrato non valido";
+    if object.contains_key("content") || object.contains_key("marks") {
+        return Err(INVALID);
+    }
+    let attrs = object
+        .get("attrs")
+        .and_then(Value::as_object)
+        .ok_or(INVALID)?;
+    for (key, value) in attrs {
+        let valid = match key.as_str() {
+            "ciphertext" => value
+                .as_str()
+                .is_some_and(crate::secret_text::is_armored_ciphertext),
+            "hint" => {
+                value.is_null()
+                    || value
+                        .as_str()
+                        .is_some_and(crate::secret_text::is_valid_hint)
+            }
+            _ => false,
+        };
+        if !valid {
+            return Err(INVALID);
+        }
+    }
+    if !attrs.contains_key("ciphertext") {
+        return Err(INVALID);
+    }
+    Ok(())
+}
+
 /// Annotazioni massime per immagine e punti per tratto.
 pub const MAX_IMAGE_ANNOTATIONS: usize = 300;
 pub const MAX_ANNOTATION_POINTS: usize = 2000;
@@ -292,11 +326,15 @@ fn validate_node(node: &Value, depth: usize) -> Result<(), &'static str> {
             | "tableHeader"
             | "tableCell"
             | "image"
+            | "encryptedText"
     ) {
         return Err("Il documento contiene un tipo di nodo non supportato");
     }
     if node_type == "image" {
         validate_image(object)?;
+    }
+    if node_type == "encryptedText" {
+        validate_encrypted_text(object)?;
     }
 
     if node_type == "text" && object.get("text").and_then(Value::as_str).is_none() {
