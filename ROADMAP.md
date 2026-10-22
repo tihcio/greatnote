@@ -254,6 +254,8 @@ Dropbox…), senza server né account (ADR 0017).
       copiato; prova su una copia dei dati reali (490 note, 164 allegati).
 - [x] Trasporto Dropbox (OAuth PKCE, cartella dell'app, token nel
       portachiavi, revoca) sullo stesso protocollo (ADR 0018).
+- [x] Prova reale con Dropbox su un computer: login e primo invio
+      completo.
 - [ ] Prova reale su due computer (cartella e Dropbox).
 - [ ] Cifratura dei file della cartella con passphrase.
 - [ ] Compattazione della cronologia dei lotti (istantanee) per i nuovi
@@ -280,6 +282,12 @@ Dropbox…), senza server né account (ADR 0017).
       release in bozza con `latest.json` dal workflow (ADR 0023).
 - [ ] Rendere pubblico il repository, configurare i segreti della chiave
       di firma e provare l'aggiornamento reale da una versione all'altra.
+- [x] Un solo repository per Linux e Windows (`tihcio/greatnote`, ADR
+      0024): portata la correzione della sincronizzazione dal repository
+      Linux.
+- [x] Pacchetti Linux (.deb, .rpm, AppImage) con il motore AI integrato
+      (llama.cpp Vulkan, `scripts/fetch-llama.sh`). Verificato su Fedora 44
+      con RTX 3070 il 2026-10-22.
 - [ ] Aggiornamenti in-app anche per le installazioni Linux (AppImage).
 - [ ] Firmare gli installer Windows con un certificato di firma del codice
       (SmartScreen e Smart App Control).

@@ -28,6 +28,12 @@ con la shell tramite comandi Tauri. Le API native specifiche della piattaforma
 si aggiungono solo quando una funzionalità le richiede e dietro un'interfaccia
 portabile.
 
+Lo stesso repository produce i pacchetti Linux e Windows (ADR 0024). Le
+differenze di packaging sono in `src-tauri/tauri.linux.conf.json` e
+`src-tauri/tauri.windows.conf.json`. Il motore AI integrato (`llama-server`)
+è preparato da `scripts/fetch-llama.sh` o `scripts/fetch-llama.ps1` e
+incluso nelle risorse con lo stesso percorso (`llama/`).
+
 ## Confini e dati
 
 - **Dominio:** note, spazi, taccuini, tag e validazione del documento

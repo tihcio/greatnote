@@ -202,6 +202,12 @@ impl Database {
         }
     }
 
+    /// Nei test: il database non è bloccato da nessuno in questo momento.
+    #[cfg(test)]
+    pub(crate) fn connection_is_free(&self) -> bool {
+        self.connection.try_lock().is_ok()
+    }
+
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }

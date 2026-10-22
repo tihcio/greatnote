@@ -31,7 +31,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBOEJCMDZBMTIzODk3MzUKUldRMWx6Z1NhckNMbWwvc0RvRElnSk1iT0VVeDk3b21qNi9laUM0d1dnQWdHaHNGYW1lWE1mdGIK",
       "endpoints": [
-        "https://github.com/tihcio/greatnote-win/releases/latest/download/latest.json"
+        "https://github.com/tihcio/greatnote/releases/latest/download/latest.json"
       ],
       "requireSignedVersion": true,
       "windows": {

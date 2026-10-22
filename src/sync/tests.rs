@@ -769,3 +769,89 @@ fn remote_store_carries_notes_and_attachments() {
             .is_none()
     );
 }
+
+/// Archivio che verifica che nessuna operazione di rete avvenga con il
+/// database bloccato (Dropbox può essere lento).
+struct WatchingStore {
+    inner: MemoryStore,
+    database: std::sync::Arc<Database>,
+    calls_while_locked: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl WatchingStore {
+    fn check(&self) {
+        if !self.database.connection_is_free() {
+            self.calls_while_locked
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+}
+
+impl folder::SyncStore for WatchingStore {
+    fn read(&self, path: &str) -> Result<Option<Vec<u8>>, FolderError> {
+        self.check();
+        self.inner.read(path)
+    }
+    fn write(&self, path: &str, bytes: &[u8], create_only: bool) -> Result<(), FolderError> {
+        self.check();
+        self.inner.write(path, bytes, create_only)
+    }
+    fn exists(&self, path: &str) -> Result<bool, FolderError> {
+        self.check();
+        self.inner.exists(path)
+    }
+    fn list(&self, directory: &str) -> Result<Vec<(String, bool)>, FolderError> {
+        self.check();
+        self.inner.list(directory)
+    }
+}
+
+#[test]
+fn network_calls_never_hold_the_database_lock() {
+    let store = MemoryStore::default();
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut devices = Vec::new();
+    for name in ["A", "B"] {
+        let device = remote_device(&store, name);
+        let note = device
+            .database
+            .create_note(name, &doc("testo"))
+            .expect("note");
+        let data = device.database.data_directory().expect("dir").to_path_buf();
+        device
+            .database
+            .add_attachment(&note.id, "a.txt", name.as_bytes(), &data)
+            .expect("att");
+        let Device {
+            _directory,
+            database,
+        } = device;
+        devices.push((_directory, std::sync::Arc::new(database)));
+    }
+    for _ in 0..2 {
+        for (_, database) in &devices {
+            let watching = WatchingStore {
+                inner: store.clone(),
+                database: std::sync::Arc::clone(database),
+                calls_while_locked: std::sync::Arc::clone(&calls),
+            };
+            database
+                .sync_now_with(Some(Box::new(watching)))
+                .expect("sync");
+        }
+    }
+    assert_eq!(
+        calls.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "rete con il database bloccato"
+    );
+    for (_, database) in &devices {
+        assert_eq!(
+            database
+                .search_notes("", "all", None, 10, 0)
+                .expect("notes")
+                .len(),
+            2
+        );
+    }
+}

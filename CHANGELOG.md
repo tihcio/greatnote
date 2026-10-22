@@ -4,6 +4,18 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+- **Linux con il motore AI integrato.** I pacchetti Linux (.deb, .rpm,
+  AppImage) includono lo stesso motore llama.cpp della versione Windows:
+  - nessun Ollama o altro server da installare;
+  - modelli scaricabili dalle impostazioni;
+  - usa la scheda video tramite Vulkan (NVIDIA, AMD, Intel).
+- **Un solo progetto per Linux e Windows.** Il repository ora si chiama
+  `tihcio/greatnote`. Le versioni già installate continuano a ricevere gli
+  aggiornamenti.
+- **Sincronizzazione più reattiva.** Durante l'invio e la ricezione in rete
+  (cartella o Dropbox) il database non resta più bloccato, quindi l'app
+  risponde anche mentre sincronizza molti allegati.
+
 ## 0.1.1 — 2026-10-22
 
 - **Modelli dal Cestino.** Usando un modello dopo aver aperto il Cestino, la

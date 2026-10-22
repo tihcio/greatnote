@@ -869,7 +869,19 @@ Il prodotto non è “completo” solo perché compila. Per ogni release:
 
 ---
 
-## 22. Primo incarico da eseguire adesso
+## 22. Note operative del repository
+
+- Un solo repository per Linux e Windows (ADR 0024): niente fork per
+  piattaforma. Le differenze vanno in `src-tauri/tauri.<os>.conf.json`,
+  negli script di build e in blocchi `cfg`.
+- Il motore AI integrato è lo stesso su tutte le piattaforme:
+  `scripts/fetch-llama.ps1` (Windows) e `scripts/fetch-llama.sh` (Linux)
+  usano la stessa build di llama.cpp. Se cambi versione, aggiorna entrambi.
+- L'endpoint degli aggiornamenti è `tihcio/greatnote`. Non creare un
+  repository chiamato `greatnote-win`: romperebbe il reindirizzamento per
+  le installazioni 0.1.x.
+
+## 23. Primo incarico da eseguire adesso
 
 Inizia **subito** dalla Fase 0, non fermarti a riscrivere questa specifica.
 

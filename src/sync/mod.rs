@@ -370,8 +370,8 @@ impl Database {
             (None, SyncTransport::Dropbox) => return Err(SyncError::NotConfigured),
         };
         let data_directory = self.data_directory()?.to_path_buf();
-        let mut connection = self.connection()?;
-        let result = run(&mut connection, store, &settings, &data_directory);
+        let result = run(self, store, &settings, &data_directory);
+        let connection = self.connection()?;
         match &result {
             Ok(_) => {
                 set_state(&connection, "last_sync_at", &now_utc())?;
@@ -390,21 +390,33 @@ impl Database {
 // ---------------------------------------------------------------------------
 // Esecuzione
 
+/// Lotti per dispositivo letti in anticipo a ogni giro (i successivi
+/// arrivano al giro dopo).
+const MAX_PREFETCH: usize = 100;
+
+/// Una sincronizzazione in tre fasi, perché la rete (Dropbox) può essere
+/// lenta: lettura dei lotti remoti senza bloccare il database, poi un breve
+/// blocco per esportare le modifiche locali nella coda di uscita e applicare
+/// quelle remote, infine invio di allegati e lotti senza blocco.
 fn run(
-    connection: &mut Connection,
+    database: &Database,
     store: Box<dyn SyncStore>,
     settings: &SyncSettings,
     data_directory: &Path,
 ) -> Result<SyncReport, SyncError> {
-    let device = match state(connection, "device_id")? {
-        Some(device) => device,
-        None => {
-            let device = Uuid::new_v4().to_string();
-            set_state(connection, "device_id", &device)?;
-            device
-        }
+    let (device, known_library, seq) = {
+        let connection = database.connection()?;
+        let device = match state(&connection, "device_id")? {
+            Some(device) => device,
+            None => {
+                let device = Uuid::new_v4().to_string();
+                set_state(&connection, "device_id", &device)?;
+                device
+            }
+        };
+        let seq = u64::try_from(state_number(&connection, "seq")?).unwrap_or(0);
+        (device, state(&connection, "library_id")?, seq)
     };
-    let known_library = state(connection, "library_id")?;
     let (folder, library) = SyncFolder::open(store, || {
         known_library
             .clone()
@@ -413,32 +425,17 @@ fn run(
     match &known_library {
         Some(known) if *known != library => return Err(SyncError::OtherLibrary),
         Some(_) => {}
-        None => set_state(connection, "library_id", &library)?,
+        None => set_state(&*database.connection()?, "library_id", &library)?,
     }
 
     // Ogni lotto è registrato nel database prima di essere scritto: un lotto
     // nella cartella che il database non conosce significa che un altro
     // computer usa la stessa identità (database copiato).
-    let seq = u64::try_from(state_number(connection, "seq")?).unwrap_or(0);
     if folder.last_seq(&device)? > seq {
         return Err(SyncError::DuplicateDevice);
     }
-    flush_outbox(connection, &folder)?;
-
-    if state(connection, "initialized")?.is_none() {
-        // Prima attivazione: tutto ciò che esiste va esportato.
-        let transaction = connection.transaction()?;
-        for table in TABLES {
-            for key in tables::all_keys(&transaction, table)? {
-                transaction.execute(
-                    "INSERT OR IGNORE INTO sync_dirty (entity, entity_key) VALUES (?1, ?2)",
-                    params![table.name, key],
-                )?;
-            }
-        }
-        set_state(&transaction, "initialized", "1")?;
-        transaction.commit()?;
-    }
+    // Lotti rimasti da un giro interrotto.
+    flush_outbox(database, &folder, data_directory)?;
 
     let name = if settings.device_name.is_empty() {
         default_device_name()
@@ -455,31 +452,45 @@ fn run(
             updated_at: now_utc(),
         })?;
     }
-    connection.execute(
-        "INSERT INTO sync_devices (device_id, name, applied_seq, last_seen_at) VALUES (?1, ?2, ?3, ?4)
-         ON CONFLICT(device_id) DO UPDATE SET name = excluded.name, applied_seq = excluded.applied_seq,
-             last_seen_at = excluded.last_seen_at",
-        params![device, name, seq as i64, now_utc()],
-    )?;
 
     let mut report = SyncReport::default();
-    export(
-        connection,
-        &folder,
-        &library,
-        &device,
-        data_directory,
-        &mut report,
-    )?;
-    import(
-        connection,
-        &folder,
-        &library,
-        &device,
-        data_directory,
-        &mut report,
-    )?;
-    fetch_missing_blobs(connection, &folder, data_directory)?;
+    let prefetched = prefetch(database, &folder, &library, &device, &mut report)?;
+
+    {
+        let mut connection = database.connection()?;
+        if state(&connection, "initialized")?.is_none() {
+            // Prima attivazione: tutto ciò che esiste va esportato.
+            let transaction = connection.transaction()?;
+            for table in TABLES {
+                for key in tables::all_keys(&transaction, table)? {
+                    transaction.execute(
+                        "INSERT OR IGNORE INTO sync_dirty (entity, entity_key) VALUES (?1, ?2)",
+                        params![table.name, key],
+                    )?;
+                }
+            }
+            set_state(&transaction, "initialized", "1")?;
+            transaction.commit()?;
+        }
+        connection.execute(
+            "INSERT INTO sync_devices (device_id, name, applied_seq, last_seen_at) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(device_id) DO UPDATE SET name = excluded.name, last_seen_at = excluded.last_seen_at",
+            params![device, name, seq as i64, now_utc()],
+        )?;
+        // Esportazione e importazione nello stesso blocco: nessuna modifica
+        // locale può inserirsi tra le due.
+        export(&mut connection, &library, &device, &mut report)?;
+        import(
+            &mut connection,
+            prefetched,
+            &device,
+            data_directory,
+            &mut report,
+        )?;
+    }
+
+    flush_outbox(database, &folder, data_directory)?;
+    fetch_missing_blobs(database, &folder, data_directory)?;
     Ok(report)
 }
 
@@ -492,12 +503,75 @@ fn default_device_name() -> String {
         .unwrap_or_else(|| "Computer".to_owned())
 }
 
-fn export(
-    connection: &mut Connection,
+/// Lotti remoti disponibili oltre quelli già applicati, letti senza
+/// bloccare il database. Con il nome di ogni dispositivo.
+struct Prefetched {
+    batches: BTreeMap<String, Vec<Batch>>,
+    names: BTreeMap<String, String>,
+}
+
+fn prefetch(
+    database: &Database,
     folder: &SyncFolder,
     library: &str,
     device: &str,
-    data_directory: &Path,
+    report: &mut SyncReport,
+) -> Result<Prefetched, SyncError> {
+    let applied: BTreeMap<String, i64> = database
+        .connection()?
+        .prepare("SELECT device_id, applied_seq FROM sync_devices")?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    let mut prefetched = Prefetched {
+        batches: BTreeMap::new(),
+        names: BTreeMap::new(),
+    };
+    for remote in folder.devices()? {
+        if remote == device {
+            continue;
+        }
+        let name = folder
+            .read_device(&remote)
+            .map(|file| file.name)
+            .unwrap_or_default();
+        let label = if name.is_empty() {
+            remote.clone()
+        } else {
+            name.clone()
+        };
+        prefetched.names.insert(remote.clone(), name);
+        let mut next = applied.get(&remote).copied().unwrap_or(0) as u64 + 1;
+        let mut batches = Vec::new();
+        while batches.len() < MAX_PREFETCH {
+            match folder.read_batch(&remote, next) {
+                Ok(Some(batch)) if batch.library == library && batch.format <= FORMAT => {
+                    batches.push(batch)
+                }
+                Ok(Some(_)) => {
+                    report
+                        .warnings
+                        .push(format!("{label}: lotto di un'altra libreria o versione"));
+                    break;
+                }
+                Ok(None) => break,
+                Err(error) => {
+                    report.warnings.push(format!("{label}: {error}"));
+                    break;
+                }
+            }
+            next += 1;
+        }
+        if !batches.is_empty() {
+            prefetched.batches.insert(remote, batches);
+        }
+    }
+    Ok(prefetched)
+}
+
+fn export(
+    connection: &mut Connection,
+    library: &str,
+    device: &str,
     report: &mut SyncReport,
 ) -> Result<(), SyncError> {
     let transaction = connection.transaction()?;
@@ -518,12 +592,6 @@ fn export(
             if data.is_none() && base.is_none() {
                 // Creata ed eliminata prima di essere mai esportata.
                 continue;
-            }
-            if table.name == "attachments"
-                && let Some(row) = &data
-                && row["deleted_at"].is_null()
-            {
-                copy_blob(folder, data_directory, row);
             }
             lamport += 1;
             let version = Version(lamport, device.to_owned());
@@ -594,113 +662,123 @@ fn export(
         params![device, seq as i64],
     )?;
     transaction.commit()?;
-    flush_outbox(connection, folder)?;
     report.exported = total;
     Ok(())
 }
 
-/// Scrive nella cartella i lotti registrati e non ancora scritti.
-fn flush_outbox(connection: &Connection, folder: &SyncFolder) -> Result<(), SyncError> {
-    let pending: Vec<(i64, String)> = connection
+/// Invia i lotti registrati e non ancora scritti, senza bloccare il
+/// database durante la rete. Prima di ogni lotto vengono caricati gli
+/// allegati che riferisce: un'interruzione non lascia mai un lotto senza i
+/// suoi blob.
+fn flush_outbox(
+    database: &Database,
+    folder: &SyncFolder,
+    data_directory: &Path,
+) -> Result<(), SyncError> {
+    let pending: Vec<(i64, String)> = database
+        .connection()?
         .prepare("SELECT seq, batch_json FROM sync_outbox ORDER BY seq")?
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<Result<_, _>>()?;
     for (seq, json) in pending {
         let batch: Batch = serde_json::from_str(&json).map_err(StorageError::from)?;
+        for op in batch.ops.iter().filter(|op| op.entity == "attachments") {
+            if let Some(row) = &op.data
+                && row["deleted_at"].is_null()
+            {
+                upload_blob(folder, data_directory, row)?;
+            }
+        }
         // Già scritto prima di un'interruzione: è lo stesso contenuto.
         if folder.read_batch(&batch.device, batch.seq)?.is_none() {
             folder.write_batch(&batch)?;
         }
-        connection.execute("DELETE FROM sync_outbox WHERE seq = ?1", [seq])?;
+        database
+            .connection()?
+            .execute("DELETE FROM sync_outbox WHERE seq = ?1", [seq])?;
     }
     Ok(())
 }
 
-fn copy_blob(folder: &SyncFolder, data_directory: &Path, row: &Value) {
+fn upload_blob(folder: &SyncFolder, data_directory: &Path, row: &Value) -> Result<(), SyncError> {
     let (Some(sha256), Some(stored)) = (row["sha256"].as_str(), row["stored_filename"].as_str())
     else {
-        return;
+        return Ok(());
     };
     match attachment_path(data_directory, stored) {
-        Ok(path) if path.is_file() => {
-            if let Err(error) = folder.put_blob(sha256, &path) {
-                tracing::warn!(%error, "allegato non copiato nella cartella di sincronizzazione");
+        Ok(path) if path.is_file() => match folder.put_blob(sha256, &path) {
+            Ok(()) => Ok(()),
+            // Errori di rete: il lotto resta in coda e si riprova.
+            Err(FolderError::Remote(error)) => Err(SyncError::Folder(FolderError::Remote(error))),
+            Err(FolderError::Io(error)) => Err(SyncError::Folder(FolderError::Io(error))),
+            Err(error) => {
+                tracing::warn!(%error, "allegato non caricato");
+                Ok(())
             }
-        }
+        },
         // Il file manca anche qui (es. a sua volta in attesa): lo porterà un
         // altro dispositivo.
-        _ => {}
+        _ => Ok(()),
     }
 }
 
 fn import(
     connection: &mut Connection,
-    folder: &SyncFolder,
-    library: &str,
+    mut prefetched: Prefetched,
     device: &str,
     data_directory: &Path,
     report: &mut SyncReport,
 ) -> Result<(), SyncError> {
     let mut changed_notes: HashSet<String> = HashSet::new();
-    let mut broken: HashSet<String> = HashSet::new();
+    let applied_seq = |connection: &Connection, id: &str| -> Result<u64, rusqlite::Error> {
+        Ok(connection
+            .query_row(
+                "SELECT applied_seq FROM sync_devices WHERE device_id = ?1",
+                [id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .unwrap_or(0) as u64)
+    };
     loop {
         let mut progress = false;
-        // Ricalcolato a ogni passata: conta solo l'attesa che resta alla fine.
-        report.waiting = false;
-        for remote in folder.devices()? {
-            if remote == device || broken.contains(&remote) {
+        let remotes: Vec<String> = prefetched.batches.keys().cloned().collect();
+        for remote in remotes {
+            let Some(batch) = prefetched
+                .batches
+                .get(&remote)
+                .and_then(|batches| batches.first())
+            else {
                 continue;
-            }
-            let applied: i64 = connection
-                .query_row(
-                    "SELECT applied_seq FROM sync_devices WHERE device_id = ?1",
-                    [&remote],
-                    |row| row.get(0),
-                )
-                .optional()?
-                .unwrap_or(0);
-            let next = applied as u64 + 1;
-            let batch = match folder.read_batch(&remote, next) {
-                Ok(Some(batch)) => batch,
-                Ok(None) => continue,
-                Err(error) => {
-                    report
-                        .warnings
-                        .push(format!("{}: {error}", device_label(folder, &remote)));
-                    broken.insert(remote);
-                    continue;
-                }
             };
-            if batch.library != library || batch.format > FORMAT {
-                report.warnings.push(format!(
-                    "{}: lotto di un'altra libreria o versione",
-                    device_label(folder, &remote)
-                ));
-                broken.insert(remote);
+            if batch.seq != applied_seq(connection, &remote)? + 1 {
+                // Già applicato (o buco): si scarta dalla lista anticipata.
+                if batch.seq <= applied_seq(connection, &remote)? {
+                    prefetched
+                        .batches
+                        .get_mut(&remote)
+                        .map(|batches| batches.remove(0));
+                }
                 continue;
             }
             // Consegna causale: servono tutti i lotti che l'autore aveva già.
             let mut ready = true;
             for (dependency, needed) in &batch.deps {
-                if dependency == device {
-                    continue;
-                }
-                let have: i64 = connection
-                    .query_row(
-                        "SELECT applied_seq FROM sync_devices WHERE device_id = ?1",
-                        [dependency],
-                        |row| row.get(0),
-                    )
-                    .optional()?
-                    .unwrap_or(0);
-                if (have as u64) < *needed {
+                if dependency != device && applied_seq(connection, dependency)? < *needed {
                     ready = false;
                 }
             }
             if !ready {
-                report.waiting = true;
                 continue;
             }
+            let Some(batch) = prefetched
+                .batches
+                .get_mut(&remote)
+                .filter(|batches| !batches.is_empty())
+                .map(|batches| batches.remove(0))
+            else {
+                continue;
+            };
             apply_batch(
                 connection,
                 &batch,
@@ -708,10 +786,7 @@ fn import(
                 report,
                 &mut changed_notes,
             )?;
-            let name = folder
-                .read_device(&remote)
-                .map(|file| file.name)
-                .unwrap_or_default();
+            let name = prefetched.names.get(&remote).cloned().unwrap_or_default();
             connection.execute(
                 "INSERT INTO sync_devices (device_id, name, applied_seq, last_seen_at) VALUES (?1, ?2, ?3, ?4)
                  ON CONFLICT(device_id) DO UPDATE SET name = CASE WHEN excluded.name = '' THEN sync_devices.name
@@ -724,17 +799,13 @@ fn import(
             break;
         }
     }
-    // I lotti in attesa restano tali solo se c'è davvero qualcosa da leggere.
+    // Lotti letti ma non applicabili: aspettano dipendenze non ancora arrivate.
+    report.waiting = prefetched
+        .batches
+        .values()
+        .any(|batches| !batches.is_empty());
     report.changed_notes = changed_notes.into_iter().take(MAX_CHANGED_NOTES).collect();
     Ok(())
-}
-
-fn device_label(folder: &SyncFolder, device: &str) -> String {
-    folder
-        .read_device(device)
-        .map(|file| file.name)
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| device.to_owned())
 }
 
 /// Chiave locale corrispondente (tag unificati per nome).
@@ -1096,32 +1167,33 @@ fn ensure_attachments_directory(data_directory: &Path) -> Result<(), StorageErro
 
 /// Copia dai blob gli allegati ancora mancanti (verificando l'hash).
 fn fetch_missing_blobs(
-    connection: &Connection,
+    database: &Database,
     folder: &SyncFolder,
     data_directory: &Path,
 ) -> Result<(), SyncError> {
-    let missing: Vec<(String, String)> = connection
+    let missing: Vec<(String, String)> = database
+        .connection()?
         .prepare("SELECT stored_filename, sha256 FROM sync_missing_blobs")?
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<Result<_, _>>()?;
     for (stored, sha256) in missing {
-        let still_needed: bool = connection.query_row(
+        let still_needed: bool = database.connection()?.query_row(
             "SELECT EXISTS(SELECT 1 FROM attachments WHERE stored_filename = ?1 AND deleted_at IS NULL)",
             [&stored],
             |row| row.get(0),
         )?;
         let path: Option<PathBuf> = attachment_path(data_directory, &stored).ok();
         let present = path.as_ref().is_some_and(|path| path.is_file());
-        if !still_needed || present {
-            connection.execute(
-                "DELETE FROM sync_missing_blobs WHERE stored_filename = ?1",
-                [&stored],
-            )?;
-            continue;
-        }
-        if let Some(bytes) = folder.get_blob(&sha256) {
+        let done = if !still_needed || present {
+            true
+        } else if let Some(bytes) = folder.get_blob(&sha256) {
             write_attachment_file(data_directory, &stored, &bytes)?;
-            connection.execute(
+            true
+        } else {
+            false
+        };
+        if done {
+            database.connection()?.execute(
                 "DELETE FROM sync_missing_blobs WHERE stored_filename = ?1",
                 [&stored],
             )?;

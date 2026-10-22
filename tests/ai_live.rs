@@ -281,3 +281,86 @@ fn local_vision_reads_large_images() {
     println!("testo letto:\n{text}");
     assert!(text.contains("2026-118") || text.contains("1.250"));
 }
+
+/// Motore integrato (ADR 0020, ADR 0024) con il `llama-server` incluso nel
+/// pacchetto: scarica dal catalogo il modello di chat più piccolo e quello
+/// di embedding consigliato (circa 1,5 GB, una sola volta, nella cartella
+/// indicata), poi fa una domanda e calcola un embedding.
+///
+/// ```text
+/// GREATNOTE_LLAMA_SERVER=$PWD/src-tauri/resources/llama/llama-server \
+/// GREATNOTE_AI_MODELS_DIR=$PWD/target/ai-models \
+/// cargo test --test ai_live builtin_engine -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "richiede llama-server (scripts/fetch-llama.sh) e la rete per i modelli"]
+fn builtin_engine_answers_and_embeds() {
+    use std::{path::PathBuf, sync::Arc};
+
+    use greatnote_core::ai::{
+        builtin::{BuiltinProvider, catalog::find, server::BuiltinRuntime, store::ModelStore},
+        provider::{ChatMessage, ChatRole},
+        settings::ProviderKind,
+    };
+
+    let executable = PathBuf::from(std::env::var("GREATNOTE_LLAMA_SERVER").expect("llama-server"));
+    let directory = PathBuf::from(std::env::var("GREATNOTE_AI_MODELS_DIR").expect("cartella"));
+    let store = ModelStore::new(directory.clone());
+    let cancel = AtomicBool::new(false);
+    for id in ["qwen3.5-0.8b", "bge-m3"] {
+        let model = find(id).expect(id).clone();
+        let mut last = 0;
+        store
+            .download(&model, &cancel, &mut |done, total| {
+                let percent = done * 100 / total.max(1);
+                if percent >= last + 25 {
+                    last = percent;
+                    println!("{id}: {percent}%");
+                }
+            })
+            .expect("download");
+        assert!(store.is_installed(&model));
+    }
+    let settings = AiSettings {
+        enabled: true,
+        provider: ProviderKind::Builtin,
+        chat_model: "qwen3.5-0.8b".to_owned(),
+        embedding_model: "bge-m3".to_owned(),
+        ..AiSettings::default()
+    };
+    let runtime = Arc::new(BuiltinRuntime::new(Some(executable), store));
+    let provider = BuiltinProvider::new(Arc::clone(&runtime), &settings, Duration::from_secs(300));
+
+    let started = std::time::Instant::now();
+    let answer = provider
+        .chat(
+            "qwen3.5-0.8b",
+            &[ChatMessage::new(
+                ChatRole::User,
+                "Qual è la capitale d'Italia? Rispondi con una parola.",
+            )],
+            0.0,
+            &cancel,
+            &mut |_| {},
+        )
+        .expect("chat");
+    println!("risposta in {:?}: {answer}", started.elapsed());
+    assert!(answer.to_lowercase().contains("roma"), "{answer}");
+
+    let vectors = provider
+        .embed(
+            "bge-m3",
+            &[
+                "note sulla riunione".to_owned(),
+                "lista della spesa".to_owned(),
+            ],
+            &cancel,
+        )
+        .expect("embedding");
+    assert_eq!(vectors.len(), 2);
+    assert!(vectors[0].len() >= 256);
+    println!("embedding: {} dimensioni", vectors[0].len());
+
+    runtime.stop_all();
+    assert_eq!(runtime.running(), 0);
+}

@@ -131,6 +131,30 @@ mod tests {
         assert_eq!(config["identifier"], APP_IDENTIFIER);
     }
 
+    /// Le immagini nelle note sono mostrate come `blob:`: senza questa
+    /// voce la build di produzione (dove la CSP è applicata) non le mostra.
+    #[test]
+    fn content_security_policy_allows_note_images_and_nothing_remote() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("config");
+        for key in ["csp", "devCsp"] {
+            let csp = config["app"]["security"][key].as_str().expect("csp");
+            let images = csp
+                .split(';')
+                .map(str::trim)
+                .find(|directive| directive.starts_with("img-src"))
+                .expect("img-src");
+            assert!(
+                images.split_whitespace().any(|source| source == "blob:"),
+                "{key}: {images}"
+            );
+            assert!(
+                !csp.contains("https:") && !csp.contains('*'),
+                "{key} consente origini remote"
+            );
+        }
+    }
+
     #[test]
     fn explicit_data_directory() {
         let args = vec![

@@ -6,7 +6,8 @@ serve creare un account né essere connessi a Internet per usare le
 funzioni principali.
 
 È sviluppata con **React**, **Rust** e **Tauri 2**. Il progetto è in
-sviluppo e nasce per Linux, con supporto anche per Windows.
+sviluppo; lo stesso repository produce i pacchetti per Linux (.deb, .rpm,
+AppImage) e gli installer per Windows (ADR 0024).
 
 ## Funzionalità
 
@@ -90,6 +91,25 @@ Per compilare l'app desktop sulla piattaforma corrente:
 ``` sh
 npm run tauri:build
 ```
+
+### Linux
+
+`tauri.linux.conf.json` produce i pacchetti **.deb**, **.rpm** e
+**AppImage** con il motore AI integrato (llama.cpp con Vulkan, circa 83 MB
+installato):
+
+``` sh
+npm ci
+npm run tauri:build                 # tutti i formati
+npx tauri build --bundles rpm       # solo l'RPM
+```
+
+Prima della build viene eseguito `scripts/fetch-llama.sh`, che scarica una
+volta la build di llama.cpp prevista, ne verifica lo SHA-256 e la prepara in
+`src-tauri/resources/llama/` (in cache in `target/llama-dist/`).
+L'RPM installa il motore in `/usr/lib/Greatnote/llama/` e richiede
+`vulkan-loader` e `openssl-libs`. I modelli scaricati restano nella cartella
+dati locale anche dopo la disinstallazione.
 
 ### Windows
 

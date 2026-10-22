@@ -124,8 +124,21 @@ versione locale è davvero concorrente.
 ### Esecuzione
 
 - Ogni 2 minuti, all'avvio e su richiesta, solo se attiva.
-- Esportazione e importazione avvengono con il database bloccato in
-  un'unica sequenza. Ogni lotto viene importato in una transazione: un
+- **Tre fasi**, perché la rete può essere lenta (Dropbox, ADR 0018):
+  1. lettura dei lotti remoti disponibili (fino a 100 per dispositivo a
+     giro) senza bloccare il database;
+  2. un breve blocco del database per esportare le modifiche locali nella
+     coda di uscita e applicare quelle remote, insieme, così nessuna
+     modifica locale si inserisce tra le due;
+  3. invio di allegati e lotti, e recupero degli allegati mancanti, di nuovo
+     senza blocco.
+
+  Un test verifica che nessuna operazione sull'archivio avvenga con il
+  database bloccato.
+- **Ordine degli invii.** Prima di ogni lotto vengono caricati gli allegati
+  che riferisce, ricavati dal lotto stesso: anche dopo un'interruzione
+  nessun dispositivo riceve un lotto senza i suoi blob.
+- **Errori per lotto.** Ogni lotto viene importato in una transazione: un
   lotto illeggibile o non valido viene saltato e segnalato, senza bloccare
   gli altri.
 

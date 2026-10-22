@@ -263,6 +263,26 @@ cargo test -p greatnote-desktop keyring -- --ignored
 Eseguita il 2026-10-20 su KDE Plasma (KWallet): scrittura, lettura e
 cancellazione riuscite.
 
+Prova reale del motore integrato con il `llama-server` incluso (ADR 0020,
+ADR 0024). Scarica una volta `qwen3.5-0.8b` e `bge-m3` (circa 1,5 GB) nella
+cartella indicata:
+
+```sh
+bash scripts/fetch-llama.sh
+GREATNOTE_LLAMA_SERVER=$PWD/src-tauri/resources/llama/llama-server \
+GREATNOTE_AI_MODELS_DIR=$PWD/target/ai-models \
+  cargo test --test ai_live builtin_engine -- --ignored --nocapture
+```
+
+Eseguita il 2026-10-22 su Fedora 44 (RTX 3070, Vulkan), con questi
+risultati:
+
+- risposta corretta («Roma») e embedding da 1024 dimensioni;
+- con il registro dettagliato, llama.cpp ha usato solo la GPU dedicata e
+  ha caricato in VRAM tutti i 26 strati;
+- velocità: 210 token/s in generazione, 762 token/s nella lettura del
+  prompt.
+
 Prova reale facoltativa con Claude Code (accesso già effettuato):
 
 ```sh
@@ -330,8 +350,16 @@ Dropbox (`src/sync/dropbox.rs`), con un server finto:
 Il protocollo completo è provato anche su un archivio remoto in memoria
 (`remote_store_carries_notes_and_attachments`).
 
-Prova reale: da fare con l'app Dropbox dell'editore (vedi
-docs/OAUTH_SETUP.md).
+Prova reale eseguita il 2026-10-20 con l'account Dropbox dell'utente:
+
+- login nel browser riuscito, dopo aver registrato esattamente
+  `http://localhost:41927/` come Redirect URI;
+- primo invio di 787 elementi (490 note e 164 allegati) completato senza
+  errori.
+
+La prova ha fatto emergere un difetto: il caricamento in rete avveniva con
+il database bloccato, rendendo l'app poco reattiva. Ora è eseguito fuori dal
+blocco ed è coperto da `network_calls_never_hold_the_database_lock`.
 
 Prova su dati reali (copia, mai l'originale):
 

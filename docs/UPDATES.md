@@ -8,7 +8,7 @@ motivazioni: [ADR 0023](decisions/0023-in-app-updates.md).
 ## Come funziona
 
 1. All'avvio (dopo un minuto) e poi ogni 6 ore l'app legge
-   `https://github.com/tihcio/greatnote-win/releases/latest/download/latest.json`.
+   `https://github.com/tihcio/greatnote/releases/latest/download/latest.json`.
    La richiesta contiene solo versione e sistema operativo.
 2. Se la versione indicata è più recente di quella installata, scarica
    l'installer NSIS dalla release e ne verifica la firma minisign con la
@@ -23,6 +23,12 @@ motivazioni: [ADR 0023](decisions/0023-in-app-updates.md).
 4. L'installer sostituisce i programmi e non tocca la cartella dati. Se la
    nuova versione cambia lo schema del database, all'avvio viene creato il
    backup `greatnote-premigration-…` prima della migrazione.
+
+**Repository rinominato (2026-10-22).** Fino alla 0.1.1 l'indirizzo era
+`tihcio/greatnote-win`. Le installazioni esistenti continuano a leggerlo e
+GitHub le reindirizza al nuovo nome `tihcio/greatnote`. Il
+reindirizzamento smette di funzionare se si crea un nuovo repository
+chiamato `greatnote-win`: quel nome non va riutilizzato.
 
 Gli aggiornamenti automatici si disattivano in Impostazioni ›
 Aggiornamenti; **Cerca aggiornamenti** funziona comunque. Nella versione di

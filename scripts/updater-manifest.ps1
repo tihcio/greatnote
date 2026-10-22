@@ -8,7 +8,7 @@
 #
 # Richiede TAURI_SIGNING_PRIVATE_KEY e TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 # nell'ambiente (segreti del repository). Uso:
-#   ./scripts/updater-manifest.ps1 -Tag v0.2.0 -Repository tihcio/greatnote-win
+#   ./scripts/updater-manifest.ps1 -Tag v0.2.0 -Repository tihcio/greatnote
 param(
     [Parameter(Mandatory = $true)][string]$Tag,
     [Parameter(Mandatory = $true)][string]$Repository,
