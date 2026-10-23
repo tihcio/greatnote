@@ -3,10 +3,13 @@
 //! Il plugin updater di Tauri legge `latest.json` dalle release pubbliche
 //! del progetto, scarica il pacchetto e ne verifica la firma minisign con la
 //! chiave pubblica inclusa nell'app (e la versione firmata, contro i
-//! ritorni a versioni vecchie). Il pacchetto scaricato resta in memoria e
-//! viene installato quando l'utente sceglie «Riavvia e aggiorna» oppure alla
-//! chiusura dell'app. Nelle build di sviluppo gli aggiornamenti sono
-//! disattivati.
+//! ritorni a versioni vecchie). Il pacchetto scaricato viene conservato
+//! nella cartella cache dell'app, così sopravvive a una chiusura senza
+//! installazione e non va riscaricato, e viene installato quando l'utente
+//! sceglie «Riavvia e aggiorna» oppure alla chiusura dell'app. All'avvio il
+//! pacchetto conservato viene verificato di nuovo con la firma; se la
+//! versione è già installata viene eliminato. Nelle build di sviluppo gli
+//! aggiornamenti sono disattivati.
 //!
 //! Su Linux il plugin aggiorna AppImage, `.deb` e `.rpm` (voci
 //! `linux-x86_64-<formato>` di `latest.json`). I pacchetti di sistema si
@@ -15,6 +18,8 @@
 //! password comparirebbe a finestra già chiusa.
 
 use std::{
+    fs,
+    path::{Path, PathBuf},
     sync::{
         Mutex, MutexGuard,
         atomic::{AtomicBool, Ordering},
@@ -37,6 +42,12 @@ const FIRST_CHECK_DELAY: Duration = Duration::from_secs(60);
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 /// Avanzamento del download inviato al più ogni 256 KiB.
 const PROGRESS_STEP: u64 = 256 * 1024;
+/// Cartella del pacchetto conservato, dentro la cache dell'app.
+const CACHE_DIRECTORY: &str = "update";
+/// Pacchetto scaricato e manifest della release che lo descrive. Il
+/// manifest viene scritto per ultimo: senza, il pacchetto è incompleto.
+const CACHE_PACKAGE: &str = "package.bin";
+const CACHE_MANIFEST: &str = "release.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "kebab-case")]
@@ -183,12 +194,16 @@ async fn check_and_download(app: &AppHandle) {
     if state.busy.swap(true, Ordering::SeqCst) {
         return;
     }
-    // Un pacchetto già pronto non va riscaricato.
-    let ready = state.lock().pending.is_some();
-    if !ready {
-        run_check(app).await;
-    }
+    run_check(app).await;
     state.busy.store(false, Ordering::SeqCst);
+}
+
+/// Fase «pronto» per un pacchetto già scaricato.
+fn ready_phase(update: &Update) -> UpdatePhase {
+    UpdatePhase::Ready {
+        version: update.version.clone(),
+        notes: update.body.clone().filter(|body| !body.trim().is_empty()),
+    }
 }
 
 async fn run_check(app: &AppHandle) {
@@ -198,6 +213,12 @@ async fn run_check(app: &AppHandle) {
         Err(error) => Err(error),
     };
     app.state::<UpdateState>().lock().last_check_at = Some(time::format_utc(time::now()));
+    let pending = app
+        .state::<UpdateState>()
+        .lock()
+        .pending
+        .as_ref()
+        .map(|pending| ready_phase(&pending.update));
     let update = match checked {
         Ok(Some(update)) => update,
         Ok(None) => {
@@ -206,15 +227,21 @@ async fn run_check(app: &AppHandle) {
         }
         Err(error) => {
             tracing::warn!("controllo degli aggiornamenti non riuscito: {error}");
-            set_phase(
-                app,
-                UpdatePhase::Error {
-                    message: describe(&error),
-                },
-            );
+            // Senza rete il pacchetto già scaricato resta installabile.
+            let phase = pending.unwrap_or(UpdatePhase::Error {
+                message: describe(&error),
+            });
+            set_phase(app, phase);
             return;
         }
     };
+    // Il pacchetto pronto è già l'ultima versione: niente nuovo download.
+    if let Some(phase @ UpdatePhase::Ready { version, .. }) = &pending
+        && *version == update.version
+    {
+        set_phase(app, phase.clone());
+        return;
+    }
 
     let version = update.version.clone();
     tracing::info!(version = %version, "nuova versione disponibile, download in corso");
@@ -250,31 +277,119 @@ async fn run_check(app: &AppHandle) {
         .await;
     match result {
         Ok(bytes) => {
-            let notes = update.body.clone().filter(|body| !body.trim().is_empty());
+            if let Some(directory) = cache_directory(app)
+                && let Err(error) = save_cached(&directory, &update.raw_json, &bytes)
+            {
+                // Resta in memoria: si installa comunque in questa sessione.
+                tracing::warn!("aggiornamento non conservato su disco: {error}");
+            }
+            let phase = ready_phase(&update);
             app.state::<UpdateState>().lock().pending = Some(Pending { update, bytes });
             tracing::info!(version = %version, "aggiornamento scaricato e verificato");
-            set_phase(app, UpdatePhase::Ready { version, notes });
+            set_phase(app, phase);
         }
         Err(error) => {
             tracing::warn!("download dell'aggiornamento non riuscito: {error}");
-            set_phase(
-                app,
-                UpdatePhase::Error {
-                    message: describe(&error),
-                },
-            );
+            // Un download fallito non scarta il pacchetto pronto precedente.
+            let phase = pending.unwrap_or(UpdatePhase::Error {
+                message: describe(&error),
+            });
+            set_phase(app, phase);
         }
     }
 }
 
-/// Controllo periodico in background, se gli aggiornamenti automatici sono
-/// attivi.
+fn cache_directory(app: &AppHandle) -> Option<PathBuf> {
+    match app.path().app_cache_dir() {
+        Ok(directory) => Some(directory.join(CACHE_DIRECTORY)),
+        Err(error) => {
+            tracing::warn!("cartella cache non disponibile: {error}");
+            None
+        }
+    }
+}
+
+/// Scrive pacchetto e manifest; il manifest per ultimo, con una
+/// rinomina, così una scrittura interrotta non sembra completa.
+fn save_cached(
+    directory: &Path,
+    manifest: &serde_json::Value,
+    bytes: &[u8],
+) -> std::io::Result<()> {
+    fs::create_dir_all(directory)?;
+    let manifest_path = directory.join(CACHE_MANIFEST);
+    // Un pacchetto precedente non va più abbinato al manifest vecchio.
+    match fs::remove_file(&manifest_path) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    fs::write(directory.join(CACHE_PACKAGE), bytes)?;
+    let temporary = directory.join(format!("{CACHE_MANIFEST}.tmp"));
+    fs::write(&temporary, serde_json::to_vec(manifest)?)?;
+    fs::rename(temporary, manifest_path)
+}
+
+/// Pacchetto conservato, se completo: manifest e contenuto.
+fn load_cached(directory: &Path) -> Option<(serde_json::Value, Vec<u8>)> {
+    let manifest = fs::read(directory.join(CACHE_MANIFEST)).ok()?;
+    let manifest = serde_json::from_slice(&manifest).ok()?;
+    let bytes = fs::read(directory.join(CACHE_PACKAGE)).ok()?;
+    Some((manifest, bytes))
+}
+
+fn clear_cached(directory: &Path) {
+    match fs::remove_dir_all(directory) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            tracing::warn!("pacchetto di aggiornamento non eliminato: {error}");
+        }
+        _ => {}
+    }
+}
+
+/// All'avvio riprende il pacchetto scaricato in una sessione precedente,
+/// dopo averne verificato di nuovo la firma. Lo elimina se la versione è
+/// già installata (aggiornamento riuscito) o se non è più valido.
+fn restore_cached(app: &AppHandle) {
+    let Some(directory) = cache_directory(app) else {
+        return;
+    };
+    let Some((manifest, bytes)) = load_cached(&directory) else {
+        clear_cached(&directory);
+        return;
+    };
+    let restored = app
+        .updater()
+        .and_then(|updater| updater.restore_update(manifest));
+    match restored {
+        Ok(Some(update)) => match update.verify(&bytes) {
+            Ok(()) => {
+                tracing::info!(version = %update.version, "aggiornamento scaricato in precedenza pronto");
+                let phase = ready_phase(&update);
+                app.state::<UpdateState>().lock().pending = Some(Pending { update, bytes });
+                set_phase(app, phase);
+            }
+            Err(error) => {
+                tracing::warn!("pacchetto conservato non valido, scartato: {error}");
+                clear_cached(&directory);
+            }
+        },
+        Ok(None) => clear_cached(&directory),
+        Err(error) => {
+            tracing::warn!("pacchetto conservato non leggibile, scartato: {error}");
+            clear_cached(&directory);
+        }
+    }
+}
+
+/// Riprende il pacchetto conservato e avvia il controllo periodico in
+/// background, se gli aggiornamenti automatici sono attivi.
 pub fn spawn_update_checker(app: &AppHandle) {
     if !supported() {
         return;
     }
     let app = app.clone();
     thread::spawn(move || {
+        restore_cached(&app);
         thread::sleep(FIRST_CHECK_DELAY);
         loop {
             if auto_update(&app) {
@@ -289,8 +404,8 @@ pub fn spawn_update_checker(app: &AppHandle) {
 /// Su Windows l'installer parte in modalità passiva e il processo termina.
 pub fn install_on_exit(app: &AppHandle) {
     if !installs_on_exit() {
-        // `.deb`/`.rpm`: resta per «Riavvia e aggiorna» al prossimo avvio
-        // (verrà riscaricato), senza una richiesta di password a sorpresa.
+        // `.deb`/`.rpm`: resta conservato per «Riavvia e aggiorna» al
+        // prossimo avvio, senza una richiesta di password a sorpresa.
         return;
     }
     let Some(state) = app.try_state::<UpdateState>() else {
@@ -354,11 +469,40 @@ pub fn install_update_now(app: AppHandle) -> CommandResult<()> {
         let message = describe(&error);
         // Password annullata o errore: il pacchetto resta pronto per
         // riprovare, senza scaricarlo di nuovo.
-        let version = update.version.clone();
-        let notes = update.body.clone().filter(|body| !body.trim().is_empty());
+        let phase = ready_phase(&update);
         app.state::<UpdateState>().lock().pending = Some(Pending { update, bytes });
-        set_phase(&app, UpdatePhase::Ready { version, notes });
+        set_phase(&app, phase);
         return Err(message);
     }
     app.restart();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CACHE_MANIFEST, CACHE_PACKAGE, clear_cached, load_cached, save_cached};
+
+    #[test]
+    fn cached_package_round_trips_and_is_cleared() {
+        let root = tempfile::tempdir().expect("temporary directory");
+        let directory = root.path().join("update");
+        let manifest = serde_json::json!({ "version": "9.9.9" });
+        save_cached(&directory, &manifest, b"pacchetto").expect("package is saved");
+        let (loaded, bytes) = load_cached(&directory).expect("package is loaded");
+        assert_eq!(loaded, manifest);
+        assert_eq!(bytes, b"pacchetto");
+        clear_cached(&directory);
+        assert!(!directory.exists());
+    }
+
+    #[test]
+    fn package_without_manifest_is_incomplete() {
+        let root = tempfile::tempdir().expect("temporary directory");
+        let directory = root.path().join("update");
+        save_cached(&directory, &serde_json::json!({}), b"vecchio").expect("package is saved");
+        // Download interrotto dopo il pacchetto: il manifest vecchio è già
+        // stato rimosso, quindi niente abbinamento sbagliato.
+        std::fs::remove_file(directory.join(CACHE_MANIFEST)).expect("manifest removed");
+        std::fs::write(directory.join(CACHE_PACKAGE), b"nuovo").expect("package written");
+        assert!(load_cached(&directory).is_none());
+    }
 }

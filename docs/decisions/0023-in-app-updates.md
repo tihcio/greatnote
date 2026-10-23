@@ -67,3 +67,22 @@ che l'app cerchi le versioni nuove e le installi da sola. Vincoli:
   «Riavvia e aggiorna» (`installs_on_exit` falso nello stato), e se la
   richiesta viene annullata il pacchetto resta pronto.
 
+## Aggiornamento: pacchetto conservato e installer MSI (2026-10-23)
+
+- Il pacchetto scaricato non resta più solo in memoria: viene scritto nella
+  cartella cache dell'app (`update/package.bin` più il manifest della
+  release, scritto per ultimo). All'avvio `Updater::restore_update` lo
+  ricostruisce e `Update::verify` ne ricontrolla la firma; se la versione
+  è già installata o la firma non torna, viene eliminato. Così una chiusura
+  prima del download completo dell'avvio successivo, o un installer che non
+  completa, non obbligano a riscaricare.
+- Un controllo con un pacchetto già pronto confronta la versione: se nel
+  frattempo è uscita una versione più nuova la scarica, altrimenti resta
+  quella pronta. Errori di rete o di download non scartano il pacchetto.
+- `latest.json` ha le voci `windows-x86_64-nsis` e `windows-x86_64-msi`
+  oltre a quella generica: il plugin sceglie quella del tipo di
+  installazione. Prima un'installazione da `.msi` (per macchina, in
+  Programmi) riceveva l'installer NSIS (per utente, in `%LOCALAPPDATA%`), che
+  creava una seconda copia: i collegamenti continuavano ad aprire la
+  versione vecchia.
+

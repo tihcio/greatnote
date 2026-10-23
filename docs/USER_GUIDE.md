@@ -790,7 +790,14 @@ Greatnote installato con l'installer Windows o con i pacchetti Linux
   Impostazioni › Aggiornamenti: la nota aperta viene salvata e l'app si
   riapre aggiornata;
 - le note, gli allegati e le impostazioni restano dove sono; se serve
-  aggiornare il database, prima viene creato un backup.
+  aggiornare il database, prima viene creato un backup;
+- un aggiornamento già scaricato resta pronto anche se chiudi l'app prima
+  di installarlo o se l'installazione non va a buon fine: non viene
+  scaricato di nuovo.
+
+Su Windows l'aggiornamento usa lo stesso tipo di installer con cui hai
+installato Greatnote (`.exe` o `.msi`). L'installer `.msi` installa per
+tutti gli utenti e Windows può chiedere la conferma di amministratore.
 
 Con il pacchetto `.deb` o `.rpm` l'installazione richiede la password di
 amministratore: avviene solo quando premi **Riavvia e aggiorna**, mai da

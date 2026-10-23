@@ -4,6 +4,20 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.2 — 2026-10-23
+
+- **Aggiornamenti più affidabili su Windows.** Un'installazione fatta con
+  l'installer `.msi` riceveva l'aggiornamento come installer `.exe`, che
+  installava una seconda copia in un'altra cartella: riaprendo l'app
+  partiva ancora la versione vecchia. Ora ogni installazione riceve lo
+  stesso tipo di installer.
+- **Aggiornamento scaricato conservato.** Il pacchetto scaricato resta sul
+  disco (con la firma ricontrollata a ogni avvio) finché non viene
+  installato: chiudere l'app o un'installazione non riuscita non
+  obbligano più a scaricarlo di nuovo.
+- **Pulsante «Riavvia e aggiorna» leggibile.** Passandoci sopra con il mouse
+  il testo diventava dello stesso colore dello sfondo.
+
 ## 0.2.1 — 2026-10-22
 
 Sostituisce la 0.2.0, che non è stata pubblicata: i test su Windows
