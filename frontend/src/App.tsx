@@ -67,7 +67,7 @@ import NoteHistoryDialog from "./features/NoteHistoryDialog";
 import NoteInfoDialog from "./features/NoteInfoDialog";
 import PromptHost from "./features/PromptHost";
 import QuickSwitcher from "./features/QuickSwitcher";
-import type { SwitchTarget } from "./features/QuickSwitcher";
+import type { SwitchScope, SwitchTarget } from "./features/QuickSwitcher";
 import { formatTime } from "./lib/dates";
 import SettingsDialog from "./features/SettingsDialog";
 import { SYNC_FINISHED_EVENT } from "./features/SyncSection";
@@ -76,6 +76,7 @@ import TagBar from "./features/TagBar";
 import EncryptedTextHost from "./features/EncryptedTextDialog";
 import ImageAnnotationHost from "./features/ImageAnnotator";
 import Icon from "./components/Icon";
+import type { IconName } from "./components/Icon";
 import ColumnResizer from "./components/ColumnResizer";
 import type { SettingsSection } from "./features/SettingsDialog";
 import AiResultDialog from "./features/ai/AiResultDialog";
@@ -121,6 +122,16 @@ type OrganizationDialog =
       id?: string;
       name: string;
     };
+
+const switchPlaceIcons: Partial<Record<Workspace, IconName>> = {
+  home: "home",
+  tasks: "check",
+  reminders: "bell",
+  calendar: "calendar",
+  files: "file",
+  templates: "template",
+  assistant: "sparkle",
+};
 
 function renderSearchSnippet(snippet: string): ReactNode {
   const parts = snippet.split(/([\uE000][^\uE001]*[\uE001])/g);
@@ -1724,14 +1735,6 @@ export default function App() {
     setIsDataDialogOpen(true);
   };
 
-  const focusSearch = () => {
-    if (workspace !== "notes") setWorkspace("notes");
-    window.requestAnimationFrame(() => {
-      searchInput.current?.focus();
-      searchInput.current?.select();
-    });
-  };
-
   const activeTextField = (): HTMLInputElement | HTMLTextAreaElement | null => {
     const element = document.activeElement;
     return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement ? element : null;
@@ -2167,7 +2170,7 @@ export default function App() {
     copy: () => editAction("copy"),
     paste: (plain) => void pasteText(plain),
     selectAll: () => editAction("selectAll"),
-    focusSearch,
+    focusSearch: () => setIsSwitcherOpen(true),
     quickSwitch: () => setIsSwitcherOpen(true),
     reloadData: () => void reloadData(),
     reloadWindow: () => void reloadWindow(),
@@ -2276,8 +2279,14 @@ export default function App() {
     key: `place-${place}`,
     kind: "place",
     label: workspaceLabels[place],
+    icon: switchPlaceIcons[place],
     run: () => void openWorkspace(place),
   }));
+  const switchScope: SwitchScope | null =
+    workspace === "notes" &&
+    (selectedView.kind === "notebook" || selectedView.kind === "space" || selectedView.kind === "tag")
+      ? { kind: selectedView.kind, id: selectedView.id, label: titleForView(selectedView) }
+      : null;
 
   const filteredNotes = notes;
   const viewTitle = titleForView(selectedView);
@@ -2529,7 +2538,7 @@ export default function App() {
         </div>
 
         {isDesktop && (
-          <button className="sidebar-search" onClick={focusSearch} type="button">
+          <button className="sidebar-search" onClick={() => setIsSwitcherOpen(true)} type="button">
             <Icon name="search" size={16} />
             <span className="sidebar-search-label">{t.search}</span>
             <kbd>Ctrl+K</kbd>
@@ -3714,6 +3723,7 @@ export default function App() {
           onOpenSpace={(id) => void changeView({ kind: "space", id })}
           onOpenTag={(id) => void changeView({ kind: "tag", id })}
           places={switchPlaces}
+          scope={switchScope}
           spaces={spaces}
           tags={tags}
         />

@@ -4,6 +4,15 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.3 — 2026-11-10
+
+- **Ricerca in un riquadro.** Il pulsante di ricerca della barra laterale
+  (e `Ctrl+K`/`Ctrl+F`) apre un riquadro sopra la finestra invece di
+  spostare il cursore nella colonna delle note: mostra le note recenti,
+  cerca in titolo e testo evidenziando i termini trovati, permette di
+  limitare la ricerca al taccuino, spazio o tag aperto e di passare alle
+  sezioni dell'app. Sostituisce la finestra «Vai a…».
+
 ## 0.2.2 — 2026-10-23
 
 - **Aggiornamenti più affidabili su Windows.** Un'installazione fatta con

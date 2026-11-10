@@ -32,8 +32,12 @@ una nota aperta) sono disattivate. **Aiuto › Scorciatoie da tastiera**
   esci.
 - **Modifica:** annulla/ripeti, taglia, copia, incolla, incolla senza
   formattazione (`Ctrl+Shift+V`), seleziona tutto, cerca nelle note
-  (`Ctrl+K` o `Ctrl+F`), **Vai a…** (`Ctrl+Q`: note, taccuini, tag e
-  sezioni), trova e sostituisci (`Ctrl+H`).
+  (`Ctrl+K`, `Ctrl+F`, `Ctrl+Q` o il pulsante di ricerca della barra
+  laterale): si apre un riquadro sopra la finestra che cerca nel titolo e
+  nel testo delle note e tra taccuini, spazi, tag e sezioni. Se è aperto
+  un taccuino, uno spazio o un tag, **Cerca in** limita la ricerca a quel
+  contenitore. `↑`/`↓` per scegliere, `Invio` per aprire, `Esc` per
+  chiudere. Trova e sostituisci (`Ctrl+H`).
 - **Visualizza:** ricarica i dati (`Ctrl+R`) o la finestra
   (`Ctrl+Shift+R`), indietro/avanti (`Alt+←`/`Alt+→`), zoom (`Ctrl+0`,
   `Ctrl++`, `Ctrl+-`), schermo intero (`F11`), barra laterale (`F10`),
