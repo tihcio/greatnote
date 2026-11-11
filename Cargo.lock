@@ -1956,7 +1956,7 @@ dependencies = [
 
 [[package]]
 name = "greatnote-core"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "age",
  "base64 0.22.1",
@@ -1982,7 +1982,7 @@ dependencies = [
 
 [[package]]
 name = "greatnote-desktop"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "base64 0.22.1",
  "dirs",

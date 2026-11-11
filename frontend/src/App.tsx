@@ -352,6 +352,15 @@ export default function App() {
         // Aggiornata sul posto: la lista non si riordina mentre la si usa.
         // Il nuovo ordine compare al prossimo caricamento della vista.
         setNotes((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+        // Titolo e anteprima arrivati con l'elenco sono quelli di prima del
+        // salvataggio: senza toglierli coprirebbero i valori nuovi.
+        const dropStale = (current: Record<string, string>) => {
+          if (!(saved.id in current)) return current;
+          const { [saved.id]: _stale, ...rest } = current;
+          return rest;
+        };
+        setSearchTitles(dropStale);
+        setSearchSnippets(dropStale);
         if (activeNoteRef.current?.id === note.id) {
           activeNoteRef.current = saved;
           setActiveNote(saved);

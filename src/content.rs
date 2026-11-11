@@ -8,7 +8,7 @@ use scraper::{ElementRef, Html, Node};
 use serde_json::{Map, Value, json};
 
 use crate::{
-    domain::note::{FONT_FAMILIES, FONT_SIZES, is_hex_color},
+    domain::note::{FONT_FAMILIES, FONT_SIZES, MAX_INDENT, TEXT_ALIGNMENTS, is_hex_color},
     secret_text::is_armored_ciphertext,
 };
 
@@ -17,7 +17,16 @@ use crate::{
 const MAX_BLOCK_STACK: usize = 14;
 const MAX_HTML_DEPTH: usize = 256;
 const MAX_LINK_LENGTH: usize = 2048;
-const MARK_ORDER: [&str; 6] = ["link", "bold", "italic", "strike", "underline", "code"];
+const MARK_ORDER: [&str; 8] = [
+    "link",
+    "bold",
+    "italic",
+    "strike",
+    "underline",
+    "superscript",
+    "subscript",
+    "code",
+];
 /// Linguaggio dei blocchi di codice che contengono un testo cifrato: in
 /// Markdown e HTML il nodo `encryptedText` diventa un blocco `age`, e un
 /// blocco `age` valido importato torna a essere un testo cifrato.
@@ -563,6 +572,8 @@ fn inline_to_markdown(nodes: &[Value]) -> String {
                         "bold" => "**",
                         "italic" => "*",
                         "strike" => "~~",
+                        "superscript" => "<sup>",
+                        "subscript" => "<sub>",
                         _ => "<u>",
                     });
                     if mark == "link" {
@@ -616,6 +627,8 @@ fn close_marks(
             "bold" => output.push_str("**"),
             "italic" => output.push('*'),
             "strike" => output.push_str("~~"),
+            "superscript" => output.push_str("</sup>"),
+            "subscript" => output.push_str("</sub>"),
             _ => output.push_str("</u>"),
         }
     }
@@ -674,14 +687,19 @@ fn blocks_to_html(blocks: &[Value]) -> String {
     for node in blocks {
         match node_type(node) {
             "paragraph" => {
-                output.push_str(&format!("<p>{}</p>\n", inline_to_html(children(node))));
+                output.push_str(&format!(
+                    "<p{}>{}</p>\n",
+                    layout_style(node),
+                    inline_to_html(children(node))
+                ));
             }
             "heading" => {
                 let level = attr_u64(node, "level").unwrap_or(1).clamp(1, 6);
                 // h1 è riservato al titolo della nota.
                 let level = (level + 1).min(6);
                 output.push_str(&format!(
-                    "<h{level}>{}</h{level}>\n",
+                    "<h{level}{}>{}</h{level}>\n",
+                    layout_style(node),
                     inline_to_html(children(node))
                 ));
             }
@@ -767,6 +785,25 @@ fn list_items_html(node: &Value) -> String {
         .collect()
 }
 
+/// Attributo `style` con allineamento e rientro di un paragrafo o titolo
+/// (stringa vuota se sono quelli predefiniti). Solo valori dell'elenco
+/// ammesso: niente testo del documento finisce nello stile.
+fn layout_style(node: &Value) -> String {
+    let mut css = Vec::new();
+    if let Some(align) = attr_str(node, "textAlign").filter(|align| TEXT_ALIGNMENTS.contains(align))
+    {
+        css.push(format!("text-align:{align}"));
+    }
+    if let Some(level) = attr_u64(node, "indent").filter(|level| (1..=MAX_INDENT).contains(level)) {
+        css.push(format!("margin-left:{}em", level * 2));
+    }
+    if css.is_empty() {
+        String::new()
+    } else {
+        format!(" style=\"{}\"", css.join(";"))
+    }
+}
+
 fn inline_to_html(nodes: &[Value]) -> String {
     let mut output = String::new();
     for node in nodes {
@@ -779,6 +816,8 @@ fn inline_to_html(nodes: &[Value]) -> String {
                     ("code", "<code>", "</code>"),
                     ("underline", "<u>", "</u>"),
                     ("strike", "<s>", "</s>"),
+                    ("superscript", "<sup>", "</sup>"),
+                    ("subscript", "<sub>", "</sub>"),
                     ("italic", "<em>", "</em>"),
                     ("bold", "<strong>", "</strong>"),
                 ] {
@@ -1345,6 +1384,10 @@ pub fn markdown_to_document(markdown: &str) -> ParsedDocument {
                 match tag.as_str() {
                     "<u>" | "<ins>" => builder.push_mark(json!({ "type": "underline" })),
                     "</u>" | "</ins>" => builder.remove_last_mark("underline"),
+                    "<sup>" => builder.push_mark(json!({ "type": "superscript" })),
+                    "</sup>" => builder.remove_last_mark("superscript"),
+                    "<sub>" => builder.push_mark(json!({ "type": "subscript" })),
+                    "</sub>" => builder.remove_last_mark("subscript"),
                     "<br>" | "<br/>" => builder.hard_break(),
                     _ => {}
                 }
@@ -1495,6 +1538,29 @@ fn walk_html_children(element: ElementRef<'_>, builder: &mut DocumentBuilder, de
     }
 }
 
+/// Allineamento al centro o a destra dichiarato da `style="text-align:…"` o
+/// dall'attributo `align`; ogni altro valore è ignorato.
+fn html_text_align(element: ElementRef<'_>) -> Option<&'static str> {
+    let from_style = element.value().attr("style").and_then(|style| {
+        style.split(';').find_map(|declaration| {
+            let (property, value) = declaration.split_once(':')?;
+            property
+                .trim()
+                .eq_ignore_ascii_case("text-align")
+                .then(|| value.trim().to_ascii_lowercase())
+        })
+    });
+    let declared = from_style.or_else(|| {
+        element
+            .value()
+            .attr("align")
+            .map(|align| align.trim().to_ascii_lowercase())
+    })?;
+    TEXT_ALIGNMENTS
+        .into_iter()
+        .find(|align| *align == declared.as_str())
+}
+
 fn walk_html_element(element: ElementRef<'_>, builder: &mut DocumentBuilder, depth: usize) {
     if depth > MAX_HTML_DEPTH {
         // Oltre il limite il sottoalbero viene appiattito senza ricorsione.
@@ -1520,10 +1586,17 @@ fn walk_html_element(element: ElementRef<'_>, builder: &mut DocumentBuilder, dep
         | "math" | "head" | "title" | "meta" | "link" | "base" | "input" | "select"
         | "textarea" | "button" | "canvas" | "audio" | "video" | "source" | "track" | "frame"
         | "frameset" | "applet" | "dialog" => {}
-        "p" => block(builder, "paragraph", None),
+        "p" => {
+            let attrs = html_text_align(element).map(|align| json!({ "textAlign": align }));
+            block(builder, "paragraph", attrs);
+        }
         "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
             let level = name[1..].parse::<u8>().unwrap_or(1);
-            block(builder, "heading", Some(json!({ "level": level })));
+            let mut attrs = json!({ "level": level });
+            if let Some(align) = html_text_align(element) {
+                attrs["textAlign"] = json!(align);
+            }
+            block(builder, "heading", Some(attrs));
         }
         "ul" | "menu" => block(builder, "bulletList", None),
         "ol" => {
@@ -1568,6 +1641,8 @@ fn walk_html_element(element: ElementRef<'_>, builder: &mut DocumentBuilder, dep
         "em" | "i" | "cite" | "dfn" => mark(builder, json!({ "type": "italic" })),
         "s" | "strike" | "del" => mark(builder, json!({ "type": "strike" })),
         "u" | "ins" => mark(builder, json!({ "type": "underline" })),
+        "sup" => mark(builder, json!({ "type": "superscript" })),
+        "sub" => mark(builder, json!({ "type": "subscript" })),
         "code" | "kbd" | "samp" | "tt" => mark(builder, json!({ "type": "code" })),
         "a" => match element
             .value()
@@ -1898,6 +1973,77 @@ let b = 2;</code></pre>
         assert!(text.contains("a | b"), "{text}");
         assert!(serialized.contains("\"language\":\"js\""));
         assert!(serialized.contains("https://example.org"));
+    }
+
+    #[test]
+    fn layout_and_script_marks_are_validated_and_exported() {
+        let document = json!({ "type": "doc", "content": [
+            { "type": "heading", "attrs": { "level": 2, "textAlign": "center", "indent": null },
+              "content": [{ "type": "text", "text": "Titolo" }] },
+            { "type": "paragraph", "attrs": { "textAlign": "right", "indent": 2 }, "content": [
+                { "type": "text", "text": "E = mc" },
+                { "type": "text", "text": "2", "marks": [{ "type": "superscript" }] },
+                { "type": "text", "text": " e H" },
+                { "type": "text", "text": "2", "marks": [{ "type": "subscript" }] },
+                { "type": "text", "text": "O" }
+            ]},
+            { "type": "paragraph", "attrs": { "textAlign": null, "indent": null },
+              "content": [{ "type": "text", "text": "normale" }] }
+        ]});
+        validate_document(&document).expect("valid document");
+
+        let html = to_html("Nota", &document, "it");
+        assert!(html.contains("<h3 style=\"text-align:center\">Titolo</h3>"));
+        assert!(html.contains(
+            "<p style=\"text-align:right;margin-left:4em\">E = mc<sup>2</sup> e H<sub>2</sub>O</p>"
+        ));
+        assert!(html.contains("<p>normale</p>"));
+
+        let markdown = to_markdown("Nota", &document, &FrontMatter::default());
+        assert!(markdown.contains("E = mc<sup>2</sup> e H<sub>2</sub>O"));
+        // Apice e pedice tornano dal Markdown; allineamento e rientro no.
+        let parsed = markdown_to_document(&markdown);
+        validate_document(&parsed.document).expect("valid document");
+        let serialized = parsed.document.to_string();
+        assert!(serialized.contains(r#""type":"superscript""#));
+        assert!(serialized.contains(r#""type":"subscript""#));
+        assert!(!serialized.contains("textAlign"));
+    }
+
+    #[test]
+    fn invalid_layout_is_rejected_and_never_reaches_html() {
+        for attrs in [
+            json!({ "textAlign": "justify" }),
+            json!({ "textAlign": "center;background:url(x)" }),
+            json!({ "indent": 9 }),
+            json!({ "indent": -1 }),
+            json!({ "indent": "2em" }),
+        ] {
+            let document = json!({ "type": "doc", "content": [
+                { "type": "paragraph", "attrs": attrs, "content": [{ "type": "text", "text": "x" }] }
+            ]});
+            assert!(validate_document(&document).is_err(), "{document}");
+            // Anche senza validazione l'esportazione ignora i valori ignoti.
+            assert!(to_html("Nota", &document, "it").contains("<p>x</p>"));
+        }
+    }
+
+    #[test]
+    fn html_import_keeps_alignment_and_script_marks() {
+        let parsed = html_to_document(
+            r#"<h2 style="color:red; TEXT-ALIGN: Center">Titolo</h2>
+            <p align="right">x<sup>2</sup> y<sub>1</sub></p>
+            <p style="text-align:justify;margin-left:99em">altro</p>"#,
+        );
+        validate_document(&parsed.document).expect("valid document");
+        let content = parsed.document["content"].as_array().expect("blocks");
+        assert_eq!(content[0]["attrs"]["textAlign"], "center");
+        assert_eq!(content[1]["attrs"]["textAlign"], "right");
+        assert!(content[2].get("attrs").is_none());
+        let serialized = parsed.document.to_string();
+        assert!(serialized.contains(r#""type":"superscript""#));
+        assert!(serialized.contains(r#""type":"subscript""#));
+        assert!(!serialized.contains("margin"));
     }
 
     #[test]

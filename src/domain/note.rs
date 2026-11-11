@@ -87,6 +87,37 @@ pub const FONT_SIZES: [&str; 9] = [
     "11px", "13px", "15px", "17px", "20px", "24px", "28px", "32px", "40px",
 ];
 
+/// Allineamenti ammessi per paragrafi e titoli; a sinistra è l'assenza del
+/// valore. Devono coincidere con `TEXT_ALIGNMENTS` dell'editor.
+pub const TEXT_ALIGNMENTS: [&str; 2] = ["center", "right"];
+/// Livello massimo di rientro di paragrafi e titoli.
+pub const MAX_INDENT: u64 = 8;
+
+/// Allineamento e rientro di un paragrafo o titolo: finiscono negli stili
+/// dell'editor e dell'esportazione HTML, quindi solo valori noti.
+fn validate_layout_attrs(object: &serde_json::Map<String, Value>) -> Result<(), &'static str> {
+    let Some(attrs) = object.get("attrs").and_then(Value::as_object) else {
+        return Ok(());
+    };
+    let align_valid = attrs.get("textAlign").is_none_or(|value| {
+        value.is_null()
+            || value
+                .as_str()
+                .is_some_and(|align| TEXT_ALIGNMENTS.contains(&align))
+    });
+    let indent_valid = attrs.get("indent").is_none_or(|value| {
+        value.is_null()
+            || value
+                .as_u64()
+                .is_some_and(|level| (1..=MAX_INDENT).contains(&level))
+    });
+    if align_valid && indent_valid {
+        Ok(())
+    } else {
+        Err("Il documento contiene un allineamento o un rientro non valido")
+    }
+}
+
 /// Colore CSS esadecimale `#rgb` o `#rrggbb`: nessun altro valore può finire
 /// negli stili generati dall'editor o dall'esportazione HTML.
 pub fn is_hex_color(value: &str) -> bool {
@@ -333,6 +364,9 @@ fn validate_node(node: &Value, depth: usize) -> Result<(), &'static str> {
     if node_type == "image" {
         validate_image(object)?;
     }
+    if matches!(node_type, "paragraph" | "heading") {
+        validate_layout_attrs(object)?;
+    }
     if node_type == "encryptedText" {
         validate_encrypted_text(object)?;
     }
@@ -359,6 +393,8 @@ fn validate_node(node: &Value, depth: usize) -> Result<(), &'static str> {
                     | "link"
                     | "highlight"
                     | "textStyle"
+                    | "superscript"
+                    | "subscript"
             ) {
                 return Err("Il documento contiene un contrassegno non supportato");
             }

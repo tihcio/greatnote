@@ -4,6 +4,39 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.5 — 2026-11-11
+
+- **Calendario con griglia oraria.** Le viste **Settimana** e la nuova
+  vista **Giorno** mostrano le ore: un clic su uno spazio vuoto propone un
+  evento di 30 minuti a quell'orario. Gli eventi sovrapposti sono
+  affiancati, quelli dell'intera giornata e le attività in scadenza stanno
+  in alto. Spostando l'inizio di un evento la durata resta quella scelta
+  anche se è inferiore a un'ora.
+- **Tabelle: `Ctrl+A` seleziona tutta la tabella** quando il cursore è in
+  una cella, così allineamento e formattazione si applicano a tutte le
+  celle.
+
+- **Ricerca nel menu «Altro» dell'editor.** Un campo in cima al menu trova
+  i comandi di formattazione per nome, compresi quelli delle tabelle.
+- **Collegamenti interni nel server MCP.** `read_note` riporta i
+  collegamenti della nota verso altre note, con gli id per leggerle;
+  quelli verso taccuini esclusi dall'AI non compaiono.
+- **Modifiche AI: vista «Originale».** L'anteprima di una modifica AI
+  mostra il testo di partenza, il risultato o il confronto parola per
+  parola.
+
+- **Nuovi comandi nell'editor.** Nel menu **Altro**: allineamento a
+  sinistra, al centro e a destra, aumenta e riduci rientro, apice e
+  pedice. Il link ha un pulsante proprio nella barra. Allineamento e
+  rientro si conservano nell'esportazione HTML e PDF, apice e pedice anche
+  in Markdown; l'importazione HTML riconosce allineamento, apice e pedice.
+  I menu in fondo alla barra non escono più dal bordo della finestra.
+
+- **Titolo aggiornato nella lista delle note.** Dopo aver cambiato il
+  titolo di una nota (per esempio appena creata), la colonna centrale
+  continuava a mostrare quello vecchio, come «Nota senza titolo», finché
+  la lista non veniva ricaricata.
+
 ## 0.2.4 — 2026-11-11
 
 - **Aggiornamento dall'app su Fedora 43 e successive.** Con il pacchetto

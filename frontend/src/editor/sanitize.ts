@@ -2,6 +2,7 @@ import type { JSONContent } from "@tiptap/react";
 import { FONT_FAMILIES, FONT_SIZES, isSafeLink } from "./extensions";
 import { cleanHint, isArmoredCiphertext } from "./encryptedText";
 import { sanitizeAnnotations } from "./imageAnnotations";
+import { indentLevel, isTextAlignment } from "./textLayout";
 
 const HEX_COLOR = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
@@ -82,6 +83,14 @@ export function sanitizeDocument(node: JSONContent): JSONContent {
     };
   }
   const next: JSONContent = { ...node };
+  if ((node.type === "paragraph" || node.type === "heading") && node.attrs) {
+    // Allineamento e rientro solo nei valori ammessi dalla validazione Rust.
+    next.attrs = {
+      ...node.attrs,
+      textAlign: isTextAlignment(node.attrs.textAlign) ? node.attrs.textAlign : null,
+      indent: indentLevel(node.attrs.indent),
+    };
+  }
   if (node.marks) {
     const marks = node.marks.map(sanitizeMark).filter((mark): mark is Mark => mark !== null);
     if (marks.length > 0) next.marks = marks;

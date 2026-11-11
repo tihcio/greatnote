@@ -146,6 +146,21 @@ try {
     await expectVisible(".note-editor");
     await expectVisible(".editor-toolbar");
   });
+  await step("titolo-aggiornato-nella-lista", async () => {
+    const listTitle = () =>
+      page.$eval(".note-list-item.active .note-item-title", (element) => element.textContent ?? "");
+    await page.click(".title-input");
+    await page.keyboard.press("End");
+    await page.keyboard.type(" bis");
+    await pause(1100);
+    if (!(await listTitle()).endsWith(" bis")) {
+      throw new Error(`la lista mostra ancora il titolo vecchio: «${await listTitle()}»`);
+    }
+    // Titolo originale ripristinato per i passi successivi.
+    for (let index = 0; index < 4; index += 1) await page.keyboard.press("Backspace");
+    await pause(1100);
+    if ((await listTitle()).endsWith(" bis")) throw new Error("titolo non ripristinato");
+  });
   await step("tag-nella-barra-in-basso", async () => {
     await page.click(".tag-input");
     await page.keyboard.type("imp");
@@ -292,6 +307,93 @@ try {
     await page.keyboard.press("Escape");
     await page.click(".toolbar-dropdown");
     await expectVisible(".toolbar-menu .menu-list");
+  });
+  await step("allineamento-rientro-apice", async () => {
+    await page.keyboard.press("Escape");
+    const more = async (label) => {
+      await page.click('.toolbar-dropdown[aria-label="Altro"]');
+      await pause(150);
+      await clickText(".menu-item", label);
+      await pause(150);
+    };
+    const count = (selector) => page.$$eval(selector, (elements) => elements.length);
+    // Senza le classi, che cambiano con la selezione (es. immagine selezionata).
+    const editorHtml = () =>
+      page.$eval(".note-editor", (element) => element.innerHTML.replace(/ class="[^"]*"/g, ""));
+    const initialHtml = await editorHtml();
+    await page.click(".note-editor p");
+    await more("Allinea al centro");
+    await more("Aumenta rientro");
+    if ((await count('.note-editor [style*="text-align: center"][style*="margin-left: 2em"]')) !== 1) {
+      throw new Error("paragrafo non centrato o non rientrato");
+    }
+    // Apice trovato con il campo di ricerca del menu, senza mouse.
+    await page.click('.toolbar-dropdown[aria-label="Altro"]');
+    await pause(150);
+    await page.keyboard.type("tabella");
+    await pause(150);
+    if ((await count(".toolbar-menu-popup .menu-item")) !== 0) {
+      throw new Error("le voci di un sottomenu disattivato non vanno proposte");
+    }
+    await expectVisible(".toolbar-menu-empty");
+    for (let index = 0; index < 7; index += 1) await page.keyboard.press("Backspace");
+    await page.keyboard.type("apic");
+    await pause(150);
+    if ((await count(".toolbar-menu-popup .menu-item")) !== 1) throw new Error("ricerca nel menu non filtrata");
+    await page.keyboard.press("Enter");
+    await pause(150);
+    await page.keyboard.type("2");
+    if ((await count(".note-editor sup")) !== 1) throw new Error("apice non applicato");
+    await more("Pedice");
+    await page.keyboard.type("3");
+    if ((await count(".note-editor sub")) !== 1) throw new Error("pedice non applicato");
+    if ((await count(".note-editor sup")) !== 1) throw new Error("apice e pedice sovrapposti");
+    await expectVisible('.toolbar-button[aria-label="Link…"]');
+    // L'allineamento vale anche per il testo nelle celle di una tabella.
+    await page.keyboard.press("Enter");
+    await page.click(".toolbar-dropdown");
+    await pause(150);
+    await clickText(".menu-item", "Tabella");
+    await pause(200);
+    await page.click(".note-editor td");
+    await more("Allinea a destra");
+    if ((await count('.note-editor td [style*="text-align: right"]')) !== 1) {
+      throw new Error("testo della cella non allineato");
+    }
+    // Ctrl+A in una cella seleziona tutta la tabella (3×3), non la nota.
+    await keys("Control", "KeyA");
+    await pause(150);
+    if ((await count(".note-editor .selectedCell")) !== 9) {
+      throw new Error(`celle selezionate: ${await count(".note-editor .selectedCell")}`);
+    }
+    await more("Allinea al centro");
+    if ((await count('.note-editor table [style*="text-align: center"]')) !== 9) {
+      throw new Error("allineamento non applicato a tutte le celle selezionate");
+    }
+    await page.click(".note-editor td");
+    await page.click('.toolbar-dropdown[aria-label="Altro"]');
+    await pause(150);
+    await page.keyboard.type("elimina tab");
+    await pause(150);
+    await page.keyboard.press("Enter");
+    await pause(150);
+    if ((await count(".note-editor table")) !== 0) throw new Error("tabella non eliminata dalla ricerca");
+    await page.click(".note-editor p");
+    // «Rimuovi formattazione» su tutta la nota toglie allineamento e rientro.
+    await keys("Control", "KeyA");
+    await more("Rimuovi formattazione");
+    if ((await count('.note-editor [style*="text-align"], .note-editor [style*="margin-left"]')) !== 0) {
+      throw new Error("allineamento o rientro non rimossi");
+    }
+    // La nota torna com'era per i passi successivi; menu aperto nello screenshot.
+    for (let index = 0; index < 60 && (await editorHtml()) !== initialHtml; index += 1) {
+      await keys("Control", "KeyZ");
+    }
+    if ((await editorHtml()) !== initialHtml) {
+      throw new Error(`nota non ripristinata con Annulla:\n${initialHtml}\n---\n${await editorHtml()}`);
+    }
+    await page.click(".note-editor p");
+    await page.click('.toolbar-dropdown[aria-label="Altro"]');
   });
   await step("comandi-rapidi", async () => {
     await page.keyboard.press("Escape");
@@ -582,6 +684,10 @@ try {
     await clickText(".menu-item", "Correggi grammatica");
     await pause(400);
     await expectVisible(".ai-result-dialog .ai-output");
+    const proposed = await page.$eval(".ai-result-dialog .ai-output", (element) => element.textContent);
+    await clickText(".segment", "Originale");
+    const original = await page.$eval(".ai-original", (element) => element.textContent);
+    if (!original || original === proposed) throw new Error("la vista Originale non mostra il testo di partenza");
     await clickText(".segment", "Confronta");
     await expectVisible(".ai-diff ins");
     await clickText(".dialog-submit-button", "Sostituisci");
@@ -640,6 +746,43 @@ try {
       return problems;
     });
     if (overflow.length > 0) throw new Error(`eventi fuori dalla cella: ${overflow.join(" | ")}`);
+  });
+  await step("calendario-griglia-oraria", async () => {
+    await clickText(".calendar-controls .segment", "Settimana");
+    await pause(300);
+    if ((await page.$$(".time-grid-column")).length !== 7) throw new Error("la settimana non ha 7 colonne");
+    // Gli eventi con orario restano dentro la colonna del loro giorno.
+    const outside = await page.evaluate(() =>
+      [...document.querySelectorAll(".time-grid-event")]
+        .filter((item) => {
+          const column = item.closest(".time-grid-column").getBoundingClientRect();
+          const box = item.getBoundingClientRect();
+          return box.left < column.left - 1 || box.right > column.right + 1;
+        })
+        .map((item) => item.textContent),
+    );
+    if (outside.length > 0) throw new Error(`eventi fuori dalla colonna: ${outside.join(" | ")}`);
+    await page.screenshot({ path: `${output}/calendario-settimana.png` });
+    await clickText(".calendar-controls .segment", "Giorno");
+    await pause(300);
+    if ((await page.$$(".time-grid-column")).length !== 1) throw new Error("la vista giorno non ha una colonna");
+    // Clic su uno spazio vuoto alle 10:40 circa: evento proposto 10:30-11:00.
+    const point = await page.$eval(".time-grid-column", (column) => {
+      const box = column.getBoundingClientRect();
+      const hour = box.height / 24;
+      return { x: box.left + box.width - 12, y: box.top + hour * (10 + 40 / 60) };
+    });
+    await page.mouse.click(point.x, point.y);
+    await pause(300);
+    const times = await page.$$eval(".planner-dialog .datetime-field", (fields) =>
+      fields.map((field) => [...field.querySelectorAll("select")].map((select) => select.value).join(":")),
+    );
+    if (times.join(" ") !== "10:30 11:00") throw new Error(`orari proposti: ${times.join(" ")}`);
+    await page.keyboard.press("Escape");
+    await pause(200);
+    await clickText(".calendar-controls .segment", "Mese");
+    await pause(300);
+    await expectVisible(".calendar-grid.month");
   });
   await step("calendario-esterno", async () => {
     await clickText(".navigation-item", "Calendario");

@@ -455,11 +455,29 @@ impl McpServer {
         if body.chars().count() > MAX_NOTE_CHARS {
             body = body.chars().take(MAX_NOTE_CHARS).collect::<String>() + "\n\n[…nota troncata]";
         }
+        // Collegamenti interni verso altre note: i loro id sono leggibili con
+        // `read_note`. Le note dei taccuini esclusi non vengono nominate.
+        let mut links: Vec<Value> = Vec::new();
+        for link in self.database.list_note_links(id).map_err(storage_error)? {
+            let excluded = match self.database.get_note(&link.target_note_id) {
+                Ok(target) => ai.is_excluded(target.notebook_id.as_deref()),
+                Err(StorageError::NoteNotFound) => true,
+                Err(error) => return Err(storage_error(error)),
+            };
+            if !excluded {
+                links.push(json!({
+                    "id": link.target_note_id,
+                    "title": link.title,
+                    "label": link.label,
+                }));
+            }
+        }
         let header = pretty(&json!({
             "id": note.id,
             "title": note.title,
             "notebook": notebook,
             "tags": tags,
+            "links": links,
             "created_at": note.created_at,
             "updated_at": note.updated_at,
             "pinned": note.is_pinned,
@@ -980,7 +998,7 @@ fn read_tool_definitions(read_only: &Value) -> Value {
         {
             "name": "read_note",
             "title": "Leggi una nota",
-            "description": "Legge una nota per id: metadati (taccuino, tag, date) e contenuto in Markdown, incluso il testo letto dalle immagini.",
+            "description": "Legge una nota per id: metadati (taccuino, tag, date), collegamenti interni verso altre note (campo links, con gli id da passare a read_note) e contenuto in Markdown, incluso il testo letto dalle immagini.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "string", "description": "Id restituito da search_notes" } },
@@ -1176,6 +1194,27 @@ mod tests {
         let (error, text) = tool(&server, "read_note", json!({ "id": hidden }));
         assert!(error);
         assert!(!text.contains("privati"));
+
+        // Collegamenti interni: quello verso una nota visibile compare con
+        // id ed etichetta, quello verso un taccuino escluso no.
+        let linked = {
+            let writable = Database::open(directory.path().join("note.sqlite3")).expect("writable");
+            let linked = writable
+                .create_note("Fornitori", &document("Elenco dei fornitori"))
+                .expect("note")
+                .id;
+            writable
+                .create_note_link(&visible, &linked, Some("vedi anche"))
+                .expect("link");
+            writable
+                .create_note_link(&visible, &hidden, None)
+                .expect("link");
+            linked
+        };
+        let (error, text) = tool(&server, "read_note", json!({ "id": visible }));
+        assert!(!error, "{text}");
+        assert!(text.contains(&linked) && text.contains("\"label\": \"vedi anche\""));
+        assert!(!text.contains(&hidden), "collegamento a una nota esclusa");
         let (error, _) = tool(&server, "read_note", json!({ "id": "../../etc/passwd" }));
         assert!(error);
 

@@ -24,10 +24,11 @@ import type { CalendarEvent, Task } from "../types";
 import { CALENDAR_SYNC_EVENT, calendarApi, calendarIndex, safeColor } from "./calendar/calendarApi";
 import type { CalendarAccount, CalendarSubscription } from "./calendar/calendarApi";
 import { providerName } from "./calendar/CalendarIntegrations";
+import TimeGrid from "./calendar/TimeGrid";
 import EventDialog from "./EventDialog";
 import TaskDialog from "./TaskDialog";
 
-type Mode = "month" | "week";
+type Mode = "month" | "week" | "day";
 type DayItem =
   | { kind: "event"; event: CalendarEvent; sort: string }
   | { kind: "task"; task: Task; sort: string };
@@ -72,7 +73,12 @@ export default function CalendarView({
   const [tasks, setTasks] = useState<Task[]>([]);
   const [timezone, setTimezone] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [eventDialog, setEventDialog] = useState<{ event: CalendarEvent | null; day: string } | null>(
+  const [eventDialog, setEventDialog] = useState<{
+    event: CalendarEvent | null;
+    day: string;
+    /** Orario `HH:MM` scelto con un clic sulla griglia oraria. */
+    time?: string;
+  } | null>(
     initialEvent ? { event: initialEvent, day: eventDays(initialEvent)[0] } : null,
   );
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -85,7 +91,10 @@ export default function CalendarView({
   const [syncing, setSyncing] = useState(false);
   const calendars = useMemo(() => calendarIndex(accounts), [accounts]);
 
-  const days = useMemo(() => (mode === "month" ? monthGrid(anchor) : weekDays(anchor)), [anchor, mode]);
+  const days = useMemo(
+    () => (mode === "month" ? monthGrid(anchor) : mode === "week" ? weekDays(anchor) : [anchor]),
+    [anchor, mode],
+  );
   const from = days[0];
   const to = days[days.length - 1];
 
@@ -188,7 +197,9 @@ export default function CalendarView({
   }, [events, from, tasks, to]);
 
   const move = (direction: number) => {
-    setAnchor(mode === "month" ? addMonths(anchor, direction) : addDays(anchor, 7 * direction));
+    setAnchor(
+      mode === "month" ? addMonths(anchor, direction) : addDays(anchor, (mode === "week" ? 7 : 1) * direction),
+    );
   };
 
   const changed = () => {
@@ -315,7 +326,24 @@ export default function CalendarView({
   const periodTitle =
     mode === "month"
       ? formatMonth(anchor)
-      : `${formatDay(from, { weekday: undefined })} – ${formatDay(to, { weekday: undefined, year: "numeric" })}`;
+      : mode === "week"
+        ? `${formatDay(from, { weekday: undefined })} – ${formatDay(to, { weekday: undefined, year: "numeric" })}`
+        : formatDay(anchor, { weekday: "long", month: "long", year: "numeric" });
+
+  const showDay = (day: string) => {
+    setAnchor(day);
+    setMode("day");
+  };
+  const dayMenu = (pointer: ReactMouseEvent, day: string) => {
+    if (pointer.nativeEvent.defaultPrevented) return;
+    openContextMenu(pointer, formatDay(day, { year: "numeric" }), [
+      { id: "ctx-new-event", label: t.newEvent, run: () => setEventDialog({ event: null, day }) },
+      ...(mode === "month"
+        ? [{ id: "ctx-week", label: t.showWeekOf, run: () => { setAnchor(day); setMode("week"); } }]
+        : []),
+      ...(mode !== "day" ? [{ id: "ctx-day", label: t.showDayOf, run: () => showDay(day) }] : []),
+    ]);
+  };
 
   return (
     <section className="workspace-panel calendar-panel" aria-labelledby="calendar-title">
@@ -344,6 +372,14 @@ export default function CalendarView({
               type="button"
             >
               {t.weekView}
+            </button>
+            <button
+              aria-pressed={mode === "day"}
+              className={`segment${mode === "day" ? " selected" : ""}`}
+              onClick={() => setMode("day")}
+              type="button"
+            >
+              {t.dayView}
             </button>
           </div>
           <button aria-label={t.previousPeriod} className="subtle-action" onClick={() => move(-1)} title={t.previousPeriod} type="button">
@@ -383,7 +419,28 @@ export default function CalendarView({
         </div>
       )}
 
-      <div className={`calendar-grid ${mode}`} role="grid" aria-labelledby="calendar-title">
+      {mode !== "month" && (
+        <TimeGrid
+          days={days}
+          eventSource={calendarLabel}
+          eventStyle={eventStyle}
+          events={events}
+          onCreate={(day, time) => setEventDialog({ event: null, day, time })}
+          onDayMenu={dayMenu}
+          onEventMenu={eventMenu}
+          onOpenEvent={(event) => setEventDialog({ event, day: anchor })}
+          onShowDay={mode === "week" ? showDay : undefined}
+          renderAllDay={(day) => {
+            const items = (itemsByDay.get(day) ?? []).filter(
+              (item) => item.kind === "task" || item.event.all_day,
+            );
+            return items.length > 0 ? <ul className="calendar-items">{items.map(renderItem)}</ul> : null;
+          }}
+          today={today}
+        />
+      )}
+      {mode === "month" && (
+      <div className="calendar-grid month" role="grid" aria-labelledby="calendar-title">
         <div className="calendar-weekdays" role="row">
           {weekdayNames().map((name) => (
             <div className="calendar-weekday" key={name} role="columnheader">
@@ -395,37 +452,20 @@ export default function CalendarView({
           <div className="calendar-week" key={days[week * 7]} role="row">
             {days.slice(week * 7, week * 7 + 7).map((day) => {
               const items = itemsByDay.get(day) ?? [];
-              const visible = mode === "month" ? items.slice(0, MAX_MONTH_ITEMS) : items;
-              const outside = mode === "month" && day.slice(0, 7) !== anchorMonth;
+              const visible = items.slice(0, MAX_MONTH_ITEMS);
+              const outside = day.slice(0, 7) !== anchorMonth;
               const label = t.calendarDayLabel(formatDay(day, { year: "numeric" }), items.length);
               return (
                 <div
                   aria-label={label}
                   className={`calendar-day${outside ? " outside" : ""}${day === today ? " today" : ""}`}
                   key={day}
-                  onContextMenu={(pointer) => {
-                    if (pointer.nativeEvent.defaultPrevented) return;
-                    openContextMenu(pointer, formatDay(day, { year: "numeric" }), [
-                      { id: "ctx-new-event", label: t.newEvent, run: () => setEventDialog({ event: null, day }) },
-                      ...(mode === "month"
-                        ? [
-                            {
-                              id: "ctx-week",
-                              label: t.showWeekOf,
-                              run: () => {
-                                setAnchor(day);
-                                setMode("week");
-                              },
-                            },
-                          ]
-                        : []),
-                    ]);
-                  }}
+                  onContextMenu={(pointer) => dayMenu(pointer, day)}
                   role="gridcell"
                 >
                   <div className="calendar-day-header">
                     <span className="calendar-day-number" aria-current={day === today ? "date" : undefined}>
-                      {mode === "week" ? formatDay(day) : Number(day.slice(8))}
+                      {Number(day.slice(8))}
                     </span>
                     <button
                       aria-label={t.newEventOn(formatDay(day, { year: "numeric" }))}
@@ -441,10 +481,7 @@ export default function CalendarView({
                   {items.length > visible.length && (
                     <button
                       className="calendar-more"
-                      onClick={() => {
-                        setAnchor(day);
-                        setMode("week");
-                      }}
+                      onClick={() => showDay(day)}
                       type="button"
                     >
                       {t.moreItems(items.length - visible.length)}
@@ -456,6 +493,7 @@ export default function CalendarView({
           </div>
         ))}
       </div>
+      )}
 
       {eventDialog && (
         <EventDialog
@@ -463,6 +501,7 @@ export default function CalendarView({
           subscriptions={subscriptionIndex}
           day={eventDialog.day}
           event={eventDialog.event}
+          startTime={eventDialog.time}
           onChanged={changed}
           onClose={() => setEventDialog(null)}
           onOpenNote={onOpenNote}

@@ -2643,8 +2643,170 @@ p {
   min-height: 104px;
 }
 
-.calendar-grid.week .calendar-week {
-  min-height: 420px;
+/* Griglia oraria delle viste Giorno e Settimana. */
+.time-grid {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.time-grid-row {
+  display: grid;
+  grid-template-columns: 58px repeat(var(--days), minmax(0, 1fr));
+}
+
+.time-grid-top {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.time-grid-gutter {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.time-grid-day-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 8px 5px;
+  border-left: 1px solid var(--line);
+}
+
+.time-grid-day-name {
+  overflow: hidden;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--soft-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.time-grid-day-name {
+  cursor: pointer;
+}
+
+button.time-grid-day-name:hover {
+  background: var(--selection);
+}
+
+.time-grid-day-head.today .time-grid-day-name {
+  background: var(--accent);
+  color: var(--paper);
+}
+
+.time-grid-day-head:hover .calendar-add {
+  opacity: 1;
+}
+
+.time-grid-all-day .time-grid-gutter {
+  padding: 6px 6px 0 0;
+  text-align: right;
+}
+
+.time-grid-all-day-cell {
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 4px 5px;
+  border-left: 1px solid var(--line);
+}
+
+.time-grid-body {
+  position: relative;
+  height: calc(var(--hour-height) * 24);
+}
+
+.time-grid-hours {
+  position: relative;
+}
+
+.time-grid-hours span {
+  position: absolute;
+  right: 6px;
+  font-variant-numeric: tabular-nums;
+  transform: translateY(-50%);
+}
+
+.time-grid-column {
+  position: relative;
+  min-width: 0;
+  border-left: 1px solid var(--line);
+  /* Riga piena a ogni ora, più leggera alla mezz'ora. */
+  background-image:
+    linear-gradient(to bottom, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px);
+  background-position:
+    0 -1px,
+    0 calc(var(--hour-height) / 2 - 1px);
+  background-size:
+    100% var(--hour-height),
+    100% var(--hour-height);
+  cursor: cell;
+}
+
+.time-grid-column.today {
+  background-color: color-mix(in srgb, var(--accent-soft) 35%, transparent);
+}
+
+.time-grid-now {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--error);
+  pointer-events: none;
+}
+
+.time-grid-event {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
+  padding: 2px 6px;
+  border: 0;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.time-grid-event.external {
+  border-left-color: var(--event-color, var(--accent));
+  background: color-mix(in srgb, var(--event-color, var(--accent)) 22%, var(--paper));
+}
+
+.time-grid-event:hover,
+.time-grid-event:focus-visible {
+  z-index: 2;
+  box-shadow: 0 2px 8px rgb(14 20 13 / 22%);
+}
+
+.time-grid-event-title {
+  overflow: hidden;
+  flex: 0 0 auto;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-grid-event .calendar-time {
+  margin: 0;
+  white-space: nowrap;
 }
 
 .calendar-day {
@@ -3403,6 +3565,44 @@ p {
 
 .toolbar-menu {
   position: relative;
+}
+
+.toolbar-menu-popup {
+  position: absolute;
+  z-index: 40;
+  top: 100%;
+  width: 260px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: 0 14px 38px rgb(14 20 13 / 20%);
+}
+
+.toolbar-menu-popup > .menu-list {
+  min-width: 0;
+  max-width: none;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.toolbar-menu-search {
+  width: calc(100% - 12px);
+  height: 30px;
+  margin: 6px 6px 1px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--ground);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.toolbar-menu-empty {
+  margin: 0;
+  padding: 10px 14px 12px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .toolbar-dropdown {

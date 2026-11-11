@@ -39,7 +39,7 @@ export default function AiResultDialog({ request, status, onStatus, onApply, onC
   const [result, setResult] = useState("");
   const [provenance, setProvenance] = useState<Provenance | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<"result" | "diff">("result");
+  const [view, setView] = useState<"original" | "result" | "diff">("result");
   const [notice, setNotice] = useState<string | null>(null);
   const requestId = useRef<string | null>(null);
 
@@ -121,6 +121,15 @@ export default function AiResultDialog({ request, status, onStatus, onApply, onC
             {phase === "done" && (
               <div className="segmented" role="tablist" aria-label={request.label}>
                 <button
+                  aria-selected={view === "original"}
+                  className={`segment${view === "original" ? " selected" : ""}`}
+                  onClick={() => setView("original")}
+                  role="tab"
+                  type="button"
+                >
+                  {t.aiOriginal}
+                </button>
+                <button
                   aria-selected={view === "result"}
                   className={`segment${view === "result" ? " selected" : ""}`}
                   onClick={() => setView("result")}
@@ -151,6 +160,10 @@ export default function AiResultDialog({ request, status, onStatus, onApply, onC
                     <del key={index}>{part.text}</del>
                   ),
                 )}
+              </div>
+            ) : view === "original" && phase === "done" ? (
+              <div className="ai-output ai-original" aria-label={t.aiOriginal}>
+                {request.text}
               </div>
             ) : (
               <div aria-busy={phase === "running"} aria-live="polite" className="ai-output">

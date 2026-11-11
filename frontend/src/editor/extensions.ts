@@ -6,6 +6,8 @@ import StarterKit from "@tiptap/starter-kit";
 import { AttachmentImage } from "./attachmentImage";
 import { EncryptedText } from "./encryptedText";
 import { SearchHighlight } from "./searchHighlight";
+import { TableSelectAll } from "./tableSelectAll";
+import { Subscript, Superscript, TextLayout } from "./textLayout";
 
 /** Schemi ammessi per i link, gli stessi della validazione Rust. */
 export function isSafeLink(url: string): boolean {
@@ -31,11 +33,15 @@ export const editorExtensions = [
   TableRow,
   TableHeader,
   TableCell,
+  TableSelectAll,
   Highlight.configure({ multicolor: true }),
   TextStyle,
   Color,
   FontFamily,
   FontSize,
+  TextLayout,
+  Superscript,
+  Subscript,
   AttachmentImage,
   EncryptedText,
   SearchHighlight,

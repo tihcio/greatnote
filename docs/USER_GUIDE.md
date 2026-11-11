@@ -94,8 +94,18 @@ nascondere le note recenti o i pulsanti attività/evento, raggruppare in
 **Editor:** **Inserisci** (elenchi, checklist, citazione, codice, tabella,
 separatore, data, link, allegato, attività collegata), annulla/ripeti,
 stile (testo o titoli), carattere, dimensione, colore, grassetto, corsivo,
-sottolineato, evidenziazione, elenchi e **Altro** (barrato, codice, link,
-rimuovi formattazione, operazioni sulle tabelle). Digita **/** a inizio riga
+sottolineato, evidenziazione, elenchi, link e **Altro** (allineamento a
+sinistra, al centro o a destra, aumenta/riduci rientro, barrato, apice,
+pedice, codice, citazione, rimuovi link, operazioni sulle tabelle, rimuovi
+formattazione). In cima al menu **Altro** c'è un campo di ricerca: scrivi
+il nome di un comando (anche delle tabelle, se il cursore è in una tabella)
+e premi `Invio` per eseguirlo. L'allineamento vale anche per il testo
+nelle celle di una tabella: con il cursore in una cella, `Ctrl+A`
+seleziona tutta la tabella (un secondo `Ctrl+A` tutta la nota) e il comando
+si applica a tutte le celle. Negli elenchi il rientro sposta la voce di un
+livello.
+Allineamento e rientro restano nell'esportazione HTML e PDF ma non in
+Markdown e testo semplice; apice e pedice restano anche in Markdown. Digita **/** a inizio riga
 per i comandi rapidi. Allegati, collegamenti, attività e promemoria della
 nota sono sotto il testo.
 
@@ -239,7 +249,13 @@ bordo, poi frecce sinistra/destra (con Maiusc a passi più grandi).
   gestiti di sessioni precedenti, una notifica li riepiloga. Le notifiche
   restano visibili finché non le chiudi. Non c'è un servizio in
   background.
-- **Calendario:** vista mensile o settimanale, con i pulsanti ‹ › e Oggi.
+- **Calendario:** vista **Mese**, **Settimana** o **Giorno**, con i pulsanti
+  ‹ › e Oggi. Settimana e Giorno mostrano una griglia oraria: un clic su uno
+  spazio vuoto propone un evento di 30 minuti a quell'orario (allineato
+  alla mezz'ora), da completare con il titolo; gli eventi sovrapposti sono
+  affiancati; eventi dell'intera giornata e attività in scadenza stanno
+  nella fascia in alto. Il nome di un giorno nella settimana apre quel
+  giorno.
   Il `+` in un giorno (o "Nuovo evento") crea un evento con orario (data,
   ore e minuti di inizio e fine; spostando l'inizio la fine mantiene la
   durata) o per l'intera giornata; clic su un evento per modificarlo, aggiungere promemoria
@@ -543,7 +559,8 @@ di sistema (KWallet o GNOME Keyring) e puoi eliminarla in ogni momento.
 correggi grammatica, riscrivi con un tono, riassumi, espandi, traduci, crea
 un elenco di punti, estrai decisioni e azioni, migliora la formattazione.
 L'azione usa il testo selezionato o, senza selezione, l'intera nota. Il
-risultato compare in anteprima con **Confronta** (parti aggiunte e tolte) e
+risultato compare in anteprima con **Originale** (il testo di partenza),
+**Risultato** e **Confronta** (parti aggiunte e tolte, parola per parola) e
 viene applicato solo con **Sostituisci** o **Inserisci sotto**; puoi
 annullarlo con `Ctrl+Z`. **Suggerisci tag** ed **Estrai attività** propongono
 elementi che puoi correggere e scegliere prima di aggiungerli.
@@ -760,7 +777,9 @@ aggiungere attività.
 
 Strumenti di lettura: `search_notes` (stessa sintassi della ricerca:
 `tag:`, `notebook:`, `is:pinned`, date…), `read_note`, `list_notebooks`,
-`list_tags` e `list_tasks`.
+`list_tags` e `list_tasks`. `read_note` riporta anche i collegamenti
+interni della nota verso altre note (titolo, etichetta e id), così l'app di
+AI può seguirli; quelli verso note dei taccuini esclusi non compaiono.
 
 **Modifiche:** spuntando anche **Consenti anche le modifiche**, l'app di AI
 può creare note (con taccuino e tag), aggiungere testo **in fondo** a una

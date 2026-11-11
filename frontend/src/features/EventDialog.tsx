@@ -16,6 +16,9 @@ interface EventDialogProps {
   /** Evento esistente, oppure giorno (AAAA-MM-GG) per un evento nuovo. */
   event: CalendarEvent | null;
   day: string;
+  /** Orario d'inizio `HH:MM` di un evento nuovo (clic sulla griglia oraria):
+   * l'evento proposto dura mezz'ora. */
+  startTime?: string;
   onClose: () => void;
   onChanged: () => void;
   onOpenNote: (noteId: string) => void;
@@ -25,12 +28,19 @@ interface EventDialogProps {
   subscriptions?: Map<string, CalendarSubscription>;
 }
 
-function initialRange(event: CalendarEvent | null, day: string) {
+/** Durata proposta per un evento creato con un clic sulla griglia oraria. */
+const SLOT_DURATION_MS = 30 * 60 * 1000;
+
+function initialRange(event: CalendarEvent | null, day: string, startTime?: string) {
   if (event?.all_day) {
     return { start: event.start_date ?? day, end: event.end_date ?? day };
   }
   if (event?.start_at && event.end_at) {
     return { start: toLocalInput(event.start_at), end: toLocalInput(event.end_at) };
+  }
+  if (startTime && /^\d{2}:\d{2}$/.test(startTime)) {
+    const start = `${day}T${startTime}`;
+    return { start, end: toLocalInput(new Date(new Date(start).getTime() + SLOT_DURATION_MS)) };
   }
   return { start: `${day}T09:00`, end: `${day}T10:00` };
 }
@@ -38,6 +48,7 @@ function initialRange(event: CalendarEvent | null, day: string) {
 export default function EventDialog({
   event,
   day,
+  startTime,
   onClose,
   onChanged,
   onOpenNote,
@@ -54,7 +65,7 @@ export default function EventDialog({
   const [title, setTitle] = useState(event?.title ?? "");
   const [description, setDescription] = useState(event?.description ?? "");
   const [allDay, setAllDay] = useState(event?.all_day ?? false);
-  const initial = initialRange(event, day);
+  const initial = initialRange(event, day, startTime);
   const [start, setStart] = useState(initial.start);
   const [end, setEnd] = useState(initial.end);
   const [busy, setBusy] = useState(false);
@@ -65,7 +76,7 @@ export default function EventDialog({
   const changeStart = (value: string) => {
     if (!allDay && start.length === 16 && end.length === 16) {
       const duration = new Date(end).getTime() - new Date(start).getTime();
-      const shifted = new Date(new Date(value).getTime() + Math.max(duration, 60 * 60 * 1000));
+      const shifted = new Date(new Date(value).getTime() + (duration > 0 ? duration : 60 * 60 * 1000));
       setEnd(toLocalInput(shifted));
     } else if (allDay && end < value) {
       setEnd(value);

@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Editor } from "@tiptap/react";
+import Icon from "../components/Icon";
 import { t } from "../i18n";
 import { separator } from "../app/menu";
 import type { MenuAction, MenuEntry } from "../app/menu";
@@ -8,6 +9,7 @@ import { askText } from "../lib/prompt";
 import MenuList from "../features/MenuList";
 import { blockCommands } from "./commands";
 import { FONT_FAMILIES, FONT_SIZES, HIGHLIGHT_COLORS, TEXT_COLORS, isSafeLink } from "./extensions";
+import { canChangeIndent, changeIndent, currentTextAlign, setTextAlign } from "./textLayout";
 
 interface EditorToolbarProps {
   editor: Editor;
@@ -17,17 +19,69 @@ interface EditorToolbarProps {
   aiItems?: () => MenuEntry[];
 }
 
-function ToolbarMenu({ label, text, items }: { label: string; text: ReactNode; items: () => MenuEntry[] }) {
+/** Voci eseguibili che contengono il testo cercato, comprese quelle dei
+ * sottomenu (mostrate come «Menu › Voce»). */
+export function searchMenuEntries(entries: MenuEntry[], query: string, prefix = ""): MenuAction[] {
+  const needle = query.trim().toLowerCase();
+  const found: MenuAction[] = [];
+  for (const entry of entries) {
+    if (entry.kind === "separator") continue;
+    const label = `${prefix}${entry.label}`;
+    if (entry.kind === "submenu") {
+      if (entry.enabled !== false) found.push(...searchMenuEntries(entry.items, query, `${label} › `));
+    } else if (label.toLowerCase().includes(needle)) {
+      found.push({ ...entry, label });
+    }
+  }
+  return found;
+}
+
+function ToolbarMenu({
+  label,
+  text,
+  items,
+  align = "left",
+  searchable = false,
+}: {
+  label: string;
+  text: ReactNode;
+  items: () => MenuEntry[];
+  /** Lato del pulsante a cui si allinea il menu: a destra per i menu in
+   * fondo alla barra, che altrimenti uscirebbero dalla finestra. */
+  align?: "left" | "right";
+  /** Campo in cima al menu per trovare una voce scrivendone il nome. */
+  searchable?: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const container = useRef<HTMLDivElement>(null);
+  const search = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!open) return;
+    setQuery("");
+    search.current?.focus();
     const close = (event: MouseEvent) => {
       if (!container.current?.contains(event.target as Node)) setOpen(false);
     };
     window.addEventListener("mousedown", close);
     return () => window.removeEventListener("mousedown", close);
   }, [open]);
+  const run = (action: MenuAction) => {
+    setOpen(false);
+    void action.run();
+  };
+  const entries = open ? items() : [];
+  const shown = searchable && query.trim() ? searchMenuEntries(entries, query) : entries;
+  const menu = (
+    <MenuList
+      autoFocus={!searchable}
+      items={shown}
+      label={label}
+      onClose={() => setOpen(false)}
+      onRun={run}
+      style={searchable ? undefined : { position: "absolute", [align]: 0, top: "100%" }}
+    />
+  );
   return (
     <div className="toolbar-menu" ref={container}>
       <button
@@ -45,17 +99,38 @@ function ToolbarMenu({ label, text, items }: { label: string; text: ReactNode; i
           ▾
         </span>
       </button>
-      {open && (
-        <MenuList
-          items={items()}
-          label={label}
-          onClose={() => setOpen(false)}
-          onRun={(action: MenuAction) => {
-            setOpen(false);
-            void action.run();
-          }}
-          style={{ position: "absolute", left: 0, top: "100%" }}
-        />
+      {open && !searchable && menu}
+      {open && searchable && (
+        <div className="toolbar-menu-popup" style={{ [align]: 0 }}>
+          <input
+            aria-label={t.menuSearch}
+            className="toolbar-menu-search"
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setOpen(false);
+              } else if (event.key === "ArrowDown") {
+                event.preventDefault();
+                container.current
+                  ?.querySelector<HTMLElement>("[role^='menuitem']:not([aria-disabled='true'])")
+                  ?.focus();
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                const first = query.trim()
+                  ? searchMenuEntries(entries, query).find((entry) => entry.enabled !== false)
+                  : undefined;
+                if (first) run(first);
+              }
+            }}
+            placeholder={t.menuSearch}
+            ref={search}
+            type="search"
+            value={query}
+          />
+          {shown.length > 0 ? menu : <p className="toolbar-menu-empty">{t.noMatches}</p>}
+        </div>
       )}
     </div>
   );
@@ -204,9 +279,28 @@ export default function EditorToolbar({ editor, onAttach, onAddTask, aiItems }: 
     ),
   ];
 
+  const align = currentTextAlign(editor);
   const moreItems = (): MenuEntry[] => [
+    action("align-left", t.alignLeft, () => setTextAlign(editor, null), { checked: !align, radio: true }),
+    action("align-center", t.alignCenter, () => setTextAlign(editor, "center"), {
+      checked: align === "center",
+      radio: true,
+    }),
+    action("align-right", t.alignRight, () => setTextAlign(editor, "right"), {
+      checked: align === "right",
+      radio: true,
+    }),
+    action("indent", t.indent, () => changeIndent(editor, 1), { enabled: canChangeIndent(editor, 1) }),
+    action("outdent", t.outdent, () => changeIndent(editor, -1), { enabled: canChangeIndent(editor, -1) }),
+    separator,
     action("strike", t.strike, () => editor.chain().focus().toggleStrike().run(), {
       checked: editor.isActive("strike"),
+    }),
+    action("superscript", t.superscript, () => editor.chain().focus().toggleMark("superscript").run(), {
+      checked: editor.isActive("superscript"),
+    }),
+    action("subscript", t.subscript, () => editor.chain().focus().toggleMark("subscript").run(), {
+      checked: editor.isActive("subscript"),
     }),
     action("code", t.code, () => editor.chain().focus().toggleCode().run(), {
       checked: editor.isActive("code"),
@@ -218,12 +312,9 @@ export default function EditorToolbar({ editor, onAttach, onAddTask, aiItems }: 
       checked: editor.isActive("codeBlock"),
     }),
     separator,
-    action("link", t.insertLink, () => void editLink(editor)),
     action("unlink", t.removeLink, () => editor.chain().focus().unsetLink().run(), {
       enabled: editor.isActive("link"),
     }),
-    action("clear", t.clearFormatting, () => editor.chain().focus().unsetAllMarks().clearNodes().run()),
-    separator,
     {
       kind: "submenu",
       id: "table",
@@ -242,6 +333,12 @@ export default function EditorToolbar({ editor, onAttach, onAddTask, aiItems }: 
         }),
       ],
     },
+    separator,
+    action("clear", t.clearFormatting, () => {
+      const chain = editor.chain().focus().unsetAllMarks().clearNodes();
+      for (const type of ["paragraph", "heading"]) chain.updateAttributes(type, { textAlign: null, indent: null });
+      chain.run();
+    }),
   ];
 
   const styleLabel = headingLevel ? t.blockHeading(headingLevel) : t.blockText;
@@ -288,11 +385,15 @@ export default function EditorToolbar({ editor, onAttach, onAddTask, aiItems }: 
       <ToolbarButton active={editor.isActive("taskList")} label={t.checklist} onClick={() => editor.chain().focus().toggleTaskList().run()}>
         ☑
       </ToolbarButton>
-      <ToolbarMenu items={moreItems} label={t.moreFormatting} text={t.moreFormatting} />
+      <span className="toolbar-divider" />
+      <ToolbarButton active={editor.isActive("link")} label={t.insertLink} onClick={() => void editLink(editor)}>
+        <Icon name="link" size={15} />
+      </ToolbarButton>
+      <ToolbarMenu align="right" items={moreItems} label={t.moreFormatting} searchable text={t.moreFormatting} />
       {aiItems && (
         <>
           <span className="toolbar-divider" />
-          <ToolbarMenu items={aiItems} label={t.aiMenuLabel} text={<span className="toolbar-ai">✦ AI</span>} />
+          <ToolbarMenu align="right" items={aiItems} label={t.aiMenuLabel} text={<span className="toolbar-ai">✦ AI</span>} />
         </>
       )}
     </div>
