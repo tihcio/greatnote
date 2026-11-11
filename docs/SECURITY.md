@@ -405,7 +405,16 @@ locali.
   [checklist di rilascio](./RELEASE_CHECKLIST.md) li esegue prima di ogni
   versione. Il 2026-10-21 l'audit ha segnalato RUSTSEC-2026-0381 e
   RUSTSEC-2026-0382 (catena dei certificati nel TLS di `ureq`), corretti
-  aggiornando `webpki-roots` a 1.0.10 e `rustls-webpki` a 0.103.16. Restano
+  aggiornando `webpki-roots` a 1.0.10 e `rustls-webpki` a 0.103.16. Il
+  2026-11-10 ha segnalato RUSTSEC-2026-0459 (CVE nella SQLite inclusa in
+  `libsqlite3-sys`), corretto passando a `rusqlite` 0.42, e
+  RUSTSEC-2026-0414/0433 (`pulldown-cmark` con i wikilink, estensione che
+  Greatnote non attiva), corretti con la 0.13.6. RUSTSEC-2026-0387
+  (`crypto-bigint` 0.5.5, operazioni non a tempo costante) non ha una
+  versione corretta raggiungibile: arriva da `age` attraverso `p256`, che
+  Greatnote non usa perché cifra solo con passphrase (scrypt). È l'unica
+  eccezione in `.cargo/audit.toml`, da togliere quando `age` aggiorna la
+  dipendenza. Restano
   avvisi non bloccanti su dipendenze di Tauri/GTK, D-Bus e `age`, elencati
   nella checklist.
 - **Ripristino con sincronizzazione attiva:** un backup più vecchio

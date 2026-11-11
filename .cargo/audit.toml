@@ -1,0 +1,12 @@
+# Eccezioni di `cargo audit`. Ogni voce va motivata qui e in docs/SECURITY.md
+# e tolta appena esiste una versione corretta raggiungibile.
+
+[advisories]
+ignore = [
+    # crypto-bigint 0.5.5: operazioni non a tempo costante (corretto in 0.7.6).
+    # Arriva da age 0.12.1 -> p256/hpke -> elliptic-curve 0.13, dipendenze non
+    # opzionali di age, che non ha ancora una versione su elliptic-curve 0.14.
+    # Greatnote usa age solo con passphrase (scrypt + ChaCha20-Poly1305): non
+    # esegue aritmetica P-256 su segreti. Da ricontrollare a ogni rilascio.
+    "RUSTSEC-2026-0387",
+]

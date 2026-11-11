@@ -4,6 +4,12 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+- **Dipendenze aggiornate per sicurezza.** `rusqlite` 0.42 (SQLite inclusa
+  senza la vulnerabilità RUSTSEC-2026-0459) e `pulldown-cmark` 0.13.6.
+  L'avviso su `crypto-bigint`, senza correzione disponibile e su codice
+  che Greatnote non usa, è registrato come eccezione in
+  `.cargo/audit.toml` (vedi `docs/SECURITY.md`).
+
 ## 0.2.3 — 2026-11-10
 
 - **Ricerca in un riquadro.** Il pulsante di ricerca della barra laterale
