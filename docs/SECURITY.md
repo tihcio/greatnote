@@ -372,6 +372,13 @@ locali.
   (intestazioni standard); nessun dato delle note.
 - **Pubblicazione:** il workflow crea release in bozza; nulla arriva agli
   utenti finché una persona non la pubblica.
+- **`.rpm` senza firma OpenPGP:** l'aggiornamento esegue
+  `pkexec rpm -U --nosignature` su un file scritto dai byte già verificati
+  con la firma minisign, leggibile solo dall'utente e rimosso subito dopo.
+  Il controllo OpenPGP di RPM è saltato perché i pacchetti non sono
+  firmati; i digest restano verificati. Un processo dello stesso utente
+  potrebbe sostituire il file tra la scrittura e l'installazione, come
+  già avviene con il `.deb` installato dal plugin.
 - **Limite:** gli installer non hanno un certificato di firma del codice;
   la firma minisign protegge il canale di aggiornamento, non la prima
   installazione scaricata a mano.

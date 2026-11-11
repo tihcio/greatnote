@@ -4,6 +4,16 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.4 — 2026-11-11
+
+- **Aggiornamento dall'app su Fedora 43 e successive.** Con il pacchetto
+  `.rpm` l'aggiornamento chiedeva la password due volte e poi falliva:
+  RPM 6 rifiuta i pacchetti senza firma OpenPGP. Ora Greatnote installa
+  il `.rpm` già verificato con la propria firma chiedendo la password una
+  sola volta, e in caso di errore mostra il motivo indicato da `rpm`. Chi
+  ha la 0.2.3 o precedente deve installare questa versione a mano una
+  volta: `sudo rpm -U --nosignature Greatnote.x86_64.rpm`.
+
 - **Dipendenze aggiornate per sicurezza.** `rusqlite` 0.42 (SQLite inclusa
   senza la vulnerabilità RUSTSEC-2026-0459) e `pulldown-cmark` 0.13.6.
   L'avviso su `crypto-bigint`, senza correzione disponibile e su codice

@@ -809,6 +809,13 @@ sola alla chiusura. Se annulli la richiesta, l'aggiornamento resta pronto
 per un altro tentativo. L'AppImage si aggiorna alla chiusura, senza
 password.
 
+Su Fedora 43 e successive, con Greatnote 0.2.3 o precedente installato dal
+`.rpm`, l'aggiornamento dall'app chiede la password due volte e poi
+fallisce. Scarica il file `Greatnote.x86_64.rpm` della versione più
+recente e installalo a mano una volta sola:
+`sudo rpm -U --nosignature Greatnote.x86_64.rpm`. Le note non vengono
+toccate e dalla versione successiva l'aggiornamento dall'app funziona.
+
 In Impostazioni › Aggiornamenti vedi la versione installata, puoi cercare
 subito gli aggiornamenti o disattivare quelli automatici.
 

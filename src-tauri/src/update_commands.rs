@@ -16,6 +16,12 @@
 //! installano con `pkexec` e chiedono la password di amministratore: solo
 //! con «Riavvia e aggiorna», mai alla chiusura, quando una richiesta di
 //! password comparirebbe a finestra già chiusa.
+//!
+//! I `.rpm` li installa Greatnote, non il plugin: i pacchetti del progetto
+//! non hanno una firma OpenPGP e RPM 6 (Fedora 43 e successive) rifiuta per
+//! impostazione predefinita i pacchetti senza firma. L'autenticità è già
+//! garantita dalla firma minisign verificata sopra, quindi `rpm` viene
+//! eseguito con `--nosignature` (i digest restano controllati).
 
 use std::{
     fs,
@@ -131,6 +137,103 @@ fn installs_on_exit() -> bool {
     {
         true
     }
+}
+
+/// Vero se l'app è stata installata dal pacchetto `.rpm`.
+fn is_rpm_install() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        use tauri::utils::{config::BundleType, platform::bundle_type};
+        matches!(bundle_type(), Some(BundleType::Rpm))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+/// File temporaneo del pacchetto durante l'installazione `.rpm`.
+#[cfg(target_os = "linux")]
+const RPM_INSTALL_FILE: &str = "install.rpm";
+
+/// Argomenti di `pkexec` per aggiornare da un `.rpm` già verificato con la
+/// firma minisign: `--nosignature` evita il rifiuto di RPM 6 per la firma
+/// OpenPGP mancante, senza disattivare il controllo dei digest.
+#[cfg(target_os = "linux")]
+fn rpm_install_arguments(package: &Path) -> Vec<std::ffi::OsString> {
+    vec![
+        "rpm".into(),
+        "-U".into(),
+        "--nosignature".into(),
+        package.as_os_str().to_owned(),
+    ]
+}
+
+/// Messaggio per un'installazione `.rpm` non riuscita. `pkexec` esce con
+/// 126 se la richiesta di password viene chiusa e con 127 se
+/// l'autorizzazione è negata; negli altri casi l'errore è di `rpm`.
+#[cfg(target_os = "linux")]
+fn rpm_failure_message(code: Option<i32>, stderr: &str) -> String {
+    match code {
+        Some(126) => "Installazione annullata: serve la password di amministratore".to_owned(),
+        Some(127) => "Autorizzazione negata: controlla la password di amministratore".to_owned(),
+        _ => {
+            let reason = stderr
+                .lines()
+                .map(str::trim)
+                .rfind(|line| !line.is_empty())
+                .unwrap_or("errore sconosciuto");
+            format!("Installazione non riuscita: {reason}")
+        }
+    }
+}
+
+/// Installa il `.rpm` con `pkexec rpm -U`: una sola richiesta di password.
+/// Il pacchetto viene scritto dai byte verificati in memoria, in un file
+/// leggibile solo dall'utente, e rimosso alla fine.
+#[cfg(target_os = "linux")]
+fn install_rpm(app: &AppHandle, bytes: &[u8]) -> Result<(), String> {
+    use std::{io::Write, os::unix::fs::OpenOptionsExt, process::Command};
+
+    let directory =
+        cache_directory(app).ok_or_else(|| "Cartella cache dell'app non disponibile".to_owned())?;
+    let package = directory.join(RPM_INSTALL_FILE);
+    let write = || -> std::io::Result<()> {
+        fs::create_dir_all(&directory)?;
+        // Un file rimasto da un tentativo precedente non va riusato.
+        match fs::remove_file(&package) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&package)?;
+        file.write_all(bytes)?;
+        file.sync_all()
+    };
+    write().map_err(|error| format!("Impossibile preparare il pacchetto: {error}"))?;
+
+    let output = Command::new("pkexec")
+        .args(rpm_install_arguments(&package))
+        .output();
+    if let Err(error) = fs::remove_file(&package) {
+        tracing::warn!("pacchetto temporaneo non rimosso: {error}");
+    }
+    let output = output
+        .map_err(|error| format!("Impossibile avviare pkexec per chiedere la password: {error}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    tracing::error!(code = ?output.status.code(), "rpm non riuscito: {}", stderr.trim());
+    Err(rpm_failure_message(output.status.code(), &stderr))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn install_rpm(_app: &AppHandle, _bytes: &[u8]) -> Result<(), String> {
+    Err("Pacchetti .rpm non supportati su questo sistema".to_owned())
 }
 
 fn auto_update(app: &AppHandle) -> bool {
@@ -464,9 +567,15 @@ pub fn install_update_now(app: AppHandle) -> CommandResult<()> {
     crate::builtin_ai_commands::shutdown();
     // Su Windows `install` avvia l'installer, che riapre l'app, e termina il
     // processo; altrove sostituisce i file e l'app va riavviata.
-    if let Err(error) = update.install(&bytes) {
-        tracing::error!("installazione dell'aggiornamento non riuscita: {error}");
-        let message = describe(&error);
+    let installed = if is_rpm_install() {
+        install_rpm(&app, &bytes)
+    } else {
+        update.install(&bytes).map_err(|error| {
+            tracing::error!("installazione dell'aggiornamento non riuscita: {error}");
+            describe(&error)
+        })
+    };
+    if let Err(message) = installed {
         // Password annullata o errore: il pacchetto resta pronto per
         // riprovare, senza scaricarlo di nuovo.
         let phase = ready_phase(&update);
@@ -492,6 +601,36 @@ mod tests {
         assert_eq!(bytes, b"pacchetto");
         clear_cached(&directory);
         assert!(!directory.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn rpm_install_skips_only_the_openpgp_signature() {
+        use super::rpm_install_arguments;
+        let arguments = rpm_install_arguments(std::path::Path::new("/cache/install.rpm"));
+        assert_eq!(
+            arguments,
+            ["rpm", "-U", "--nosignature", "/cache/install.rpm"]
+        );
+        // I digest del pacchetto devono restare controllati.
+        assert!(!arguments.iter().any(|argument| argument == "--nodigest"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn rpm_failures_are_explained() {
+        use super::rpm_failure_message;
+        assert!(rpm_failure_message(Some(126), "").contains("annullata"));
+        assert!(rpm_failure_message(Some(127), "").contains("negata"));
+        let message = rpm_failure_message(
+            Some(1),
+            "errore: dipendenze fallite:\n\tlibfoo.so è richiesto da greatnote\n\n",
+        );
+        assert_eq!(
+            message,
+            "Installazione non riuscita: libfoo.so è richiesto da greatnote"
+        );
+        assert!(rpm_failure_message(None, "").contains("errore sconosciuto"));
     }
 
     #[test]

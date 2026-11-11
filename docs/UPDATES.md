@@ -29,6 +29,11 @@ motivazioni: [ADR 0023](decisions/0023-in-app-updates.md).
    `pkexec dpkg -i` / `pkexec rpm -U`, che chiedono la password di
    amministratore: per questo solo con **Riavvia e aggiorna**, mai alla
    chiusura. Se la password viene annullata l'aggiornamento resta pronto.
+   Il `.rpm` lo installa Greatnote stesso con
+   `pkexec rpm -U --nosignature`: i pacchetti non hanno una firma OpenPGP
+   e RPM 6 (Fedora 43 e successive) li rifiuterebbe con «nessuna firma».
+   L'autenticità è garantita dalla firma minisign già verificata; i digest
+   del pacchetto restano controllati da `rpm`.
 4. L'installer sostituisce i programmi e non tocca la cartella dati. Se la
    nuova versione cambia lo schema del database, all'avvio viene creato il
    backup `greatnote-premigration-…` prima della migrazione.
@@ -117,8 +122,17 @@ prima di pubblicarla, senza toccare `version`, `url` e `signature`.
   aggiornamenti automatici per questo tipo di installazione» finché non
   esce una versione con le voci Linux; da lì si aggiornano da sole.
 - **`.deb`/`.rpm`:** serve un agente polkit (presente in KDE e GNOME) per
-  la richiesta di password di `pkexec`; senza, il plugin prova `zenity` o
-  `kdialog` e infine `sudo` nel terminale.
+  la richiesta di password di `pkexec`. Per il `.deb`, senza agente il
+  plugin prova `zenity` o `kdialog` e infine `sudo` nel terminale; per il
+  `.rpm` la richiesta è una sola e l'errore di `rpm` viene mostrato.
+- **`.rpm` fino alla 0.2.3 su Fedora 43 e successive:** l'aggiornamento
+  dall'app fallisce dopo due richieste di password, perché RPM 6 rifiuta
+  il pacchetto senza firma OpenPGP. Va installata a mano una versione
+  successiva, una volta sola:
+  `sudo rpm -U --nosignature Greatnote.x86_64.rpm`. Da lì gli
+  aggiornamenti dall'app funzionano di nuovo.
+- **Pacchetti `.rpm` senza firma OpenPGP:** anche l'installazione manuale
+  con `rpm` richiede `--nosignature` su RPM 6.
 - **Installer non firmati con un certificato di firma del codice:** la firma
   minisign protegge l'aggiornamento, ma SmartScreen può mostrare un avviso
   per l'installer.
