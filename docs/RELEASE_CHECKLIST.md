@@ -38,7 +38,7 @@ la dipendenza non è aggiornata (`cargo update -p <crate>`).
       `src-tauri/tauri.conf.json` e `package.json`.
 - [ ] `CHANGELOG.md`: la sezione "Non rilasciato" diventa la versione con
       data; limiti noti elencati.
-- [ ] `ROADMAP.md`, `README.md` e `docs/USER_GUIDE.md` descrivono solo
+- [ ] `README.md` e `docs/USER_GUIDE.md` descrivono solo
       funzioni realmente disponibili; le integrazioni che richiedono
       configurazione (OAuth, AI remota) sono indicate come tali.
 - [ ] Se lo schema del database è cambiato: nuova migrazione numerata,

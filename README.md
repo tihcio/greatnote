@@ -297,8 +297,6 @@ Per informazioni più dettagliate, consulta
 ## Documentazione
 
 -   [Guida utente](docs/USER_GUIDE.md)
--   [Architettura](ARCHITECTURE.md)
--   [Roadmap](ROADMAP.md)
 -   [Sicurezza](docs/SECURITY.md)
 -   [Test](docs/TESTING.md)
 -   [Checklist di rilascio](docs/RELEASE_CHECKLIST.md)
