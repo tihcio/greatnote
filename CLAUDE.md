@@ -310,7 +310,7 @@ Scegli un editor rich-text web maturo e compatibile con Tauri, per esempio Tipta
 
 Funzioni:
 - testo semplice e rich text;
-- titoli e intestazioni;
+- titoli e intestazioni; 
 - grassetto, corsivo, sottolineato, barrato;
 - elenchi puntati e numerati;
 - checklist;
