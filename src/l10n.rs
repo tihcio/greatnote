@@ -88,12 +88,15 @@ fn environment_language() -> Language {
 
 /// Messaggio in italiano e inglese; restituisce `String`.
 ///
-/// ```
-/// # use greatnote_core::tr;
+/// ```ignore
 /// let count = 3;
 /// let text = tr!("{} note trovate", "{} notes found", count);
-/// # assert!(!text.is_empty());
 /// ```
+///
+/// L'esempio non è un doctest: su Windows, compilando l'intero workspace,
+/// l'eseguibile separato del doctest non trovava le librerie di sistema al
+/// collegamento (`cargo test --workspace` nel workflow Installers). Lo
+/// stesso comportamento è verificato da `tr_picks_the_thread_language`.
 ///
 /// Gli argomenti sono posizionali (`{}`), così valgono anche i campi
 /// abbreviati di `thiserror`: `#[error("{}", tr!("Codice {}", "Code {}", .0))]`.
