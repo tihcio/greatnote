@@ -3,6 +3,7 @@ import type { DragEvent, FormEvent, MouseEvent as ReactMouseEvent, ReactNode } f
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { onBackButtonPress } from "@tauri-apps/api/app";
 import { EditorContent, useEditor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/react";
 import type {
@@ -48,6 +49,7 @@ import type { MenuEntry } from "./app/menu";
 import { openContextMenu } from "./lib/contextMenu";
 import { LIST_WIDTH, MIN_EDITOR_WIDTH, SIDEBAR_WIDTH, nextZoom, usePreferences } from "./app/preferences";
 import type { NoteLayout, SidebarSection } from "./app/preferences";
+import { isMobile } from "./app/platform";
 import { blockCommands } from "./editor/commands";
 import type { BlockCommand } from "./editor/commands";
 import EditorToolbar from "./editor/EditorToolbar";
@@ -99,6 +101,30 @@ const EMPTY_DOCUMENT: JSONContent = {
   content: [{ type: "paragraph" }],
 };
 const isDesktop = "__TAURI_INTERNALS__" in window;
+
+/**
+ * Su mobile la nota aperta viene ricordata sul dispositivo: Android può
+ * terminare l'app in background e alla riapertura si riparte da quella nota.
+ * È solo una comodità: se la memoria del browser non è disponibile l'app
+ * riparte dalla Home.
+ */
+const MOBILE_OPEN_NOTE_KEY = "greatnote.mobile.openNote";
+const restoredMobileNoteId: string | null = (() => {
+  if (!isMobile) return null;
+  try {
+    return window.localStorage.getItem(MOBILE_OPEN_NOTE_KEY);
+  } catch {
+    return null;
+  }
+})();
+function rememberMobileNote(noteId: string | null) {
+  try {
+    if (noteId) window.localStorage.setItem(MOBILE_OPEN_NOTE_KEY, noteId);
+    else window.localStorage.removeItem(MOBILE_OPEN_NOTE_KEY);
+  } catch {
+    // Memoria non disponibile: nessun ripristino alla prossima apertura.
+  }
+}
 
 type OrganizationDialog =
   | {
@@ -192,6 +218,38 @@ function mergeRecent(current: Note[], fresh: Note[]): Note[] {
   return [...added, ...kept].slice(0, SIDEBAR_RECENT_LIMIT);
 }
 
+/**
+ * Su mobile le azioni di una riga della barra laterale (compaiono al
+ * passaggio del mouse sul desktop) stanno in un unico pulsante, che apre lo
+ * stesso menu della pressione prolungata sulla riga.
+ */
+function RowMenuButton() {
+  return (
+    <button
+      aria-haspopup="menu"
+      aria-label={t.rowActions}
+      className="organization-more"
+      onClick={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        event.currentTarget
+          .closest(".organization-entry")
+          ?.querySelector(".organization-select")
+          ?.dispatchEvent(
+            new MouseEvent("contextmenu", {
+              bubbles: true,
+              cancelable: true,
+              clientX: rect.left,
+              clientY: rect.bottom,
+            }),
+          );
+      }}
+      type="button"
+    >
+      <Icon name="more" size={20} />
+    </button>
+  );
+}
+
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -222,6 +280,10 @@ export default function App() {
   const [layout, setLayout] = useState<NoteLayout>("normal");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
+  // Disposizione mobile: una colonna alla volta. `mobileEditorOpen` mostra la
+  // nota al posto dell'elenco, `mobileDrawerOpen` la navigazione a scomparsa.
+  const [mobileEditorOpen, setMobileEditorOpen] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
@@ -557,6 +619,45 @@ export default function App() {
     };
   }, [flushDraft]);
 
+  // Su mobile tornare all'elenco salva prima la nota aperta.
+  const closeMobileEditor = useCallback(async () => {
+    if (await flushDraft(activeNoteRef.current)) setMobileEditorOpen(false);
+  }, [flushDraft]);
+
+  // Android può terminare l'app in background senza preavviso: le modifiche
+  // vanno salvate appena l'app non è più in primo piano.
+  useEffect(() => {
+    if (!isMobile) return;
+    const saveWhenHidden = () => {
+      if (document.visibilityState === "hidden") void flushDraft(activeNoteRef.current);
+    };
+    document.addEventListener("visibilitychange", saveWhenHidden);
+    window.addEventListener("pagehide", saveWhenHidden);
+    return () => {
+      document.removeEventListener("visibilitychange", saveWhenHidden);
+      window.removeEventListener("pagehide", saveWhenHidden);
+    };
+  }, [flushDraft]);
+
+  // Tasto o gesto Indietro di Android: chiude ciò che è aperto, dal più
+  // vicino all'utente al più lontano; dalla schermata iniziale esce dall'app.
+  const mobileBackRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!isMobile || !isDesktop) return;
+    let cancelled = false;
+    let stop: (() => void) | undefined;
+    void onBackButtonPress(() => mobileBackRef.current())
+      .then((listener) => {
+        if (cancelled) void listener.unregister();
+        else stop = () => void listener.unregister();
+      })
+      .catch((cause: unknown) => setError(errorMessage(cause)));
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, []);
+
   const refreshAiStatus = useCallback(async () => {
     if (!isDesktop) return;
     try {
@@ -605,8 +706,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isDesktop) return;
+    // Su tutte le piattaforme: anche gli errori prodotti in Rust seguono la
+    // lingua dell'interfaccia (ADR 0027).
     void invoke("set_ui_language", { value: language }).catch(() => undefined);
+    if (!isDesktop) return;
     void refreshPlanner();
     let unlisten: (() => void) | undefined;
     let cancelled = false;
@@ -697,6 +800,7 @@ export default function App() {
       dirtyRef.current = selectedNote !== note;
       setTitle(selectedNote.title);
       setActiveNote(selectedNote);
+      setMobileEditorOpen(true);
       if (
         !activeNoteTrashedRef.current &&
         !selectedNote.archived_at
@@ -750,6 +854,7 @@ export default function App() {
       draftRef.current = { title: note.title, content: note.content };
       dirtyRef.current = false;
       setActiveNote(note);
+      setMobileEditorOpen(true);
       setNoteTags([]);
       if (target?.tag) {
         await invoke("set_note_tags", { noteId: note.id, tagIds: [target.tag.id] });
@@ -862,6 +967,8 @@ export default function App() {
 
   const changeView = async (view: NoteView) => {
     setWorkspace("notes");
+    setMobileDrawerOpen(false);
+    setMobileEditorOpen(false);
     if (
       selectedView.kind === view.kind &&
       "id" in selectedView &&
@@ -888,6 +995,7 @@ export default function App() {
   };
 
   const openWorkspace = async (next: Workspace) => {
+    setMobileDrawerOpen(false);
     if (next === workspace) return;
     if (!(await flushDraft(activeNoteRef.current))) return;
     setPendingTask(null);
@@ -1442,6 +1550,27 @@ export default function App() {
     }
   };
 
+  const rememberedNoteId =
+    isMobile && mobileEditorOpen && workspace === "notes" && activeNote && !isTrashView ? activeNote.id : null;
+  useEffect(() => {
+    if (isMobile) rememberMobileNote(rememberedNoteId);
+  }, [rememberedNoteId]);
+
+  // Riapre la nota che era aperta quando l'app è stata chiusa. Una nota
+  // eliminata o spostata nel cestino nel frattempo non viene trovata e
+  // l'app resta sulla Home.
+  useEffect(() => {
+    if (!restoredMobileNoteId || !isDesktop) return;
+    void invoke<Note>("get_note", { noteId: restoredMobileNoteId })
+      .then((note) => {
+        setWorkspace("notes");
+        return openLinkedNote(note.id);
+      })
+      .catch(() => undefined);
+    // Solo all'avvio.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const removeNoteLink = async (targetNoteId: string) => {
     const note = activeNoteRef.current;
     if (!note) return;
@@ -1930,6 +2059,11 @@ export default function App() {
       setNotice(kind === "markdown" ? t.copiedAsMarkdown : t.copiedAsText);
     });
 
+  const shareNote = () =>
+    withNote(async (note) => {
+      await invoke("share_note_text", { noteId: note.id, format: "text", language });
+    });
+
   const copyNoteLink = (internal: boolean) =>
     withNote(async (note) => {
       const link = `greatnote://note/${note.id}`;
@@ -2026,7 +2160,7 @@ export default function App() {
   };
 
   // La barra laterale è nascosta dall'opzione o dalla vista "Concentrazione".
-  const sidebarVisible = !preferences.sidebarHidden && layout !== "focus";
+  const sidebarVisible = isMobile || (!preferences.sidebarHidden && layout !== "focus");
   const toggleSidebar = () => {
     if (sidebarVisible) {
       updatePreferences({ sidebarHidden: true });
@@ -2064,6 +2198,7 @@ export default function App() {
   // Funzioni AI (facoltative): ogni proposta passa da un'anteprima.
 
   const openSettings = (section: SettingsSection = "general") => {
+    setMobileDrawerOpen(false);
     setSettingsSection(section);
     setIsSettingsOpen(true);
   };
@@ -2197,6 +2332,7 @@ export default function App() {
     setLayout,
     cycleLayout,
     copyNoteAs: (kind) => void copyNoteAs(kind),
+    shareNote: isMobile ? () => void shareNote() : undefined,
     moveNote: () => setNotebookPicker("move"),
     copyNoteTo: () => setNotebookPicker("copy"),
     duplicateNote: () => void duplicateActiveNote(),
@@ -2284,7 +2420,8 @@ export default function App() {
 
   const switchPlaces: SwitchTarget[] = (
     ["home", "tasks", "reminders", "calendar", "files", "templates", "assistant"] as Workspace[]
-  ).map((place) => ({
+  )
+    .map((place) => ({
     key: `place-${place}`,
     kind: "place",
     label: workspaceLabels[place],
@@ -2340,6 +2477,7 @@ export default function App() {
           )}
         </button>
         <div className="organization-actions">
+          {isMobile && <RowMenuButton />}
           <button
             aria-label={`${t.editItem}: ${notebook.name}`}
             onClick={() => void editNotebook(notebook)}
@@ -2443,10 +2581,151 @@ export default function App() {
     );
   };
 
+  mobileBackRef.current = () => {
+    // Dialog e menu si chiudono con Esc: il tasto Indietro fa lo stesso.
+    const overlays = document.querySelectorAll<HTMLElement>('[role="dialog"], [role="menu"]');
+    const topmost = overlays[overlays.length - 1];
+    if (topmost) {
+      topmost.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      return;
+    }
+    if (mobileDrawerOpen) {
+      setMobileDrawerOpen(false);
+    } else if (workspace === "notes" && mobileEditorOpen && activeNote) {
+      void closeMobileEditor();
+    } else if (workspace !== "home") {
+      void openWorkspace("home");
+    } else {
+      void flushDraft(activeNoteRef.current).then((saved) => {
+        if (saved) void invoke("quit_app");
+      });
+    }
+  };
+
+  // Promemoria rapido, tag e stato del salvataggio della nota aperta: sul
+  // desktop è la barra sotto l'editor, su mobile sta nel testo che scorre.
+  const noteFooter = activeNote ? (
+            <footer className="editor-footer">
+              {!isTrashView && (
+                <button
+                  aria-label={t.noteReminderShortcut}
+                  className="topbar-icon"
+                  onClick={() => {
+                    const planner = document.querySelector<HTMLElement>(".note-reminders-panel");
+                    planner?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    planner?.querySelector<HTMLElement>("button, input")?.focus();
+                  }}
+                  title={t.noteReminderShortcut}
+                  type="button"
+                >
+                  <Icon name="bell-plus" />
+                </button>
+              )}
+              <TagBar
+                disabled={isTrashView}
+                onChange={setActiveNoteTags}
+                onCreate={createTagNamed}
+                onOpen={(tag) => void changeView({ kind: "tag", id: tag.id })}
+                selected={noteTags}
+                tags={tags}
+              />
+              <span
+                className={`save-indicator ${isTrashView ? "saved" : saveState}`}
+                role="status"
+                title={`${t.createdOn} ${formatDate(activeNote.created_at)} · ${t.updatedOn} ${formatDate(activeNote.updated_at)}`}
+              >
+                {isTrashView ? t.inTrashStatus : saveLabel}
+              </span>
+              {syncInfo.enabled && (
+                <button
+                  className={`sync-indicator${syncInfo.error ? " error" : syncInfo.conflicts > 0 ? " warning" : ""}`}
+                  onClick={() => openSettings("sync")}
+                  title={syncInfo.error ?? t.syncOpenSettings}
+                  type="button"
+                >
+                  {syncInfo.error
+                    ? t.syncIndicatorError
+                    : syncInfo.conflicts > 0
+                      ? t.syncIndicatorConflicts(syncInfo.conflicts)
+                      : syncInfo.at
+                        ? t.syncIndicatorAt(formatTime(syncInfo.at))
+                        : t.syncIndicatorPending}
+                </button>
+              )}
+            </footer>
+  ) : null;
+
   return (
-    <div className={`app-frame${preferences.sidebarHidden ? " sidebar-hidden" : ""} layout-${layout}`}>
-      {isDesktop && <MenuBar label={t.menuBarLabel} menus={menus} />}
-      {isDesktop && (
+    <div
+      className={`app-frame${preferences.sidebarHidden ? " sidebar-hidden" : ""} layout-${layout}${
+        isMobile && mobileEditorOpen && workspace === "notes" && activeNote ? " mobile-editor-open" : ""
+      }${isMobile && mobileDrawerOpen ? " mobile-drawer-open" : ""}`}
+    >
+      {isMobile && (
+        <header className="mobile-bar">
+          {mobileEditorOpen && workspace === "notes" && activeNote ? (
+            <button
+              aria-label={t.backToList}
+              className="mobile-bar-button"
+              onClick={() => void closeMobileEditor()}
+              type="button"
+            >
+              <Icon name="arrow-left" size={22} />
+            </button>
+          ) : (
+            <button
+              aria-expanded={mobileDrawerOpen}
+              aria-label={t.openNavigation}
+              className="mobile-bar-button"
+              onClick={() => setMobileDrawerOpen(true)}
+              type="button"
+            >
+              <Icon name="menu" size={22} />
+            </button>
+          )}
+          <span className="mobile-bar-title">
+            {workspace === "notes"
+              ? mobileEditorOpen && activeNote
+                ? title || t.untitled
+                : viewTitle
+              : workspaceLabels[workspace]}
+          </span>
+          <button
+            aria-label={t.search}
+            className="mobile-bar-button"
+            onClick={() => setIsSwitcherOpen(true)}
+            type="button"
+          >
+            <Icon name="search" size={21} />
+          </button>
+          <button
+            aria-label={t.newNote}
+            className="mobile-bar-button"
+            onClick={() => void createNote()}
+            type="button"
+          >
+            <Icon name="note-plus" size={22} />
+          </button>
+        </header>
+      )}
+      {isMobile && error && !(mobileEditorOpen && workspace === "notes" && activeNote) && (
+        <div className="error-banner mobile-error" role="alert">
+          <span>{error}</span>
+          <button aria-label={t.close} className="error-retry" onClick={() => setError(null)} type="button">
+            ×
+          </button>
+        </div>
+      )}
+      {isMobile && mobileDrawerOpen && (
+        <button
+          aria-label={t.closeNavigation}
+          className="mobile-drawer-scrim"
+          onClick={() => setMobileDrawerOpen(false)}
+          type="button"
+        />
+      )}
+      {isDesktop && !isMobile && <MenuBar label={t.menuBarLabel} menus={menus} />}
+      {isDesktop && !isMobile && (
         <div className="tab-bar" role="tablist" aria-label={t.tabsLabel}>
           <button
             aria-label={sidebarVisible ? t.hideSidebar : t.showSidebar}
@@ -2555,7 +2834,14 @@ export default function App() {
         )}
 
         <div className="create-buttons">
-          <button className="new-note-button" onClick={() => void createNote()} type="button">
+          <button
+            className="new-note-button"
+            onClick={() => {
+              setMobileDrawerOpen(false);
+              void createNote();
+            }}
+            type="button"
+          >
             <Icon name="note-plus" size={18} />
             {t.newNoteShort}
           </button>
@@ -2810,6 +3096,7 @@ export default function App() {
                   )}
                 </button>
                 <div className="organization-actions">
+                  {isMobile && <RowMenuButton />}
                   <button
                     aria-label={`${t.addNotebook}: ${space.name}`}
                     onClick={() => void createNotebook(space.id)}
@@ -2912,6 +3199,7 @@ export default function App() {
                 )}
               </button>
               <div className="organization-actions">
+                {isMobile && <RowMenuButton />}
                 <button
                   aria-label={`${t.editItem}: ${tag.name}`}
                   onClick={() => void editTag(tag)}
@@ -2953,11 +3241,12 @@ export default function App() {
             <button
               aria-label={t.settingsTitle}
               className="text-button sidebar-data-button"
-              onClick={() => setIsSettingsOpen(true)}
+              onClick={() => openSettings()}
               title={t.settingsTitle}
               type="button"
             >
-              ⚙
+              {isMobile ? <Icon name="settings" size={20} /> : "⚙"}
+              <span className="sidebar-data-label">{t.settingsTitle}</span>
             </button>
           )}
         </div>
@@ -3180,7 +3469,11 @@ export default function App() {
                     aria-current={activeNote?.id === note.id ? "true" : undefined}
                     aria-haspopup="menu"
                     className={`note-list-item${activeNote?.id === note.id ? " active" : ""}`}
-                    onClick={() => void selectNote(note)}
+                    onClick={() => {
+                      // Su mobile la nota già attiva va comunque riaperta.
+                      setMobileEditorOpen(true);
+                      void selectNote(note);
+                    }}
                     onContextMenu={(event) => void openNoteContextMenu(event, note)}
                     onKeyDown={(event) => {
                       if ((event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) {
@@ -3318,7 +3611,7 @@ export default function App() {
                         <option value="markdown">{t.exportAsMarkdown}</option>
                         <option value="html">{t.exportAsHtml}</option>
                         <option value="text">{t.exportAsText}</option>
-                        <option value="pdf">{t.exportAsPdf}</option>
+                        {!isMobile && <option value="pdf">{t.exportAsPdf}</option>}
                       </select>
                     </div>
                   </>
@@ -3350,6 +3643,8 @@ export default function App() {
                   }}
                   aiItems={isDesktop ? aiItems : undefined}
                   onAttach={() => attachmentInput.current?.click()}
+                  onFindReplace={() => setIsFindOpen(true)}
+                  onPastePlain={() => void pasteText(true)}
                 />
               </div>
             )}
@@ -3380,7 +3675,9 @@ export default function App() {
                 <EditorContent
                   editor={editor}
                   onContextMenu={(event) => {
-                    if (!editor) return;
+                    // Su mobile la pressione prolungata seleziona il testo
+                    // con i controlli di sistema; i comandi sono nella barra.
+                    if (!editor || isMobile) return;
                     openEditorContextMenu(event, editor, {
                       paste: (plain) => void pasteText(plain),
                       findReplace: () => setIsFindOpen(true),
@@ -3390,6 +3687,9 @@ export default function App() {
                   }}
                 />
                 {editor && <SlashMenu editor={editor} enabled={preferences.slashCommands && !isTrashView} />}
+                {/* Su mobile tag e stato del salvataggio scorrono con la nota:
+                    restano raggiungibili anche con la tastiera aperta. */}
+                {isMobile && noteFooter}
                 <div className="note-details-below">
                 {!isTrashView && (
                   <>
@@ -3607,54 +3907,7 @@ export default function App() {
               </div>
             </div>
 
-            <footer className="editor-footer">
-              {!isTrashView && (
-                <button
-                  aria-label={t.noteReminderShortcut}
-                  className="topbar-icon"
-                  onClick={() => {
-                    const planner = document.querySelector<HTMLElement>(".note-reminders-panel");
-                    planner?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    planner?.querySelector<HTMLElement>("button, input")?.focus();
-                  }}
-                  title={t.noteReminderShortcut}
-                  type="button"
-                >
-                  <Icon name="bell-plus" />
-                </button>
-              )}
-              <TagBar
-                disabled={isTrashView}
-                onChange={setActiveNoteTags}
-                onCreate={createTagNamed}
-                onOpen={(tag) => void changeView({ kind: "tag", id: tag.id })}
-                selected={noteTags}
-                tags={tags}
-              />
-              <span
-                className={`save-indicator ${isTrashView ? "saved" : saveState}`}
-                role="status"
-                title={`${t.createdOn} ${formatDate(activeNote.created_at)} · ${t.updatedOn} ${formatDate(activeNote.updated_at)}`}
-              >
-                {isTrashView ? t.inTrashStatus : saveLabel}
-              </span>
-              {syncInfo.enabled && (
-                <button
-                  className={`sync-indicator${syncInfo.error ? " error" : syncInfo.conflicts > 0 ? " warning" : ""}`}
-                  onClick={() => openSettings("sync")}
-                  title={syncInfo.error ?? t.syncOpenSettings}
-                  type="button"
-                >
-                  {syncInfo.error
-                    ? t.syncIndicatorError
-                    : syncInfo.conflicts > 0
-                      ? t.syncIndicatorConflicts(syncInfo.conflicts)
-                      : syncInfo.at
-                        ? t.syncIndicatorAt(formatTime(syncInfo.at))
-                        : t.syncIndicatorPending}
-                </button>
-              )}
-            </footer>
+            {!isMobile && noteFooter}
           </>
         ) : (
           <div className="welcome-state">
@@ -3676,7 +3929,7 @@ export default function App() {
       </main>
       </>
       )}
-        {sidebarVisible && (
+        {sidebarVisible && !isMobile && (
           <ColumnResizer
             edge="sidebar"
             defaultValue={SIDEBAR_WIDTH.default}
@@ -3692,7 +3945,7 @@ export default function App() {
             variable="--sidebar-width"
           />
         )}
-        {workspace === "notes" && layout === "normal" && (
+        {workspace === "notes" && layout === "normal" && !isMobile && (
           <ColumnResizer
             edge="list"
             defaultValue={LIST_WIDTH.default}

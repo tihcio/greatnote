@@ -120,15 +120,19 @@ impl ModelStore {
     /// Aggiunge (o aggiorna) un modello di Hugging Face nel registro.
     pub fn register(&self, model: &CatalogModel) -> Result<(), AiError> {
         if model.is_curated() || !model.is_valid() || catalog::find(&model.id).is_some() {
-            return Err(AiError::Hub("modello non valido".to_owned()));
+            return Err(AiError::Hub(crate::tr!(
+                "modello non valido",
+                "invalid model"
+            )));
         }
         let _guard = self.lock_registry()?;
         let mut models = self.hub_models();
         models.retain(|existing| existing.id != model.id);
         if models.len() >= MAX_REGISTERED_MODELS {
-            return Err(AiError::Hub(
-                "troppi modelli registrati: eliminane qualcuno".to_owned(),
-            ));
+            return Err(AiError::Hub(crate::tr!(
+                "troppi modelli registrati: eliminane qualcuno",
+                "too many models registered: remove some"
+            )));
         }
         models.push(model.clone());
         self.write_registry(&models)
@@ -147,16 +151,23 @@ impl ModelStore {
     }
 
     fn lock_registry(&self) -> Result<std::sync::MutexGuard<'_, ()>, AiError> {
-        self.registry_lock
-            .lock()
-            .map_err(|_| AiError::Builtin("registro dei modelli non disponibile".to_owned()))
+        self.registry_lock.lock().map_err(|_| {
+            AiError::Builtin(crate::tr!(
+                "registro dei modelli non disponibile",
+                "model registry unavailable"
+            ))
+        })
     }
 
     /// Scrittura atomica: il registro non resta mai a metà.
     fn write_registry(&self, models: &[CatalogModel]) -> Result<(), AiError> {
         private_directory(&self.directory)?;
-        let json = serde_json::to_vec_pretty(models)
-            .map_err(|error| AiError::Builtin(format!("registro dei modelli: {error}")))?;
+        let json = serde_json::to_vec_pretty(models).map_err(|error| {
+            AiError::Builtin(crate::tr!(
+                "registro dei modelli: {error}",
+                "model registry: {error}"
+            ))
+        })?;
         let temporary = self.directory.join(format!(
             "{REGISTRY_FILE}.{}.tmp",
             uuid::Uuid::new_v4().simple()
@@ -251,9 +262,15 @@ impl ModelStore {
             request = request.header("Range", format!("bytes={existing}-"));
         }
         let mut response = request.call().map_err(|error| match error {
-            ureq::Error::Timeout(_) => download_error("il server non risponde, riprova più tardi"),
+            ureq::Error::Timeout(_) => download_error(crate::tr_str!(
+                "il server non risponde, riprova più tardi",
+                "server not responding, try again later"
+            )),
             ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => {
-                download_error("connessione non riuscita: controlla la rete")
+                download_error(crate::tr_str!(
+                    "connessione non riuscita: controlla la rete",
+                    "connection failed: check your network"
+                ))
             }
             other => AiError::ModelDownload(other.to_string()),
         })?;
@@ -271,11 +288,15 @@ impl ModelStore {
             }
             416 => {
                 remove_if_exists(&partial)?;
-                return Err(download_error("download da riprendere da capo: riprova"));
+                return Err(download_error(crate::tr_str!(
+                    "download da riprendere da capo: riprova",
+                    "download needs to restart: try again"
+                )));
             }
             other => {
-                return Err(AiError::ModelDownload(format!(
-                    "il server ha risposto con il codice {other}"
+                return Err(AiError::ModelDownload(crate::tr!(
+                    "il server ha risposto con il codice {other}",
+                    "server responded with code {other}"
                 )));
             }
         };
@@ -289,8 +310,9 @@ impl ModelStore {
                 return Err(AiError::Cancelled);
             }
             let read = reader.read(&mut buffer).map_err(|error| {
-                AiError::ModelDownload(format!(
-                    "connessione interrotta ({error}): riprova per riprendere"
+                AiError::ModelDownload(crate::tr!(
+                    "connessione interrotta ({error}): riprova per riprendere",
+                    "connection interrupted ({error}): try again to resume"
                 ))
             })?;
             if read == 0 {
@@ -300,7 +322,10 @@ impl ModelStore {
             if written > file.size_bytes {
                 drop(output);
                 remove_if_exists(&partial)?;
-                return Err(download_error("il file è più grande del previsto"));
+                return Err(download_error(crate::tr_str!(
+                    "il file è più grande del previsto",
+                    "file is larger than expected"
+                )));
             }
             hasher.update(&buffer[..read]);
             output.write_all(&buffer[..read]).map_err(io_error)?;
@@ -312,15 +337,17 @@ impl ModelStore {
         output.sync_all().map_err(io_error)?;
         drop(output);
         if written != file.size_bytes {
-            return Err(download_error(
+            return Err(download_error(crate::tr_str!(
                 "download incompleto: riprova per riprendere da dove si è fermato",
-            ));
+                "incomplete download: try again to resume from where it stopped"
+            )));
         }
         if format!("{:x}", hasher.finalize()) != file.sha256 {
             remove_if_exists(&partial)?;
-            return Err(download_error(
+            return Err(download_error(crate::tr_str!(
                 "il file scaricato non corrisponde a quello previsto (hash diverso) ed è stato eliminato",
-            ));
+                "downloaded file does not match expected file (different hash) and has been deleted"
+            )));
         }
         fs::rename(&partial, self.path(file)).map_err(io_error)
     }
@@ -404,7 +431,10 @@ fn io_error(error: std::io::Error) -> AiError {
     if error.kind() == std::io::ErrorKind::StorageFull {
         download_error("spazio su disco insufficiente")
     } else {
-        AiError::ModelDownload(format!("errore del disco: {error}"))
+        AiError::ModelDownload(crate::tr!(
+            "errore del disco: {error}",
+            "disk error: {error}"
+        ))
     }
 }
 

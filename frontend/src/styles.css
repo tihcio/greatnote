@@ -1395,37 +1395,40 @@ p {
   }
 }
 
+/* Finestre desktop strette: barra laterale a sole icone. Su Android e iOS
+   la navigazione è un pannello a scomparsa (mobile.css) e queste regole non
+   valgono. `:where` non aggiunge specificità. */
 @media (max-width: 780px) {
-  body {
+  :where(:root:not([data-platform="mobile"])) body {
     min-width: 620px;
   }
 
-  .app-shell {
+  :where(:root:not([data-platform="mobile"])) .app-shell {
     grid-template-columns: 66px 228px minmax(0, 1fr);
   }
 
-  .sidebar {
+  :where(:root:not([data-platform="mobile"])) .sidebar {
     align-items: center;
     padding: 20px 8px 14px;
   }
 
-  .brand {
+  :where(:root:not([data-platform="mobile"])) .brand {
     padding: 0;
   }
 
-  .brand-mark {
+  :where(:root:not([data-platform="mobile"])) .brand-mark {
     width: 36px;
     height: 36px;
   }
 
-  .brand > div:last-child,
-  .new-note-button,
-  .navigation-item:not(.selected),
-  .navigation-item.selected {
+  :where(:root:not([data-platform="mobile"])) .brand > div:last-child,
+  :where(:root:not([data-platform="mobile"])) .new-note-button,
+  :where(:root:not([data-platform="mobile"])) .navigation-item:not(.selected),
+  :where(:root:not([data-platform="mobile"])) .navigation-item.selected {
     font-size: 0;
   }
 
-  .new-note-button {
+  :where(:root:not([data-platform="mobile"])) .new-note-button {
     display: grid;
     width: 40px;
     min-height: 40px;
@@ -1434,65 +1437,65 @@ p {
     padding: 0;
   }
 
-  .new-note-button > span:first-child {
+  :where(:root:not([data-platform="mobile"])) .new-note-button > span:first-child {
     font-size: 22px;
   }
 
-  .shortcut-hint,
-  .navigation-count,
-  .sidebar-section-label,
-  .sidebar-footer > span:last-child {
+  :where(:root:not([data-platform="mobile"])) .shortcut-hint,
+  :where(:root:not([data-platform="mobile"])) .navigation-count,
+  :where(:root:not([data-platform="mobile"])) .sidebar-section-label,
+  :where(:root:not([data-platform="mobile"])) .sidebar-footer > span:last-child {
     display: none;
   }
 
-  .organization-section {
+  :where(:root:not([data-platform="mobile"])) .organization-section {
     width: 100%;
   }
 
-  .sidebar-section-heading {
+  :where(:root:not([data-platform="mobile"])) .sidebar-section-heading {
     justify-content: center;
     margin-right: 0;
     margin-left: 0;
     font-size: 0;
   }
 
-  .section-add-button {
+  :where(:root:not([data-platform="mobile"])) .section-add-button {
     width: 36px;
     height: 28px;
   }
 
-  .organization-select {
+  :where(:root:not([data-platform="mobile"])) .organization-select {
     width: 42px;
     height: 38px;
     justify-content: center;
     padding: 0;
   }
 
-  .organization-name,
-  .organization-actions {
+  :where(:root:not([data-platform="mobile"])) .organization-name,
+  :where(:root:not([data-platform="mobile"])) .organization-actions {
     display: none;
   }
 
-  .main-navigation {
+  :where(:root:not([data-platform="mobile"])) .main-navigation {
     margin-top: 22px;
   }
 
-  .navigation-item {
+  :where(:root:not([data-platform="mobile"])) .navigation-item {
     width: 42px;
     height: 42px;
     justify-content: center;
     padding: 0;
   }
 
-  .navigation-icon {
+  :where(:root:not([data-platform="mobile"])) .navigation-icon {
     font-size: 19px;
   }
 
-  .sidebar-footer {
+  :where(:root:not([data-platform="mobile"])) .sidebar-footer {
     padding: 14px 0 0;
   }
 
-  .editor-workspace {
+  :where(:root:not([data-platform="mobile"])) .editor-workspace {
     padding-right: 20px;
     padding-left: 20px;
   }
@@ -3256,7 +3259,7 @@ button.time-grid-day-name:hover {
 
 @media (max-width: 780px) {
   /* Barra laterale compatta: resta solo il logo. */
-  .brand > div:last-child {
+  :where(:root:not([data-platform="mobile"])) .brand > div:last-child {
     display: none;
   }
 }

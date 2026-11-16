@@ -21,7 +21,9 @@ use greatnote_core::{
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-#[cfg(not(all(unix, not(target_os = "macos"))))]
+
+use crate::reminder_alarms;
+#[cfg(not(all(unix, not(target_os = "macos"), not(target_os = "android"))))]
 use tauri_plugin_notification::NotificationExt;
 
 type CommandResult<T> = Result<T, String>;
@@ -77,10 +79,13 @@ pub fn get_time_context() -> TimeContext {
 #[tauri::command]
 pub fn set_ui_language(language: State<'_, UiLanguage>, value: String) -> CommandResult<()> {
     let value = if value == "en" { "en" } else { "it" };
+    // Anche gli errori prodotti in Rust seguono l'interfaccia (ADR 0027).
+    greatnote_core::l10n::set_language(greatnote_core::l10n::Language::from_code(value));
     *language
         .0
         .lock()
-        .map_err(|_| "Lingua non disponibile".to_owned())? = Some(value.to_owned());
+        .map_err(|_| greatnote_core::tr!("Lingua non disponibile", "Language not available"))? =
+        Some(value.to_owned());
     Ok(())
 }
 
@@ -190,14 +195,17 @@ pub fn get_event(database: State<'_, Database>, id: String) -> CommandResult<Cal
 
 #[tauri::command]
 pub fn create_reminder(
+    app: AppHandle,
     database: State<'_, Database>,
     entity_type: ReminderEntity,
     entity_id: String,
     local_time: String,
 ) -> CommandResult<Reminder> {
-    database
+    let reminder = database
         .create_reminder(entity_type, &entity_id, &local_time, None, time::now())
-        .map_err(to_message)
+        .map_err(to_message)?;
+    reminder_alarms::sync_soon(&app);
+    Ok(reminder)
 }
 
 #[tauri::command]
@@ -228,23 +236,51 @@ pub fn list_entity_reminders(
 
 #[tauri::command]
 pub fn snooze_reminder(
+    app: AppHandle,
     database: State<'_, Database>,
     id: String,
     preset: SnoozePreset,
 ) -> CommandResult<Reminder> {
-    database
+    let reminder = database
         .snooze_reminder(&id, preset, time::now())
-        .map_err(to_message)
+        .map_err(to_message)?;
+    reminder_alarms::sync_soon(&app);
+    Ok(reminder)
 }
 
 #[tauri::command]
-pub fn dismiss_reminder(database: State<'_, Database>, id: String) -> CommandResult<()> {
-    database.dismiss_reminder(&id).map_err(to_message)
+pub fn dismiss_reminder(
+    app: AppHandle,
+    database: State<'_, Database>,
+    id: String,
+) -> CommandResult<()> {
+    database.dismiss_reminder(&id).map_err(to_message)?;
+    reminder_alarms::sync_soon(&app);
+    Ok(())
 }
 
 #[tauri::command]
-pub fn delete_reminder(database: State<'_, Database>, id: String) -> CommandResult<()> {
-    database.delete_reminder(&id).map_err(to_message)
+pub fn delete_reminder(
+    app: AppHandle,
+    database: State<'_, Database>,
+    id: String,
+) -> CommandResult<()> {
+    database.delete_reminder(&id).map_err(to_message)?;
+    reminder_alarms::sync_soon(&app);
+    Ok(())
+}
+
+/// Stato del permesso di mostrare notifiche (`granted`, `denied`, `prompt`).
+/// Sul desktop è sempre `granted`: lì decide il sistema, senza richiesta.
+#[tauri::command]
+pub async fn get_notification_permission(app: AppHandle) -> CommandResult<&'static str> {
+    crate::data_commands::blocking(app, |app| Ok(reminder_alarms::permission(app))).await
+}
+
+/// Chiede al sistema il permesso di mostrare notifiche, se non è già deciso.
+#[tauri::command]
+pub async fn request_notification_permission(app: AppHandle) -> CommandResult<&'static str> {
+    crate::data_commands::blocking(app, |app| Ok(reminder_alarms::request_permission(app))).await
 }
 
 // ---------------------------------------------------------------------------
@@ -259,7 +295,7 @@ fn notification_body(reminder: &Reminder, english: bool, now: time::Instant) -> 
     let missed = time::parse_utc(&reminder.remind_at)
         .is_ok_and(|instant| now.as_second() - instant.as_second() > MISSED_AFTER_SECONDS);
     match (english, missed) {
-        (false, false) => format!("Promemoria delle {clock}"),
+        (false, false) => greatnote_core::tr!("Promemoria delle {clock}", "Reminder for {clock}"),
         (false, true) => format!("Scaduto alle {clock}: perso mentre l'app era chiusa"),
         (true, false) => format!("Reminder for {clock}"),
         (true, true) => format!("Was due at {clock}: missed while the app was closed"),
@@ -269,7 +305,7 @@ fn notification_body(reminder: &Reminder, english: bool, now: time::Instant) -> 
 /// Invia una notifica di sistema. Il promemoria resta comunque visibile
 /// nell'app come "da gestire" anche se la consegna fallisce.
 fn send_notification(app: &AppHandle, title: &str, body: &str) -> Result<(), String> {
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
     {
         let _ = app;
         // Consegna sincrona via D-Bus: l'esito è noto e registrato. Senza
@@ -288,7 +324,7 @@ fn send_notification(app: &AppHandle, title: &str, body: &str) -> Result<(), Str
             .map(|_| ())
             .map_err(|error| error.to_string())
     }
-    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    #[cfg(not(all(unix, not(target_os = "macos"), not(target_os = "android"))))]
     {
         app.notification()
             .builder()
@@ -300,6 +336,12 @@ fn send_notification(app: &AppHandle, title: &str, body: &str) -> Result<(), Str
 }
 
 fn notify(app: &AppHandle, reminders: &[Reminder], now: time::Instant) {
+    // Dove il sistema consegna da solo le notifiche programmate (Android),
+    // lo scheduler aggiorna solo lo stato: una seconda notifica sarebbe un
+    // doppione, e «perso mentre l'app era chiusa» sarebbe falso.
+    if reminder_alarms::DELIVERED_BY_SYSTEM {
+        return;
+    }
     let english = app.state::<UiLanguage>().is_english();
     for reminder in reminders {
         let title = if reminder.entity_title.is_empty() {
@@ -342,6 +384,9 @@ fn pending_summary(count: usize, english: bool) -> (String, String) {
 /// All'avvio ricorda i promemoria scattati in sessioni precedenti e non
 /// ancora gestiti (quelli appena scattati hanno già una notifica propria).
 fn notify_unhandled_at_startup(app: &AppHandle, just_fired: &[Reminder]) {
+    if reminder_alarms::DELIVERED_BY_SYSTEM {
+        return;
+    }
     let unhandled = match app.state::<Database>().list_reminders() {
         Ok(reminders) => reminders
             .iter()
@@ -398,6 +443,7 @@ pub fn spawn_reminder_scheduler(app: &AppHandle) {
                     notify_unhandled_at_startup(&app, &due);
                     first = false;
                 }
+                reminder_alarms::sync(&app);
                 thread::sleep(CHECK_INTERVAL);
             }
         });

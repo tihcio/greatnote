@@ -7,10 +7,13 @@
   "scripts": {
     "dev": "vite --config frontend/vite.config.ts",
     "build": "tsc -p frontend/tsconfig.json && vite build --config frontend/vite.config.ts",
+    "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "test:ui": "node tests/ui/smoke.mjs",
-    "ui:screens": "node tests/ui/screens.mjs"
+    "ui:screens": "node tests/ui/screens.mjs",
+    "ui:screens:mobile": "node tests/ui/mobile-screens.mjs",
+    "test:ui:mobile-targets": "node tests/ui/mobile-targets.mjs"
   },
   "dependencies": {
     "@fontsource/manrope": "^5.3.0",

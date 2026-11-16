@@ -55,7 +55,12 @@ fn token_set(body: &Value) -> Result<TokenSet, CalendarError> {
         .get("access_token")
         .and_then(Value::as_str)
         .filter(|token| !token.is_empty())
-        .ok_or_else(|| CalendarError::InvalidResponse("token di accesso assente".to_owned()))?;
+        .ok_or_else(|| {
+            CalendarError::InvalidResponse(crate::tr!(
+                "token di accesso assente",
+                "access token missing"
+            ))
+        })?;
     Ok(TokenSet {
         access_token: access_token.to_owned(),
         refresh_token: body
@@ -216,8 +221,9 @@ impl DropboxStore {
                 .split('/')
                 .any(|part| part.is_empty() || part == "..");
         if !safe && !relative.is_empty() {
-            return Err(FolderError::Invalid(format!(
-                "percorso non valido: {relative}"
+            return Err(FolderError::Invalid(crate::tr!(
+                "percorso non valido: {relative}",
+                "invalid path: {relative}"
             )));
         }
         Ok(if relative.is_empty() {
@@ -245,9 +251,7 @@ impl DropboxStore {
             let retry = response.status == 429 || response.status >= 500;
             if !retry || attempt >= MAX_ATTEMPTS {
                 return match response.status {
-                    401 => Err(FolderError::Remote(
-                        "Accesso a Dropbox non più valido: ricollega l'account".to_owned(),
-                    )),
+                    401 => Err(FolderError::Unauthorized("Dropbox")),
                     _ => Ok(response),
                 };
             }
@@ -489,7 +493,7 @@ mod tests {
             .expect("retry after 429");
         assert!(matches!(
             store.read("format.json"),
-            Err(FolderError::Remote(_))
+            Err(FolderError::Unauthorized("Dropbox"))
         ));
         assert!(store.read("../fuori").is_err());
 

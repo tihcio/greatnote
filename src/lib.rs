@@ -5,6 +5,7 @@ pub mod content;
 pub mod data_dir;
 pub mod domain;
 pub mod external_import;
+pub mod l10n;
 pub mod library;
 pub mod mcp;
 pub mod ocr;

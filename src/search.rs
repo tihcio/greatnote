@@ -26,26 +26,35 @@ struct Token {
 
 pub fn parse_query(input: &str) -> Result<SearchQuery, String> {
     if input.chars().count() > 512 {
-        return Err("La ricerca non può superare 512 caratteri".to_owned());
+        return Err(crate::tr!(
+            "La ricerca non può superare 512 caratteri",
+            "Search cannot exceed 512 characters"
+        ));
     }
 
     let tokens = tokenize(input)?;
     if tokens.len() > 32 {
-        return Err("La ricerca può contenere al massimo 32 termini o filtri".to_owned());
+        return Err(crate::tr!(
+            "La ricerca può contenere al massimo 32 termini o filtri",
+            "Search can contain at most 32 terms or filters"
+        ));
     }
 
     let mut query = SearchQuery::default();
     for token in tokens {
         if matches!(token.value.as_str(), "AND" | "OR" | "NOT" | "(" | ")") && !token.quoted {
-            return Err(
-                "Gli operatori booleani non sono ancora supportati; combina i termini con spazi"
-                    .to_owned(),
-            );
+            return Err(crate::tr!(
+                "Gli operatori booleani non sono ancora supportati; combina i termini con spazi",
+                "Boolean operators are not yet supported; combine terms with spaces"
+            ));
         }
         if let Some((field, value)) = token.value.split_once(':') {
             let value = value.trim();
             if value.is_empty() {
-                return Err(format!("Il filtro {field}: richiede un valore"));
+                return Err(crate::tr!(
+                    "Il filtro {field}: richiede un valore",
+                    "Filter {field}: requires a value"
+                ));
             }
             match field.to_ascii_lowercase().as_str() {
                 "tag" => query.tags.push(value.to_owned()),
@@ -58,7 +67,10 @@ pub fn parse_query(input: &str) -> Result<SearchQuery, String> {
                     validate_date(start)?;
                     validate_date(end)?;
                     if start > end {
-                        return Err("L'intervallo created ha le date invertite".to_owned());
+                        return Err(crate::tr!(
+                            "L'intervallo created ha le date invertite",
+                            "The created range has inverted dates"
+                        ));
                     }
                     query.created_range = Some((start.to_owned(), end.to_owned()));
                 }
@@ -75,19 +87,39 @@ pub fn parse_query(input: &str) -> Result<SearchQuery, String> {
                         .strip_suffix('d')
                         .and_then(|value| value.parse::<u32>().ok())
                         .filter(|days| (1..=36_500).contains(days))
-                        .ok_or_else(|| "Usa updated:Nd, con N compreso tra 1 e 36500".to_owned())?;
+                        .ok_or_else(|| {
+                            crate::tr!(
+                                "Usa updated:Nd, con N compreso tra 1 e 36500",
+                                "Use updated:Nd, with N between 1 and 36500"
+                            )
+                        })?;
                     query.updated_days = Some(days);
                 }
                 "has" if value.eq_ignore_ascii_case("attachment") => {
                     query.has_attachment = true;
                 }
                 "has" if value.eq_ignore_ascii_case("task") => query.has_open_task = true,
-                "has" => return Err(format!("Filtro has:{value} non riconosciuto")),
+                "has" => {
+                    return Err(crate::tr!(
+                        "Filtro has:{value} non riconosciuto",
+                        "Unrecognized filter has:{value}"
+                    ));
+                }
                 "is" if value.eq_ignore_ascii_case("pinned") => query.is_pinned = true,
                 "is" if value.eq_ignore_ascii_case("archived") => query.is_archived = true,
                 "is" if value.eq_ignore_ascii_case("task") => query.has_open_task = true,
-                "is" => return Err(format!("Filtro is:{value} non riconosciuto")),
-                _ => return Err(format!("Filtro {field}: non riconosciuto")),
+                "is" => {
+                    return Err(crate::tr!(
+                        "Filtro is:{value} non riconosciuto",
+                        "Unrecognized filter is:{value}"
+                    ));
+                }
+                _ => {
+                    return Err(crate::tr!(
+                        "Filtro {field}: non riconosciuto",
+                        "Unrecognized filter {field}"
+                    ));
+                }
             }
         } else {
             query.terms.push(token.value);
@@ -140,7 +172,10 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
     }
 
     if quoted {
-        return Err("Manca la virgoletta di chiusura nella ricerca".to_owned());
+        return Err(crate::tr!(
+            "Manca la virgoletta di chiusura nella ricerca",
+            "Missing closing quote in search"
+        ));
     }
     if escaped {
         current.push('\\');
@@ -164,7 +199,10 @@ fn validate_date(value: &str) -> Result<(), String> {
             .enumerate()
             .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
     {
-        return Err(format!("Data non valida: {value}; usa AAAA-MM-GG"));
+        return Err(crate::tr!(
+            "Data non valida: {value}; usa AAAA-MM-GG",
+            "Invalid date: {value}; use YYYY-MM-DD"
+        ));
     }
     let year = value[0..4].parse::<u32>().unwrap_or(0);
     let month = value[5..7].parse::<u32>().unwrap_or(0);
@@ -178,7 +216,10 @@ fn validate_date(value: &str) -> Result<(), String> {
         _ => 0,
     };
     if year == 0 || day == 0 || day > days_in_month {
-        return Err(format!("Data non valida: {value}; usa una data reale"));
+        return Err(crate::tr!(
+            "Data non valida: {value}; usa una data reale",
+            "Invalid date: {value}; use a real date"
+        ));
     }
     Ok(())
 }

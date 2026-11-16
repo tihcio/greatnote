@@ -44,7 +44,10 @@ fn data_directory(database: &Database) -> CommandResult<std::path::PathBuf> {
 pub fn open_note_link(app: AppHandle, href: String) -> CommandResult<()> {
     let href = href.trim();
     if !greatnote_core::content::is_safe_link(href) {
-        return Err("Collegamento non valido o non sicuro".to_owned());
+        return Err(greatnote_core::tr!(
+            "Collegamento non valido o non sicuro",
+            "Invalid or unsafe link"
+        ));
     }
     app.opener()
         .open_url(href, None::<&str>)
@@ -198,7 +201,10 @@ pub fn set_ui_preferences(
 #[tauri::command]
 pub fn set_zoom(window: WebviewWindow, level: f64) -> CommandResult<f64> {
     if !level.is_finite() {
-        return Err("Livello di zoom non valido".to_owned());
+        return Err(greatnote_core::tr!(
+            "Livello di zoom non valido",
+            "Invalid zoom level"
+        ));
     }
     let level = level.clamp(MIN_ZOOM, MAX_ZOOM);
     window.set_zoom(level).map_err(to_message)?;
@@ -207,14 +213,30 @@ pub fn set_zoom(window: WebviewWindow, level: f64) -> CommandResult<f64> {
 
 #[tauri::command]
 pub fn toggle_fullscreen(window: WebviewWindow) -> CommandResult<bool> {
-    let next = !window.is_fullscreen().map_err(to_message)?;
-    window.set_fullscreen(next).map_err(to_message)?;
-    Ok(next)
+    #[cfg(desktop)]
+    {
+        let next = !window.is_fullscreen().map_err(to_message)?;
+        window.set_fullscreen(next).map_err(to_message)?;
+        Ok(next)
+    }
+    // Su Android e iOS l'app occupa già tutto lo schermo.
+    #[cfg(mobile)]
+    {
+        window.is_fullscreen().map_err(to_message)
+    }
 }
 
 #[tauri::command]
 pub fn minimize_window(window: WebviewWindow) -> CommandResult<()> {
-    window.minimize().map_err(to_message)
+    #[cfg(desktop)]
+    {
+        window.minimize().map_err(to_message)
+    }
+    #[cfg(mobile)]
+    {
+        let _ = window;
+        Ok(())
+    }
 }
 
 /// `"light"`, `"dark"` oppure `"system"`: tema della barra del titolo e dei
@@ -225,7 +247,7 @@ pub fn set_window_theme(window: WebviewWindow, theme: String) -> CommandResult<(
         "light" => Some(Theme::Light),
         "dark" => Some(Theme::Dark),
         "system" => None,
-        _ => return Err("Tema non valido".to_owned()),
+        _ => return Err(greatnote_core::tr!("Tema non valido", "Invalid theme")),
     };
     window.set_theme(theme).map_err(to_message)
 }
@@ -248,7 +270,10 @@ pub fn read_clipboard_text(app: AppHandle) -> CommandResult<String> {
 #[tauri::command]
 pub fn write_clipboard_text(app: AppHandle, text: String) -> CommandResult<()> {
     if text.chars().count() > MAX_CLIPBOARD_CHARS {
-        return Err("Testo troppo lungo per gli appunti".to_owned());
+        return Err(greatnote_core::tr!(
+            "Testo troppo lungo per gli appunti",
+            "Text too long for notes"
+        ));
     }
     app.clipboard().write_text(text).map_err(to_message)
 }
@@ -269,6 +294,27 @@ pub fn copy_note_as_text(
     app.clipboard()
         .write_text(exported.contents)
         .map_err(to_message)
+}
+
+/// Condivide il contenuto di una nota con un'altra app, dal pannello
+/// «Condividi» del sistema (solo mobile). È l'utente a scegliere l'app di
+/// destinazione: l'app non invia nulla da sola.
+#[tauri::command]
+pub async fn share_note_text(
+    app: AppHandle,
+    note_id: String,
+    format: ExportFormat,
+    language: String,
+) -> CommandResult<()> {
+    crate::data_commands::blocking(app, move |app| {
+        let database = app.state::<Database>();
+        let note = database.get_note(&note_id).map_err(to_message)?;
+        let exported = database
+            .export_note(&note_id, format, &language)
+            .map_err(to_message)?;
+        crate::file_access::share_text(app, &note.title, &exported.contents)
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -298,7 +344,8 @@ pub fn app_info(database: State<'_, Database>) -> CommandResult<AppInfo> {
 #[tauri::command]
 pub fn open_note_window(app: AppHandle, note_id: String, title: String) -> CommandResult<()> {
     // L'ID finisce nell'etichetta e nell'URL della finestra: solo UUID.
-    let id = uuid::Uuid::parse_str(&note_id).map_err(|_| "Nota non valida".to_owned())?;
+    let id = uuid::Uuid::parse_str(&note_id)
+        .map_err(|_| greatnote_core::tr!("Nota non valida", "Invalid note"))?;
     let label = format!("note-{id}");
     if let Some(window) = app.get_webview_window(&label) {
         return window.set_focus().map_err(to_message);

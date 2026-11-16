@@ -42,9 +42,10 @@ struct Vault {
 fn scan_vault(root: &Path) -> Result<Vault, StorageError> {
     let metadata = fs::symlink_metadata(root)?;
     if !metadata.is_dir() {
-        return Err(StorageError::InvalidImport(
-            "la cartella selezionata non è valida".to_owned(),
-        ));
+        return Err(StorageError::InvalidImport(crate::tr!(
+            "la cartella selezionata non è valida",
+            "the selected folder is not valid"
+        )));
     }
     let mut notes = Vec::new();
     let mut by_name: HashMap<String, Vec<PathBuf>> = HashMap::new();
@@ -68,9 +69,10 @@ fn scan_vault(root: &Path) -> Result<Vault, StorageError> {
             } else if file_type.is_file() {
                 files += 1;
                 if files > MAX_IMPORT_FILES * 4 {
-                    return Err(StorageError::InvalidImport(
-                        "il vault contiene troppi file: importa una cartella alla volta".to_owned(),
-                    ));
+                    return Err(StorageError::InvalidImport(crate::tr!(
+                        "il vault contiene troppi file: importa una cartella alla volta",
+                        "the vault contains too many files: import one folder at a time"
+                    )));
                 }
                 if name.to_ascii_lowercase().ends_with(".md") {
                     notes.push(path.clone());
@@ -80,8 +82,9 @@ fn scan_vault(root: &Path) -> Result<Vault, StorageError> {
         }
     }
     if notes.len() > MAX_IMPORT_FILES {
-        return Err(StorageError::InvalidImport(format!(
-            "il vault contiene più di {MAX_IMPORT_FILES} note: importa una cartella alla volta"
+        return Err(StorageError::InvalidImport(crate::tr!(
+            "il vault contiene più di {MAX_IMPORT_FILES} note: importa una cartella alla volta",
+            "the vault contains more than {MAX_IMPORT_FILES} notes: import one folder at a time"
         )));
     }
     notes.sort();
@@ -386,17 +389,24 @@ fn build_note(
     budget: &mut u64,
 ) -> Result<ParsedNote, String> {
     let bytes = read_limited(path, MAX_IMPORT_FILE_BYTES)?;
-    *budget = budget
-        .checked_sub(bytes.len() as u64)
-        .ok_or_else(|| "limite complessivo dell'importazione superato".to_owned())?;
-    let text =
-        String::from_utf8(bytes).map_err(|_| "il file non è codificato in UTF-8".to_owned())?;
+    *budget = budget.checked_sub(bytes.len() as u64).ok_or_else(|| {
+        crate::tr!(
+            "limite complessivo dell'importazione superato",
+            "overall import limit exceeded"
+        )
+    })?;
+    let text = String::from_utf8(bytes).map_err(|_| {
+        crate::tr!(
+            "il file non è codificato in UTF-8",
+            "the file is not encoded in UTF-8"
+        )
+    })?;
     let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
     let (front, body) = split_front_matter(text);
     let title = path
         .file_stem()
         .map(|stem| stem.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "Nota senza titolo".to_owned());
+        .unwrap_or_else(|| crate::tr!("Nota senza titolo", "Untitled note"));
 
     #[derive(Default)]
     struct Shared {
@@ -410,7 +420,7 @@ fn build_note(
         let name = file
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "allegato".to_owned());
+            .unwrap_or_else(|| crate::tr!("allegato", "attachment"));
         let mut state = shared.borrow_mut();
         if state.attached.insert(file.clone()) {
             match read_limited(&file, MAX_ATTACHMENT_BYTES as u64) {
@@ -460,10 +470,11 @@ fn build_note(
             return match vault.resolve_file(path, link.target) {
                 Some(file) => attachment_marker(&attach(file)),
                 None => {
-                    shared
-                        .borrow_mut()
-                        .warnings
-                        .push(format!("file incorporato non trovato: {}", link.target));
+                    shared.borrow_mut().warnings.push(crate::tr!(
+                        "file incorporato non trovato: {}",
+                        "embedded file not found: {}",
+                        link.target
+                    ));
                     display
                 }
             };

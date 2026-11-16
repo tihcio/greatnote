@@ -31,17 +31,17 @@ pub const MAX_HINT_CHARS: usize = 100;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum SecretTextError {
-    #[error("La password deve avere almeno {0} caratteri")]
+    #[error("{}", crate::tr!("La password deve avere almeno {} caratteri", "The password must be at least {} characters", .0))]
     WeakPassphrase(usize),
-    #[error("Il testo da cifrare è vuoto")]
+    #[error("{}", crate::tr!("Il testo da cifrare è vuoto", "The text to encrypt is empty"))]
     Empty,
-    #[error("Il testo da cifrare supera il limite di 32 KiB")]
+    #[error("{}", crate::tr!("Il testo da cifrare supera il limite di 32 KiB", "The text to encrypt exceeds the 32 KiB limit"))]
     TooLong,
-    #[error("Password errata")]
+    #[error("{}", crate::tr!("Password errata", "Wrong password"))]
     WrongPassphrase,
-    #[error("Il testo cifrato non è valido o è danneggiato")]
+    #[error("{}", crate::tr!("Il testo cifrato non è valido o è danneggiato", "The encrypted text is not valid or is corrupted"))]
     Invalid,
-    #[error("La cifratura richiede più risorse di quelle consentite su questo computer")]
+    #[error("{}", crate::tr!("La cifratura richiede più risorse di quelle consentite su questo computer", "The encryption requires more resources than allowed on this computer"))]
     ExcessiveWork,
 }
 
@@ -176,6 +176,20 @@ pub fn is_valid_hint(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn messages_follow_the_interface_language() {
+        use crate::l10n::{Language, with_language};
+        let weak = SecretTextError::WeakPassphrase(8);
+        assert_eq!(
+            with_language(Language::Italian, || weak.to_string()),
+            "La password deve avere almeno 8 caratteri"
+        );
+        assert_eq!(
+            with_language(Language::English, || weak.to_string()),
+            "The password must be at least 8 characters"
+        );
+    }
 
     #[test]
     fn round_trip_with_the_right_password_only() {

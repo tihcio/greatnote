@@ -221,7 +221,12 @@ fn parse_token_response(body: &Value) -> Result<TokenSet, CalendarError> {
         .get("access_token")
         .and_then(Value::as_str)
         .filter(|token| !token.is_empty())
-        .ok_or_else(|| CalendarError::InvalidResponse("token di accesso assente".to_owned()))?;
+        .ok_or_else(|| {
+            CalendarError::InvalidResponse(crate::tr!(
+                "token di accesso assente",
+                "access token missing"
+            ))
+        })?;
     Ok(TokenSet {
         access_token: access_token.to_owned(),
         refresh_token: body

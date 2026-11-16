@@ -1,0 +1,1007 @@
+/*
+ * Disposizione per Android e iOS (docs/ANDROID_PORTING.md).
+ *
+ * Tutte le regole dipendono da `data-platform="mobile"`, impostato da
+ * app/platform.ts: sul desktop questo file non ha alcun effetto. La struttura
+ * è la stessa del desktop, mostrata una colonna alla volta: navigazione a
+ * scomparsa, elenco delle note, nota.
+ */
+
+:root[data-platform="mobile"] {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --mobile-bar: 52px;
+  /* Nessun riquadro grigio al tocco: lo stato attivo è già disegnato. */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+:root[data-platform="mobile"] body {
+  min-width: 0;
+  overscroll-behavior: none;
+}
+
+:root[data-platform="mobile"] .app-frame {
+  height: 100dvh;
+  min-height: 0;
+  padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
+}
+
+/* Barra superiore */
+
+.mobile-bar {
+  display: flex;
+  min-height: var(--mobile-bar);
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.mobile-bar-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  padding: 0 6px;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-bar-button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.mobile-bar-button:active {
+  background: var(--hover);
+}
+
+/* Una colonna alla volta */
+
+:root[data-platform="mobile"] .app-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:root[data-platform="mobile"] .app-shell > * {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+:root[data-platform="mobile"] .note-list-panel {
+  border-right: 0;
+}
+
+:root[data-platform="mobile"] .app-frame:not(.mobile-editor-open) .editor-panel,
+:root[data-platform="mobile"] .app-frame.mobile-editor-open .note-list-panel {
+  display: none;
+}
+
+/* Navigazione a scomparsa */
+
+:root[data-platform="mobile"] .sidebar {
+  position: fixed;
+  z-index: 12;
+  /* Parte sotto la barra di stato: scorrendo, le voci non ci finiscono dietro. */
+  top: var(--safe-top);
+  bottom: 0;
+  left: 0;
+  width: min(86vw, 330px);
+  align-items: stretch;
+  padding: 18px 14px calc(var(--safe-bottom) + 14px) calc(var(--safe-left) + 14px);
+  box-shadow: 0 0 40px rgb(14 20 13 / 22%);
+  transform: translateX(-105%);
+  transition: transform 0.2s ease;
+  visibility: hidden;
+}
+
+:root[data-platform="mobile"] .mobile-drawer-open .sidebar {
+  transform: none;
+  visibility: visible;
+}
+
+.mobile-drawer-scrim {
+  position: fixed;
+  z-index: 11;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: rgb(20 24 19 / 45%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-platform="mobile"] .sidebar {
+    transition: none;
+  }
+}
+
+:root[data-platform="mobile"] .sidebar-search {
+  display: none;
+}
+
+:root[data-platform="mobile"] .navigation-item,
+:root[data-platform="mobile"] .sidebar-section-heading {
+  min-height: 44px;
+}
+
+:root[data-platform="mobile"] .navigation-item {
+  font-size: 15px;
+}
+
+/* Elenco delle note */
+
+:root[data-platform="mobile"] .list-header {
+  padding: 10px 14px;
+}
+
+:root[data-platform="mobile"] .list-heading-row {
+  display: none;
+}
+
+:root[data-platform="mobile"] .note-list-item {
+  min-height: 64px;
+}
+
+:root[data-platform="mobile"] .notes-scroll-area,
+:root[data-platform="mobile"] .workspace-panel,
+:root[data-platform="mobile"] .editor-workspace {
+  padding-bottom: calc(var(--safe-bottom) + 16px);
+  overscroll-behavior: contain;
+}
+
+/* I campi di testo sotto i 16px fanno ingrandire la pagina al tocco. */
+:root[data-platform="mobile"] input,
+:root[data-platform="mobile"] select,
+:root[data-platform="mobile"] textarea {
+  font-size: 16px;
+}
+
+/* Nota */
+
+:root[data-platform="mobile"] .editor-topbar,
+:root[data-platform="mobile"]:not([data-theme="light"]) .editor-topbar {
+  min-height: 46px;
+  gap: 6px;
+  padding: 0 6px 0 12px;
+}
+
+:root[data-platform="mobile"] .editor-view-buttons,
+:root[data-platform="mobile"] .breadcrumb-separator,
+:root[data-platform="mobile"] .breadcrumb-current {
+  display: none;
+}
+
+:root[data-platform="mobile"] .topbar-icon {
+  width: 42px;
+  height: 42px;
+}
+
+/* Barra della formattazione: in fondo allo schermo, subito sopra la
+   tastiera, su una riga che scorre in orizzontale. I pulsanti hanno
+   un'area di tocco di 44px. */
+
+:root[data-platform="mobile"] .editor-toolbar-row {
+  order: 3;
+  /* Ultimo elemento dello schermo: lascia libera la barra dei gesti. */
+  padding: 0 0 var(--safe-bottom);
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  background: var(--paper);
+}
+
+:root[data-platform="mobile"] .editor-toolbar-row .editor-toolbar {
+  flex-wrap: nowrap;
+  gap: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 4px 8px;
+  scrollbar-width: none;
+}
+
+:root[data-platform="mobile"] .editor-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+:root[data-platform="mobile"] .editor-toolbar > * {
+  flex: 0 0 auto;
+}
+
+:root[data-platform="mobile"] .toolbar-button {
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 18px;
+}
+
+:root[data-platform="mobile"] .toolbar-dropdown {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+:root[data-platform="mobile"] .toolbar-divider {
+  height: 24px;
+  margin: 0 4px;
+}
+
+
+/* Menu come pannelli dal basso: voci grandi, elenco scorrevole, sfondo
+   scuro che chiude al tocco. Vale per i menu della barra, i menu
+   contestuali e i sottomenu (che si aprono dentro il pannello). */
+
+:root[data-platform="mobile"] .menu-list {
+  position: fixed !important;
+  z-index: 41;
+  top: auto !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: auto;
+  max-width: none;
+  max-height: min(70dvh, 560px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 10px calc(var(--safe-bottom) + 10px);
+  border-width: 1px 0 0;
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -10px 40px rgb(14 20 13 / 25%);
+}
+
+:root[data-platform="mobile"] .menu-item {
+  min-height: 48px;
+  gap: 12px;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+:root[data-platform="mobile"] .menu-check {
+  font-size: 15px;
+}
+
+:root[data-platform="mobile"] .menu-entry .menu-list {
+  position: static !important;
+  max-height: none;
+  overflow: visible;
+  margin-left: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.menu-scrim,
+:root[data-platform="mobile"] .context-menu-layer {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  background: rgb(20 24 19 / 45%);
+  pointer-events: auto;
+}
+
+/* Menu con ricerca («Altro»): il pannello è il contenitore, l'elenco delle
+   voci scorre al suo interno. */
+:root[data-platform="mobile"] .toolbar-menu-popup {
+  position: fixed;
+  z-index: 41;
+  top: auto;
+  right: 0 !important;
+  bottom: 0;
+  left: 0 !important;
+  display: flex;
+  width: auto;
+  max-height: min(70dvh, 560px);
+  flex-direction: column;
+  padding: 10px 10px calc(var(--safe-bottom) + 10px);
+  border-width: 1px 0 0;
+  border-radius: 18px 18px 0 0;
+}
+
+:root[data-platform="mobile"] .toolbar-menu-popup > .menu-list {
+  position: static !important;
+  min-height: 0;
+  flex: 1;
+  padding: 6px 0 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+:root[data-platform="mobile"] .toolbar-menu-search {
+  min-height: 44px;
+}
+
+:root[data-platform="mobile"] .editor-workspace {
+  padding: 8px 16px 32px;
+}
+
+:root[data-platform="mobile"] .editor-document {
+  width: 100%;
+}
+
+:root[data-platform="mobile"] .title-input,
+:root[data-platform="mobile"]:not([data-theme="light"]) .title-input {
+  padding: 10px 0 6px;
+  font-size: 24px;
+}
+
+:root[data-platform="mobile"] .note-editor,
+:root[data-platform="mobile"]:not([data-theme="light"]) .note-editor {
+  font-size: 16px;
+}
+
+
+/* Viste a pagina intera (Home, Attività, Calendario, …) */
+
+:root[data-platform="mobile"] .workspace-panel {
+  padding-right: 14px;
+  padding-left: 14px;
+}
+
+:root[data-platform="mobile"] .workspace-header {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+:root[data-platform="mobile"] .home-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Dialog a tutto schermo */
+
+:root[data-platform="mobile"] .dialog-backdrop {
+  /* Il margine della barra di stato è dello sfondo, non del dialog: così
+     il contenuto che scorre non ci finisce sotto. */
+  padding: var(--safe-top) 0 0;
+  background: var(--paper);
+  place-items: stretch;
+}
+
+:root[data-platform="mobile"] .dialog-backdrop > * {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  padding-top: 16px;
+  padding-bottom: calc(var(--safe-bottom) + 16px);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+:root[data-platform="mobile"] .notice-toast {
+  right: 12px;
+  bottom: calc(var(--safe-bottom) + 12px);
+  left: 12px;
+  max-width: none;
+}
+
+/* Pannelli sotto la nota (allegati, collegamenti, attività): le righe vanno
+   a capo invece di allargare la pagina. */
+
+:root[data-platform="mobile"] .editor-workspace {
+  overflow-x: hidden;
+}
+
+:root[data-platform="mobile"] .inline-form,
+:root[data-platform="mobile"] .note-detail-heading,
+:root[data-platform="mobile"] .note-detail-panel li {
+  flex-wrap: wrap;
+}
+
+:root[data-platform="mobile"] .note-detail-panel select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Il riquadro di focus intorno al testo serve con la tastiera fisica; al
+   tocco il cursore basta e il riquadro ruba spazio. */
+:root[data-platform="mobile"] .tiptap:focus-visible {
+  outline: none;
+}
+
+:root[data-platform="mobile"] .breadcrumb-notebook {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* Le scorciatoie da tastiera nei menu non servono senza tastiera fisica. */
+:root[data-platform="mobile"] .menu-accelerator {
+  display: none;
+}
+
+:root[data-platform="mobile"] [role="menuitem"],
+:root[data-platform="mobile"] [role="menuitemcheckbox"],
+:root[data-platform="mobile"] [role="menuitemradio"] {
+  min-height: 48px;
+}
+
+/* Barra laterale: righe alte 48px e un pulsante «⋯» sempre visibile al
+   posto delle azioni che sul desktop compaiono al passaggio del mouse. */
+
+:root[data-platform="mobile"] .navigation-item {
+  height: 48px;
+  gap: 14px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+:root[data-platform="mobile"] .organization-actions {
+  padding-right: 0;
+}
+
+:root[data-platform="mobile"] .organization-actions > button:not(.organization-more) {
+  display: none;
+}
+
+.organization-more {
+  display: none;
+}
+
+:root[data-platform="mobile"] .organization-more {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--soft-ink);
+  opacity: 1;
+}
+
+:root[data-platform="mobile"] .organization-more:active {
+  background: var(--hover);
+}
+
+:root[data-platform="mobile"] .organization-entry.nested {
+  padding-left: 14px;
+}
+
+:root[data-platform="mobile"] .sidebar-section-heading {
+  min-height: 48px;
+  margin: 0 4px 0 12px;
+  font-size: 12px;
+}
+
+:root[data-platform="mobile"] .sidebar-section-toggle {
+  min-height: 48px;
+}
+
+:root[data-platform="mobile"] .section-add-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  font-size: 22px;
+}
+
+:root[data-platform="mobile"] .organization-section {
+  gap: 2px;
+  margin-top: 10px;
+}
+
+:root[data-platform="mobile"] .create-buttons .new-note-button,
+:root[data-platform="mobile"] .create-icon-button {
+  min-height: 46px;
+}
+
+:root[data-platform="mobile"] .sidebar-data-button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  font-size: 20px;
+}
+
+/* Errori visibili anche dall'elenco e dalle altre viste. */
+:root[data-platform="mobile"] .error-banner.mobile-error {
+  position: static;
+  flex: 0 0 auto;
+  margin: 8px 12px 0;
+}
+
+/* Il campo di ricerca ha già il proprio pulsante per cancellare. */
+:root[data-platform="mobile"] input[type="search"]::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* Suggerimenti da tastiera fisica nella ricerca rapida. */
+:root[data-platform="mobile"] .switcher-hints {
+  display: none;
+}
+
+
+:root[data-platform="mobile"][data-keyboard="open"] .editor-toolbar-row {
+  padding-bottom: 0;
+}
+
+:root[data-platform="mobile"] .toolbar-button strong,
+:root[data-platform="mobile"] .toolbar-button em,
+:root[data-platform="mobile"] .toolbar-button .underline-icon {
+  font-size: 20px;
+}
+
+/* Tag e stato del salvataggio: su mobile stanno nel testo che scorre, sotto
+   il contenuto della nota, e non in una barra fissa. */
+:root[data-platform="mobile"] .editor-workspace {
+  order: 1;
+}
+
+:root[data-platform="mobile"] .editor-document .editor-footer,
+:root[data-platform="mobile"]:not([data-theme="light"]) .editor-document .editor-footer {
+  min-height: 48px;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+}
+
+:root[data-platform="mobile"] .editor-footer .tag-bar {
+  min-width: 0;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  order: 1;
+}
+
+/* Sotto i tag, su una riga: promemoria rapido a sinistra, stato a destra. */
+:root[data-platform="mobile"] .editor-footer > .topbar-icon {
+  order: 2;
+}
+
+:root[data-platform="mobile"] .editor-footer > .save-indicator {
+  margin-left: auto;
+  order: 3;
+}
+
+:root[data-platform="mobile"] .editor-footer > .sync-indicator {
+  order: 4;
+}
+
+:root[data-platform="mobile"] .tag-input {
+  min-height: 40px;
+}
+
+:root[data-platform="mobile"] .tag-suggestion {
+  min-height: 44px;
+}
+
+/* Data e ora (promemoria, attività, eventi): la data occupa una riga, ora
+   e minuti stanno accanto con un'area di tocco adeguata. */
+:root[data-platform="mobile"] .datetime-field {
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+:root[data-platform="mobile"] .datetime-field input,
+:root[data-platform="mobile"] .datetime-field select {
+  height: 44px;
+  font-size: 16px;
+}
+
+:root[data-platform="mobile"] .datetime-field input {
+  min-width: 170px;
+  flex: 1 1 100%;
+}
+
+:root[data-platform="mobile"] .datetime-field select {
+  width: auto;
+  min-width: 84px;
+  flex: 1 1 84px;
+  padding-right: 26px;
+}
+
+:root[data-platform="mobile"] .reminder-add .subtle-action {
+  min-height: 44px;
+  flex: 1 1 100%;
+}
+
+/* Avviso sul permesso delle notifiche nella vista Promemoria. */
+.notification-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+:root[data-platform="mobile"] .notification-notice .subtle-action {
+  min-height: 44px;
+}
+
+/* Promemoria da gestire: a tutta larghezza sopra la barra dei gesti, e sotto
+   il pannello di navigazione quando è aperto. */
+:root[data-platform="mobile"] .reminder-alerts {
+  z-index: 10;
+  right: 10px;
+  bottom: calc(var(--safe-bottom) + 10px);
+  left: 10px;
+  width: auto;
+}
+
+:root[data-platform="mobile"] .reminder-alerts button {
+  min-height: 40px;
+}
+
+/* Attività, calendario e dialog: controlli con un'area di tocco di almeno
+   44px e testo leggibile. */
+
+:root[data-platform="mobile"] .subtle-action,
+:root[data-platform="mobile"] .dialog-cancel-button,
+:root[data-platform="mobile"] .dialog-submit-button,
+:root[data-platform="mobile"] .segmented .segment,
+:root[data-platform="mobile"] .chip-row button,
+:root[data-platform="mobile"] .calendar-controls button,
+:root[data-platform="mobile"] .reminder-actions button {
+  min-height: 44px;
+  padding-right: 14px;
+  padding-left: 14px;
+  font-size: 15px;
+}
+
+:root[data-platform="mobile"] .text-button {
+  min-height: 40px;
+  font-size: 15px;
+}
+
+:root[data-platform="mobile"] .segmented,
+:root[data-platform="mobile"] .chip-row {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+:root[data-platform="mobile"] .dialog-field input,
+:root[data-platform="mobile"] .dialog-field select,
+:root[data-platform="mobile"] .workspace-search input,
+:root[data-platform="mobile"] .quick-task-form input,
+:root[data-platform="mobile"] .quick-task-form select,
+:root[data-platform="mobile"] .inline-form input {
+  min-height: 46px;
+}
+
+:root[data-platform="mobile"] .dialog-field > span:first-child,
+:root[data-platform="mobile"] .dialog-field > label {
+  font-size: 14px;
+}
+
+/* Aggiunta rapida di un'attività: titolo su una riga, poi data e priorità,
+   poi il pulsante. */
+:root[data-platform="mobile"] .quick-task-form {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+:root[data-platform="mobile"] .quick-task-form > .quick-task-title,
+:root[data-platform="mobile"] .quick-task-form > button {
+  grid-column: 1 / -1;
+}
+
+:root[data-platform="mobile"] .workspace-search {
+  width: 100%;
+  max-width: none;
+}
+
+:root[data-platform="mobile"] .task-check {
+  width: 32px;
+  height: 32px;
+}
+
+:root[data-platform="mobile"] .task-title,
+:root[data-platform="mobile"] .reminder-main {
+  font-size: 16px;
+}
+
+/* Pulsanti dei dialog a tutta larghezza, in fondo. */
+:root[data-platform="mobile"] .organization-dialog-actions {
+  gap: 10px;
+}
+
+:root[data-platform="mobile"] .organization-dialog-actions > button {
+  flex: 1 1 0;
+}
+
+/* Calendario: celle del mese più alte e numeri toccabili. */
+:root[data-platform="mobile"] .calendar-grid.month .calendar-week {
+  min-height: 78px;
+}
+
+:root[data-platform="mobile"] .calendar-header {
+  gap: 10px;
+}
+
+/* Con un promemoria da gestire in primo piano, il contenuto sotto resta
+   raggiungibile scorrendo. */
+:root[data-platform="mobile"] .app-frame:has(.reminder-alerts) .workspace-scroll,
+:root[data-platform="mobile"] .app-frame:has(.reminder-alerts) .notes-scroll-area,
+:root[data-platform="mobile"] .app-frame:has(.reminder-alerts) .workspace-panel {
+  padding-bottom: 84px;
+}
+
+/* Su mobile l'avviso è una riga sola, che porta alla vista Promemoria: le
+   azioni sui singoli promemoria stanno lì, senza coprire lo schermo. */
+:root[data-platform="mobile"] .reminder-alerts ul,
+:root[data-platform="mobile"] .reminder-alerts .reminder-more {
+  display: none;
+}
+
+:root[data-platform="mobile"] .reminder-alerts {
+  padding: 6px 8px 6px 14px;
+}
+
+:root[data-platform="mobile"] .reminder-alerts header {
+  align-items: center;
+}
+
+/* Calendario: scelta della vista su una riga, navigazione sotto. */
+:root[data-platform="mobile"] .calendar-controls {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+:root[data-platform="mobile"] .calendar-controls .segmented {
+  flex: 1 1 100%;
+}
+
+:root[data-platform="mobile"] .calendar-controls .segmented .segment {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+/* Settimana: sette colonne strette, il giorno va a capo sotto il nome. */
+:root[data-platform="mobile"] .time-grid-day-name {
+  min-height: 40px;
+  padding: 2px 0;
+  overflow: visible;
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+:root[data-platform="mobile"] .time-grid-day-head .calendar-add {
+  display: none;
+}
+
+/* Con molti taccuini e tag la navigazione è lunga: stato dell'archivio e
+   impostazioni restano fissi in fondo al pannello. */
+:root[data-platform="mobile"] .sidebar-footer {
+  position: sticky;
+  z-index: 1;
+  bottom: calc(-1 * (var(--safe-bottom) + 14px));
+  margin: auto -14px calc(-1 * (var(--safe-bottom) + 14px)) calc(-1 * (var(--safe-left) + 14px));
+  padding: 6px 14px calc(var(--safe-bottom) + 8px) calc(var(--safe-left) + 22px);
+  border-top: 1px solid var(--line);
+  background: var(--sidebar);
+}
+
+
+/* ---------------------------------------------------------------------
+   Aree di tocco: ogni controllo è alto e largo almeno 44px
+   (tests/ui/mobile-targets.mjs lo verifica nelle viste principali).
+   --------------------------------------------------------------------- */
+
+:root[data-platform="mobile"] .text-button,
+:root[data-platform="mobile"] .topbar-icon,
+:root[data-platform="mobile"] .list-tool,
+:root[data-platform="mobile"] .dialog-close-button,
+:root[data-platform="mobile"] .attachment-remove-button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+:root[data-platform="mobile"] .topbar-icon,
+:root[data-platform="mobile"] .list-tool,
+:root[data-platform="mobile"] .dialog-close-button,
+:root[data-platform="mobile"] .attachment-remove-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+}
+
+:root[data-platform="mobile"] .dialog-close-button,
+:root[data-platform="mobile"] .attachment-remove-button {
+  font-size: 22px;
+}
+
+:root[data-platform="mobile"] .text-button {
+  display: inline-flex;
+  align-items: center;
+}
+
+:root[data-platform="mobile"] .create-icon-button {
+  min-width: 46px;
+}
+
+:root[data-platform="mobile"] .breadcrumb-notebook {
+  min-height: 44px;
+}
+
+:root[data-platform="mobile"] .export-button,
+:root[data-platform="mobile"] .export-button select {
+  min-height: 44px;
+}
+
+/* Caselle e scelte con l'etichetta accanto: si tocca l'intera riga. */
+:root[data-platform="mobile"] label:has(> input[type="checkbox"]),
+:root[data-platform="mobile"] label:has(> input[type="radio"]) {
+  min-height: 44px;
+  align-items: center;
+}
+
+:root[data-platform="mobile"] input[type="checkbox"],
+:root[data-platform="mobile"] input[type="radio"] {
+  width: 20px;
+  height: 20px;
+}
+
+:root[data-platform="mobile"] summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+}
+
+:root[data-platform="mobile"] select {
+  min-height: 44px;
+}
+
+/* Impostazioni: voci della navigazione come righe da 48px. */
+:root[data-platform="mobile"] .settings-nav-item {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+/* Allegati sotto la nota: nome a tutta riga con il pulsante per rimuovere
+   accanto, azioni sulle immagini sotto. */
+:root[data-platform="mobile"] .note-detail-panel li .attachment-open-button {
+  min-height: 44px;
+  flex: 1 1 calc(100% - 56px);
+}
+
+:root[data-platform="mobile"] .attachment-image-actions {
+  flex: 1 1 100%;
+  order: 3;
+}
+
+:root[data-platform="mobile"] .note-link-controls {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+:root[data-platform="mobile"] .note-link-controls select {
+  flex: 1 1 100%;
+}
+
+/* Calendario: frecce del periodo quadrate; nel mese il giorno intero è il
+   bersaglio e apre la vista del giorno, dove eventi e «Nuovo evento» sono
+   grandi. Il «+» e gli eventi in miniatura nella cella non si toccano. */
+:root[data-platform="mobile"] .calendar-controls .subtle-action {
+  min-width: 44px;
+}
+
+:root[data-platform="mobile"] .calendar-grid.month .calendar-add {
+  display: none;
+}
+
+:root[data-platform="mobile"] .calendar-grid.month .calendar-day {
+  cursor: pointer;
+}
+
+:root[data-platform="mobile"] .calendar-grid.month .calendar-day .calendar-item,
+:root[data-platform="mobile"] .calendar-grid.month .calendar-day .calendar-more {
+  pointer-events: none;
+}
+
+:root[data-platform="mobile"] .calendar-grid.month .calendar-day:active {
+  background: var(--hover);
+}
+
+/* Impostazioni in fondo alla navigazione: icona e nome, non un simbolo
+   isolato nell'angolo. */
+.sidebar-data-label {
+  display: none;
+}
+
+:root[data-platform="mobile"] .sidebar-footer .sidebar-data-button {
+  display: inline-flex;
+  width: auto;
+  min-width: 44px;
+  height: 44px;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+:root[data-platform="mobile"] .sidebar-data-button .sidebar-data-label {
+  display: inline;
+}
+
+/* Settimana come panoramica (TimeGrid.tsx): il giorno intero è il
+   bersaglio, gli eventi in miniatura non si toccano singolarmente. */
+:root[data-platform="mobile"] .time-grid.overview .time-grid-event,
+:root[data-platform="mobile"] .time-grid.overview .time-grid-all-day-cell .calendar-item {
+  pointer-events: none;
+}
+
+:root[data-platform="mobile"] .time-grid.overview .time-grid-day-head {
+  padding: 2px 0;
+}
+
+/* Larga quanto la colonna: su un telefono da 412dp circa 44px; sotto,
+   l'intera colonna apre lo stesso giorno. */
+:root[data-platform="mobile"] .time-grid.overview .time-grid-day-name {
+  width: 100%;
+  min-height: 44px;
+  padding: 2px 0;
+}
+
+:root[data-platform="mobile"] .time-grid.overview .time-grid-column:active,
+:root[data-platform="mobile"] .time-grid.overview .time-grid-all-day-cell:active {
+  background: var(--hover);
+}
+
+/* Giorno: eventi dell'intera giornata alti come le altre righe toccabili. */
+:root[data-platform="mobile"] .time-grid:not(.overview) .time-grid-all-day-cell .calendar-item {
+  min-height: 44px;
+}
+
+/* Pulsanti delle impostazioni e colori dei calendari. */
+:root[data-platform="mobile"] .data-action {
+  min-height: 44px;
+  padding-right: 14px;
+  padding-left: 14px;
+  font-size: 15px;
+}
+
+:root[data-platform="mobile"] .ics-color {
+  width: 44px;
+  height: 44px;
+}
+
+/* Icone dentro i pulsanti: su desktop 16–18px bastano col mouse, al tocco
+   il simbolo deve essere riconoscibile quanto l'area è grande. */
+:root[data-platform="mobile"] .topbar-icon svg,
+:root[data-platform="mobile"] .list-tool svg,
+:root[data-platform="mobile"] .create-icon-button svg {
+  width: 22px;
+  height: 22px;
+}
+
+:root[data-platform="mobile"] .breadcrumb-notebook svg {
+  width: 18px;
+  height: 18px;
+}
+
+:root[data-platform="mobile"] .calendar-controls .period-arrow {
+  font-size: 22px;
+  line-height: 1;
+}

@@ -60,6 +60,8 @@ export interface MenuContext {
   setLayout: (layout: NoteLayout) => void;
   cycleLayout: (direction: 1 | -1) => void;
   copyNoteAs: (kind: "markdown" | "text") => void;
+  /** Pannello «Condividi» del sistema (solo mobile). */
+  shareNote?: () => void;
   moveNote: () => void;
   copyNoteTo: () => void;
   duplicateNote: () => void;
@@ -123,6 +125,7 @@ export function noteItems(context: MenuContext): MenuEntry[] {
           accelerator: "Alt+S",
         }),
         item("copy-text", t.menuCopyAsText, () => context.copyNoteAs("text")),
+        ...(context.shareNote ? [item("share-app", t.menuShareWithApp, context.shareNote)] : []),
       ],
     },
     separator,

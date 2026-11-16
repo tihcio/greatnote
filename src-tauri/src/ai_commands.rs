@@ -94,12 +94,20 @@ impl AiJobs {
             || id.len() > 64
             || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
         {
-            return Err("Identificativo di richiesta non valido".to_owned());
+            return Err(greatnote_core::tr!(
+                "Identificativo di richiesta non valido",
+                "Invalid request ID"
+            ));
         }
         let cancel = Arc::new(AtomicBool::new(false));
         self.requests
             .lock()
-            .map_err(|_| "Stato delle richieste AI non disponibile".to_owned())?
+            .map_err(|_| {
+                greatnote_core::tr!(
+                    "Stato delle richieste AI non disponibile",
+                    "AI request state unavailable"
+                )
+            })?
             .insert(id.to_owned(), Arc::clone(&cancel));
         Ok(RequestGuard {
             jobs: self,
@@ -151,17 +159,14 @@ impl AiJobs {
 // ---------------------------------------------------------------------------
 // Portachiavi
 
-fn keyring_entry() -> CommandResult<keyring::Entry> {
-    keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
-        .map_err(|error| message(AiError::Keyring(error.to_string())))
+fn keyring_error(error: String) -> String {
+    message(AiError::Keyring(error))
 }
 
 fn read_api_key() -> CommandResult<Option<ApiKey>> {
-    match keyring_entry()?.get_password() {
-        Ok(value) => Ok(ApiKey::new(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(error) => Err(message(AiError::Keyring(error.to_string()))),
-    }
+    Ok(crate::secrets::read(KEYRING_SERVICE, KEYRING_USER)
+        .map_err(keyring_error)?
+        .and_then(ApiKey::new))
 }
 
 fn provider_for(settings: &AiSettings, endpoint: Endpoint) -> CommandResult<Box<dyn AiProvider>> {
@@ -191,8 +196,7 @@ fn provider_with_key(
         typed_key
     } else if settings.use_api_key {
         Some(read_api_key()?.ok_or_else(|| {
-            "Chiave API non trovata nel portachiavi: inseriscila di nuovo nelle impostazioni AI"
-                .to_owned()
+            greatnote_core::tr!("Chiave API non trovata nel portachiavi: inseriscila di nuovo nelle impostazioni AI", "API key not found in system keyring: please re-enter it in AI settings")
         })?)
     } else {
         None
@@ -316,11 +320,12 @@ pub async fn set_ai_api_key(app: AppHandle, key: String) -> CommandResult<AiStat
     blocking(app, move |app| {
         let key = key.trim();
         if key.is_empty() || key.len() > MAX_API_KEY_LENGTH || key.chars().any(char::is_control) {
-            return Err("Chiave API non valida".to_owned());
+            return Err(greatnote_core::tr!(
+                "Chiave API non valida",
+                "Invalid API key"
+            ));
         }
-        keyring_entry()?
-            .set_password(key)
-            .map_err(|error| message(AiError::Keyring(error.to_string())))?;
+        crate::secrets::write(KEYRING_SERVICE, KEYRING_USER, key).map_err(keyring_error)?;
         let database = app.state::<Database>();
         let settings = database.ai_settings().map_err(message)?;
         database
@@ -337,10 +342,7 @@ pub async fn set_ai_api_key(app: AppHandle, key: String) -> CommandResult<AiStat
 #[tauri::command]
 pub async fn delete_ai_api_key(app: AppHandle) -> CommandResult<AiStatus> {
     blocking(app, move |app| {
-        match keyring_entry()?.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => {}
-            Err(error) => return Err(message(AiError::Keyring(error.to_string()))),
-        }
+        crate::secrets::delete(KEYRING_SERVICE, KEYRING_USER).map_err(keyring_error)?;
         let database = app.state::<Database>();
         let settings = database.ai_settings().map_err(message)?;
         database
@@ -390,8 +392,7 @@ pub async fn test_ai_connection(
                 .map_err(message)?;
             if !status.logged_in {
                 return Err(
-                    "Claude Code è installato ma non hai effettuato l'accesso: apri un terminale, esegui `claude` e accedi"
-                        .to_owned(),
+                    greatnote_core::tr!("Claude Code è installato ma non hai effettuato l'accesso: apri un terminale, esegui `claude` e accedi", "Claude Code is installed but you are not logged in: open a terminal, run `claude`, and log in"),
                 );
             }
             return Ok(ConnectionTest {
@@ -409,7 +410,7 @@ pub async fn test_ai_connection(
             let runtime = builtin_ai_commands::runtime()?;
             if runtime.executable().is_none() {
                 return Err(message(AiError::NotConfigured(
-                    "il motore AI integrato non è incluso in questa installazione",
+                    greatnote_core::tr_str!("il motore AI integrato non è incluso in questa installazione", "the built-in AI engine is not included in this installation"),
                 )));
             }
             let models = runtime
@@ -429,8 +430,8 @@ pub async fn test_ai_connection(
         let models = provider_with_key(&settings, endpoint, typed_key)?
             .list_models()
             .map_err(|error| match error {
-                AiError::Unauthorized(_) => format!(
-                    "{error}. Se il server richiede una chiave (per esempio Open WebUI: Impostazioni › Account › Chiavi API), inseriscila nel campo «Chiave API»"
+                AiError::Unauthorized(_) => greatnote_core::tr!(
+                    "{error}. Se il server richiede una chiave (per esempio Open WebUI: Impostazioni › Account › Chiavi API), inseriscila nel campo «Chiave API»", "{error}. If the server requires a key (for example Open WebUI: Settings › Account › API Keys), enter it in the “API key” field"
                 ),
                 other => message(other),
             })?;
@@ -477,7 +478,10 @@ pub async fn ai_prepare_chat(
         let (settings, provider) = chat_provider(&database)?;
         let question = question.trim();
         if question.is_empty() {
-            return Err("Scrivi una domanda".to_owned());
+            return Err(greatnote_core::tr!(
+                "Scrivi una domanda",
+                "Write a question"
+            ));
         }
         if question.chars().count() > MAX_QUESTION_CHARS {
             return Err(message(AiError::InputTooLarge(MAX_QUESTION_CHARS)));
@@ -500,8 +504,9 @@ pub async fn ai_prepare_chat(
                     Ok(mut vectors) => vectors.pop(),
                     Err(AiError::Cancelled) => return Err(message(AiError::Cancelled)),
                     Err(error) => {
-                        warning = Some(format!(
-                            "Ricerca semantica non disponibile, uso la ricerca testuale: {error}"
+                        warning = Some(greatnote_core::tr!(
+                            "Ricerca semantica non disponibile, uso la ricerca testuale: {error}",
+                            "Semantic search unavailable, using text search: {error}"
                         ));
                         None
                     }
@@ -570,7 +575,10 @@ pub async fn ai_chat(
 ) -> CommandResult<AiAnswer> {
     blocking(app, move |app| {
         if history.len() > MAX_HISTORY_MESSAGES {
-            return Err("Conversazione troppo lunga: iniziane una nuova".to_owned());
+            return Err(greatnote_core::tr!(
+                "Conversazione troppo lunga: iniziane una nuova",
+                "Conversation too long: start a new one"
+            ));
         }
         let jobs = app.state::<AiJobs>();
         let guard = jobs.begin(&request_id)?;
@@ -679,9 +687,10 @@ pub async fn ai_transform(
         );
         let text = result.map_err(message)?;
         if text.is_empty() {
-            return Err(message(AiError::InvalidResponse(
-                "il modello ha restituito un testo vuoto".to_owned(),
-            )));
+            return Err(message(AiError::InvalidResponse(greatnote_core::tr!(
+                "il modello ha restituito un testo vuoto",
+                "the model returned an empty text"
+            ))));
         }
         Ok(AiTextResult { text, provenance })
     })
@@ -740,9 +749,10 @@ pub async fn ai_compare_revision(
         );
         let text = result.map_err(message)?;
         if text.is_empty() {
-            return Err(message(AiError::InvalidResponse(
-                "il modello ha restituito un testo vuoto".to_owned(),
-            )));
+            return Err(message(AiError::InvalidResponse(greatnote_core::tr!(
+                "il modello ha restituito un testo vuoto",
+                "the model returned an empty text"
+            ))));
         }
         Ok(AiTextResult { text, provenance })
     })
@@ -946,7 +956,10 @@ fn run_indexing(app: &AppHandle) -> Option<IndexFinished> {
 #[tauri::command]
 pub fn start_ai_indexing(app: AppHandle, jobs: State<'_, AiJobs>) -> CommandResult<()> {
     if jobs.is_indexing() {
-        return Err("Indicizzazione già in corso".to_owned());
+        return Err(greatnote_core::tr!(
+            "Indicizzazione già in corso",
+            "Indexing already in progress"
+        ));
     }
     thread::Builder::new()
         .name("ai-index".to_owned())
@@ -1004,7 +1017,10 @@ pub async fn ai_semantic_search(
             .embed(&model, &[query.to_owned()], &guard.cancel)
             .and_then(|mut vectors| {
                 vectors.pop().ok_or_else(|| {
-                    AiError::InvalidResponse("il server non ha restituito l'embedding".to_owned())
+                    AiError::InvalidResponse(greatnote_core::tr!(
+                        "il server non ha restituito l'embedding",
+                        "the server did not return the embedding"
+                    ))
                 })
             })
             .and_then(|vector| {
@@ -1120,7 +1136,7 @@ fn read_text_of(
     match settings.ocr_engine {
         OcrEngine::Tesseract => {
             let info = tesseract_info().ok_or_else(|| {
-                "Tesseract non è installato: su Fedora `sudo dnf install tesseract tesseract-langpack-ita`, oppure scegli il modello AI".to_owned()
+                greatnote_core::tr!("Tesseract non è installato: su Fedora `sudo dnf install tesseract tesseract-langpack-ita`, oppure scegli il modello AI", "Tesseract is not installed: on Fedora run `sudo dnf install tesseract tesseract-langpack-ita`, or choose the AI model")
             })?;
             Ok((
                 run_tesseract(&info, &image.bytes, timeout, cancel),
@@ -1137,9 +1153,10 @@ fn read_text_of(
             } else if settings.provider == ProviderKind::Builtin {
                 // I modelli integrati per la chat non leggono le immagini.
                 if settings.vision_model.is_empty() {
-                    return Err(message(AiError::NotConfigured(
+                    return Err(message(AiError::NotConfigured(greatnote_core::tr_str!(
                         "scegli e scarica un modello per le immagini nelle impostazioni AI",
-                    )));
+                        "choose and download a model for images in AI settings"
+                    ))));
                 }
                 settings.vision_model.clone()
             } else if !settings.vision_model.is_empty() {
@@ -1151,7 +1168,10 @@ fn read_text_of(
             let (instructions, request) = vision_prompt(language(app));
             // Immagine ridotta (meno token); se il server segnala contesto
             // insufficiente si riprova più piccola.
-            let mut outcome = Err(AiError::Ocr("nessun tentativo".to_owned()));
+            let mut outcome = Err(AiError::Ocr(greatnote_core::tr!(
+                "nessun tentativo",
+                "no attempt"
+            )));
             for side in vision_sizes(settings.vision_max_side) {
                 let prepared =
                     match prepare_for_vision(&image.bytes, &image.attachment.mime_type, side) {
@@ -1162,9 +1182,10 @@ fn read_text_of(
                         }
                     };
                 if prepared.bytes.len() > MAX_VISION_IMAGE_BYTES {
-                    outcome = Err(AiError::Ocr(
-                        "immagine oltre 5 MB anche dopo la riduzione".to_owned(),
-                    ));
+                    outcome = Err(AiError::Ocr(greatnote_core::tr!(
+                        "immagine oltre 5 MB anche dopo la riduzione",
+                        "image over 5 MB even after reduction"
+                    )));
                     continue;
                 }
                 outcome = provider.read_image(
@@ -1183,8 +1204,9 @@ fn read_text_of(
             if let Err(error) = &outcome
                 && is_context_overflow(error)
             {
-                outcome = Err(AiError::Ocr(format!(
-                    "{error}. Anche ridotta l'immagine non entra nel contesto del modello: aumenta il contesto del server (llama.cpp: -c 8192; Ollama: num_ctx 8192) o abbassa la risoluzione nelle impostazioni AI"
+                outcome = Err(AiError::Ocr(greatnote_core::tr!(
+                    "{error}. Anche ridotta l'immagine non entra nel contesto del modello: aumenta il contesto del server (llama.cpp: -c 8192; Ollama: num_ctx 8192) o abbassa la risoluzione nelle impostazioni AI",
+                    "{error}. Even reduced, the image does not fit in the model context: increase the server context (llama.cpp: -c 8192; Ollama: num_ctx 8192) or lower the resolution in AI settings"
                 )));
             }
             Ok((outcome, provider.provenance(&model).model))
@@ -1241,12 +1263,17 @@ pub fn start_image_text_all(
     include_failed: bool,
 ) -> CommandResult<()> {
     let cancel = {
-        let mut slot = jobs
-            .image_text
-            .lock()
-            .map_err(|_| "Stato della lettura non disponibile".to_owned())?;
+        let mut slot = jobs.image_text.lock().map_err(|_| {
+            greatnote_core::tr!(
+                "Stato della lettura non disponibile",
+                "Reading state unavailable"
+            )
+        })?;
         if slot.is_some() {
-            return Err("Lettura delle immagini già in corso".to_owned());
+            return Err(greatnote_core::tr!(
+                "Lettura delle immagini già in corso",
+                "Image reading already in progress"
+            ));
         }
         let flag = Arc::new(AtomicBool::new(false));
         *slot = Some(Arc::clone(&flag));

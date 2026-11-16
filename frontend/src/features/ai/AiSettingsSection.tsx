@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { isMobile } from "../../app/platform";
 import { t } from "../../i18n";
 import { askConfirmation } from "../../lib/confirm";
 import { errorMessage } from "../../lib/format";
@@ -75,7 +76,16 @@ export default function AiSettingsSection({
   }, []);
 
   useEffect(() => {
-    if (!draft && status) setDraft(status.settings);
+    if (draft || !status) return;
+    // Su mobile esiste solo il provider compatibile con OpenAI: il motore
+    // integrato e Claude Code sono programmi desktop. Impostazioni arrivate
+    // da un backup del computer vengono riportate a quel provider (la
+    // modifica vale solo dopo «Salva»).
+    setDraft(
+      isMobile && status.settings.provider !== "openai-compatible"
+        ? { ...status.settings, provider: "openai-compatible", chat_model: "", embedding_model: "", vision_model: "" }
+        : status.settings,
+    );
   }, [draft, status]);
 
   if (!draft || !status) {
@@ -232,7 +242,8 @@ export default function AiSettingsSection({
         <p className="data-hint">{t.aiPrivacyNote}</p>
       </fieldset>
 
-      <fieldset>
+      {/* Su mobile c'è un solo provider: niente scelta da mostrare. */}
+      <fieldset style={isMobile ? { display: "none" } : undefined}>
         <legend>{t.aiProvider}</legend>
         <div className="segmented ai-provider-switch" role="radiogroup" aria-label={t.aiProvider}>
           <button
@@ -365,7 +376,9 @@ export default function AiSettingsSection({
             spellCheck={false}
             value={draft.base_url}
           />
-          <small className="data-hint">{remote ? t.aiServerRemoteHint : t.aiServerLocalHint}</small>
+          <small className="data-hint">
+            {remote ? t.aiServerRemoteHint : isMobile ? t.aiServerPhoneHint : t.aiServerLocalHint}
+          </small>
           {openWebUi && <small className="data-hint">{t.aiOpenWebUiHint}</small>}
         </label>
         {remote && (

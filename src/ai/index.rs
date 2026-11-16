@@ -284,9 +284,10 @@ impl Database {
         vectors: &[Vec<f32>],
     ) -> Result<bool, StorageError> {
         if chunks.len() != vectors.len() {
-            return Err(StorageError::InvalidSetting(
+            return Err(StorageError::InvalidSetting(crate::tr_str!(
                 "frammenti e vettori non corrispondono",
-            ));
+                "chunks and vectors do not match"
+            )));
         }
         let mut connection = self.connection()?;
         let transaction = connection.transaction()?;

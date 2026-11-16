@@ -89,18 +89,20 @@ pub fn fetch_ics(url: &str) -> Result<String, CalendarError> {
     if response.status >= 400 {
         return Err(match api_error(&response) {
             CalendarError::NotFound | CalendarError::Forbidden(_) | CalendarError::Unauthorized => {
-                CalendarError::InvalidResponse(
-                    "calendario non trovato o indirizzo non più valido (può essere stato reimpostato)".to_owned(),
-                )
+                CalendarError::InvalidResponse(crate::tr!(
+                    "calendario non trovato o indirizzo non più valido (può essere stato reimpostato)",
+                    "calendar not found or address no longer valid (it may have been reset)"
+                ))
             }
             other => other,
         });
     }
     match response.body {
         serde_json::Value::String(text) => Ok(text),
-        _ => Err(CalendarError::InvalidResponse(
-            "il contenuto non è un calendario iCal".to_owned(),
-        )),
+        _ => Err(CalendarError::InvalidResponse(crate::tr!(
+            "il contenuto non è un calendario iCal",
+            "content is not an iCal calendar"
+        ))),
     }
 }
 
@@ -112,7 +114,10 @@ impl Database {
     ) -> Result<String, StorageError> {
         let name = clip(name.trim(), 200);
         if name.is_empty() {
-            return Err(StorageError::InvalidEvent("dai un nome al calendario"));
+            return Err(StorageError::InvalidEvent(crate::tr_str!(
+                "dai un nome al calendario",
+                "give the calendar a name"
+            )));
         }
         let id = Uuid::new_v4().to_string();
         self.connection()?.execute(
@@ -157,7 +162,10 @@ impl Database {
     ) -> Result<(), StorageError> {
         let name = clip(name.trim(), 200);
         if name.is_empty() {
-            return Err(StorageError::InvalidEvent("dai un nome al calendario"));
+            return Err(StorageError::InvalidEvent(crate::tr_str!(
+                "dai un nome al calendario",
+                "give the calendar a name"
+            )));
         }
         let changed = self.connection()?.execute(
             &format!("UPDATE calendar_subscriptions SET name = ?2, color = ?3, updated_at = {NOW_SQL} WHERE id = ?1"),

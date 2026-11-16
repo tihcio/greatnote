@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { isMobile } from "../app/platform";
 import { t } from "../i18n";
 import { errorMessage, formatDateTime, formatFileSize, isoDay } from "../lib/format";
 import { askConfirmation } from "../lib/confirm";
@@ -473,9 +474,11 @@ export default function DataDialog({ notebooks, initialTab = "import", onClose, 
                 <button className="data-action" disabled={busy !== null} onClick={() => void chooseImport("files")} type="button">
                   {t.importFiles}
                 </button>
-                <button className="data-action" disabled={busy !== null} onClick={() => void chooseImport("folder")} type="button">
-                  {t.importFolder}
-                </button>
+                {!isMobile && (
+                  <button className="data-action" disabled={busy !== null} onClick={() => void chooseImport("folder")} type="button">
+                    {t.importFolder}
+                  </button>
+                )}
                 <button className="data-action" disabled={busy !== null} onClick={() => void chooseImport("archive")} type="button">
                   {t.importArchive}
                 </button>
@@ -488,11 +491,13 @@ export default function DataDialog({ notebooks, initialTab = "import", onClose, 
                 <button className="data-action" disabled={busy !== null} onClick={() => void chooseImport("joplin")} type="button">
                   {t.importJoplin}
                 </button>
-                <button className="data-action" disabled={busy !== null} onClick={() => void chooseImport("obsidian")} type="button">
-                  {t.importObsidian}
-                </button>
+                {!isMobile && (
+                  <button className="data-action" disabled={busy !== null} onClick={() => void chooseImport("obsidian")} type="button">
+                    {t.importObsidian}
+                  </button>
+                )}
               </div>
-              <p className="data-hint">{t.importFromAppsHint}</p>
+              <p className="data-hint">{(isMobile ? t.importFromAppsHintMobile : t.importFromAppsHint)}</p>
 
               {prepared && (
                 <div className="import-preview">

@@ -1,0 +1,7 @@
+{
+  "identifier": "android",
+  "description": "Permessi aggiuntivi su Android: il plugin delle notifiche verifica all'avvio se il permesso di sistema è già concesso",
+  "platforms": ["android"],
+  "windows": ["main"],
+  "permissions": ["notification:allow-is-permission-granted"]
+}

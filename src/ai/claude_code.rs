@@ -55,10 +55,10 @@ pub struct ClaudeCode {
 /// `PATH` ridotto).
 pub fn locate(configured: &str) -> Result<PathBuf, AiError> {
     let not_found = || {
-        AiError::ClaudeCode(
-            "eseguibile `claude` non trovato: installa Claude Code o indica il percorso nelle impostazioni"
-                .to_owned(),
-        )
+        AiError::ClaudeCode(crate::tr!(
+            "eseguibile `claude` non trovato: installa Claude Code o indica il percorso nelle impostazioni",
+            "`claude` executable not found: install Claude Code or specify the path in settings"
+        ))
     };
     if !configured.trim().is_empty() {
         let path = PathBuf::from(configured.trim());
@@ -166,8 +166,9 @@ fn short(text: &str) -> String {
 fn explain(message: &str) -> AiError {
     let lower = message.to_lowercase();
     if lower.contains("login") || lower.contains("not logged") || lower.contains("api key") {
-        AiError::ClaudeCode(format!(
+        AiError::ClaudeCode(crate::tr!(
             "accesso non effettuato: apri un terminale, esegui `claude` e accedi ({})",
+            "not signed in: open a terminal, run `claude` and sign in ({})",
             short(message)
         ))
     } else if lower.contains("rate limit")
@@ -203,7 +204,12 @@ impl ClaudeCode {
             .stdin(Stdio::null());
         let output = spawn_with_retry(&mut command)
             .and_then(std::process::Child::wait_with_output)
-            .map_err(|error| AiError::ClaudeCode(format!("avvio non riuscito: {error}")))?;
+            .map_err(|error| {
+                AiError::ClaudeCode(crate::tr!(
+                    "avvio non riuscito: {error}",
+                    "failed to start: {error}"
+                ))
+            })?;
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         if !output.status.success() && stdout.trim().is_empty() {
             return Err(explain(&String::from_utf8_lossy(&output.stderr)));
@@ -284,8 +290,12 @@ impl ClaudeCode {
             // Messaggio strutturato (per esempio con un'immagine).
             command.args(["--input-format", "stream-json"]);
         }
-        let mut child = spawn_with_retry(&mut command)
-            .map_err(|error| AiError::ClaudeCode(format!("avvio non riuscito: {error}")))?;
+        let mut child = spawn_with_retry(&mut command).map_err(|error| {
+            AiError::ClaudeCode(crate::tr!(
+                "avvio non riuscito: {error}",
+                "failed to start: {error}"
+            ))
+        })?;
         let mut stdin = child.stdin.take();
         let writer = thread::spawn(move || {
             if let Some(stdin) = stdin.as_mut() {
@@ -336,9 +346,10 @@ impl ClaudeCode {
                                 .and_then(Value::as_str);
                             if let Some(delta) = delta {
                                 if text.chars().count() + delta.chars().count() > MAX_OUTPUT_CHARS {
-                                    failure = Some(AiError::InvalidResponse(
-                                        "risposta troppo lunga".to_owned(),
-                                    ));
+                                    failure = Some(AiError::InvalidResponse(crate::tr!(
+                                        "risposta troppo lunga",
+                                        "response too long"
+                                    )));
                                     break;
                                 }
                                 text.push_str(delta);
@@ -359,7 +370,7 @@ impl ClaudeCode {
                                     .is_some_and(|subtype| subtype != "success");
                             if is_error {
                                 failure = Some(explain(if result.is_empty() {
-                                    "richiesta non riuscita"
+                                    crate::tr_str!("richiesta non riuscita", "request failed")
                                 } else {
                                     &result
                                 }));
@@ -400,10 +411,16 @@ impl ClaudeCode {
         if text.trim().is_empty() {
             let succeeded = status.as_ref().is_ok_and(|status| status.success());
             return Err(if succeeded {
-                AiError::InvalidResponse("Claude Code non ha restituito testo".to_owned())
+                AiError::InvalidResponse(crate::tr!(
+                    "Claude Code non ha restituito testo",
+                    "Claude Code did not return text"
+                ))
             } else {
                 explain(if stderr.trim().is_empty() {
-                    "Claude Code si è chiuso con un errore"
+                    crate::tr_str!(
+                        "Claude Code si è chiuso con un errore",
+                        "Claude Code exited with an error"
+                    )
                 } else {
                     &stderr
                 })
@@ -438,9 +455,10 @@ impl AiProvider for ClaudeCode {
         _inputs: &[String],
         _cancel: &AtomicBool,
     ) -> Result<Vec<Vec<f32>>, AiError> {
-        Err(AiError::NotConfigured(
+        Err(AiError::NotConfigured(crate::tr_str!(
             "Claude Code non fornisce embedding: la ricerca per significato non è disponibile",
-        ))
+            "Claude Code does not provide embeddings: semantic search is not available"
+        )))
     }
 
     fn read_image(

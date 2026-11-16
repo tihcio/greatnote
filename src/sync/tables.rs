@@ -357,7 +357,12 @@ pub(crate) fn upsert(
     key: &str,
     data: &Value,
 ) -> Result<Applied, StorageError> {
-    let invalid = || StorageError::InvalidEvent("modifica sincronizzata non valida");
+    let invalid = || {
+        StorageError::InvalidEvent(crate::tr_str!(
+            "modifica sincronizzata non valida",
+            "invalid synced change"
+        ))
+    };
     let parts = split_key(table, key).ok_or_else(invalid)?;
     let object = data.as_object().ok_or_else(invalid)?;
     let mut values: Vec<SqlValue> = parts

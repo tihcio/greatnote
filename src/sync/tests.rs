@@ -250,6 +250,63 @@ fn concurrent_note_edits_converge_and_keep_the_losing_text() {
 }
 
 #[test]
+fn a_device_joining_later_does_not_report_old_conflicts_between_others() {
+    let shared = tempfile::tempdir().expect("shared");
+    let a = device(shared.path(), "A");
+    let b = device(shared.path(), "B");
+    let note = a.database.create_note("Lista", &doc("pane")).expect("note");
+    sync(&a);
+    sync(&b);
+    // Modifiche contemporanee tra A e B: ognuno registra il conflitto.
+    a.database
+        .update_note(&note.id, "Lista", &doc("pane, latte"))
+        .expect("a edit");
+    b.database
+        .update_note(&note.id, "Lista", &doc("pane, uova"))
+        .expect("b edit");
+    sync(&a);
+    sync(&b);
+    sync(&a);
+    assert_eq!(a.database.sync_status().expect("status").conflicts.len(), 1);
+
+    // C entra dopo, con una nota propria: riceve la storia di A e B.
+    let c = device(shared.path(), "C");
+    let own = c
+        .database
+        .create_note("Solo su C", &doc("mia"))
+        .expect("own");
+    let first = sync(&c);
+    assert_eq!(
+        first.conflicts, 0,
+        "la storia degli altri non è un conflitto di C"
+    );
+    assert!(
+        c.database
+            .sync_status()
+            .expect("status")
+            .conflicts
+            .is_empty()
+    );
+    assert_eq!(note_text(&c, &note.id), note_text(&a, &note.id));
+    assert_eq!(note_text(&c, &own.id), "Solo su C: mia");
+
+    // Dopo l'ingresso i conflitti veri di C vengono registrati come sempre.
+    sync(&a);
+    a.database
+        .update_note(&own.id, "Solo su C", &doc("modificata su A"))
+        .expect("a edits c note");
+    c.database
+        .update_note(&own.id, "Solo su C", &doc("modificata su C"))
+        .expect("c edits own note");
+    sync(&a);
+    let later = sync(&c);
+    assert_eq!(
+        later.conflicts, 1,
+        "un conflitto che riguarda C resta visibile"
+    );
+}
+
+#[test]
 fn edits_win_over_concurrent_permanent_deletion() {
     let shared = tempfile::tempdir().expect("shared");
     let a = device(shared.path(), "A");

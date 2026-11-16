@@ -61,29 +61,20 @@ fn message(error: impl std::fmt::Display) -> String {
 // ---------------------------------------------------------------------------
 // Portachiavi
 
-fn keyring_entry(user: &str) -> CommandResult<keyring::Entry> {
-    keyring::Entry::new(KEYRING_SERVICE, user).map_err(|error| format!("Portachiavi: {error}"))
+fn keyring_error(error: String) -> String {
+    format!("Portachiavi: {error}")
 }
 
 fn read_secret(user: &str) -> CommandResult<Option<String>> {
-    match keyring_entry(user)?.get_password() {
-        Ok(value) => Ok(Some(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(error) => Err(format!("Portachiavi: {error}")),
-    }
+    crate::secrets::read(KEYRING_SERVICE, user).map_err(keyring_error)
 }
 
 fn write_secret(user: &str, value: &str) -> CommandResult<()> {
-    keyring_entry(user)?
-        .set_password(value)
-        .map_err(|error| format!("Portachiavi: {error}"))
+    crate::secrets::write(KEYRING_SERVICE, user, value).map_err(keyring_error)
 }
 
 fn delete_secret(user: &str) -> CommandResult<()> {
-    match keyring_entry(user)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(error) => Err(format!("Portachiavi: {error}")),
-    }
+    crate::secrets::delete(KEYRING_SERVICE, user).map_err(keyring_error)
 }
 
 fn refresh_user(account_id: &str) -> String {
@@ -147,8 +138,7 @@ fn oauth_client(database: &Database, provider: Provider) -> CommandResult<OAuthC
         return Ok(OAuthClient::new(provider, client_id, secret.as_deref()));
     }
     let (client_id, secret) = builtin(provider).ok_or_else(|| {
-        "Questa versione di Greatnote non include il collegamento a questo fornitore: inserisci una tua registrazione in Impostazioni › Integrazioni › Avanzate"
-            .to_owned()
+        greatnote_core::tr!("Questa versione di Greatnote non include il collegamento a questo fornitore: inserisci una tua registrazione in Impostazioni › Integrazioni › Avanzate", "This version of Greatnote does not include the link to this provider: enter your own credentials in Settings › Integrations › Advanced")
     })?;
     Ok(OAuthClient::new(provider, client_id, secret))
 }
@@ -185,8 +175,12 @@ fn account_service(
         return Ok(service(account.provider, token));
     }
     let database = app.state::<Database>();
-    let refresh_token = read_secret(&refresh_user(&account.id))?
-        .ok_or_else(|| "Accesso non trovato nel portachiavi: ricollega l'account".to_owned())?;
+    let refresh_token = read_secret(&refresh_user(&account.id))?.ok_or_else(|| {
+        greatnote_core::tr!(
+            "Accesso non trovato nel portachiavi: ricollega l'account",
+            "Access not found in system keyring: reconnect the account"
+        )
+    })?;
     let client = oauth_client(&database, account.provider)?;
     let tokens = client.refresh(&refresh_token).map_err(message)?;
     if let Some(rotated) = &tokens.refresh_token
@@ -271,7 +265,12 @@ pub async fn set_calendar_clients(
             Some(secret) if secret.len() <= 200 && !secret.contains(char::is_whitespace) => {
                 write_secret(GOOGLE_SECRET_USER, secret)?
             }
-            Some(_) => return Err("Segreto client di Google non valido".to_owned()),
+            Some(_) => {
+                return Err(greatnote_core::tr!(
+                    "Segreto client di Google non valido",
+                    "Invalid Google client secret"
+                ));
+            }
         }
         status(app)
     })
@@ -308,7 +307,10 @@ pub(crate) fn wait_for_code(
             return Err("Collegamento annullato".to_owned());
         }
         if Instant::now() > deadline {
-            return Err("Tempo scaduto: l'accesso nel browser non è stato completato".to_owned());
+            return Err(greatnote_core::tr!(
+                "Tempo scaduto: l'accesso nel browser non è stato completato",
+                "Timed out: browser access was not completed"
+            ));
         }
         let mut accepted = None;
         for listener in listeners {
@@ -341,7 +343,10 @@ pub(crate) fn wait_for_code(
                 state: Some(received),
             } if received == state => {
                 respond(stream, "200 OK", PAGE_FAILED);
-                return Err(format!("Accesso negato o non riuscito: {error}"));
+                return Err(greatnote_core::tr!(
+                    "Accesso negato o non riuscito: {error}",
+                    "Access denied or failed: {error}"
+                ));
             }
             _ => respond(stream, "404 Not Found", ""),
         }
@@ -352,8 +357,12 @@ pub(crate) fn wait_for_code(
 /// IPv6 sulla stessa porta, se disponibile, perché il browser può
 /// risolvere `localhost` in `::1`.
 fn bind_loopback(provider: Provider) -> CommandResult<(Vec<TcpListener>, u16)> {
-    let v4 = TcpListener::bind("127.0.0.1:0")
-        .map_err(|error| format!("Porta locale non disponibile: {error}"))?;
+    let v4 = TcpListener::bind("127.0.0.1:0").map_err(|error| {
+        greatnote_core::tr!(
+            "Porta locale non disponibile: {error}",
+            "Local port unavailable: {error}"
+        )
+    })?;
     let port = v4.local_addr().map_err(message)?.port();
     let mut listeners = vec![v4];
     if provider == Provider::Microsoft
@@ -377,7 +386,10 @@ pub async fn connect_calendar_account(
         {
             let mut slot = state.connecting.lock().map_err(message)?;
             if slot.is_some() {
-                return Err("Un collegamento è già in corso".to_owned());
+                return Err(greatnote_core::tr!(
+                    "Un collegamento è già in corso",
+                    "A connection is already in progress"
+                ));
             }
             *slot = Some(Arc::clone(&cancel));
         }
@@ -391,15 +403,22 @@ pub async fn connect_calendar_account(
                     client.authorization_url(&redirect, &csrf, &pkce),
                     None::<&str>,
                 )
-                .map_err(|error| format!("Impossibile aprire il browser: {error}"))?;
+                .map_err(|error| {
+                    greatnote_core::tr!(
+                        "Impossibile aprire il browser: {error}",
+                        "Unable to open browser: {error}"
+                    )
+                })?;
             let code = wait_for_code(&listeners, &csrf, &cancel)?;
             drop(listeners);
             let tokens = client
                 .exchange_code(&code, &pkce.verifier, &redirect)
                 .map_err(message)?;
             let refresh_token = tokens.refresh_token.clone().ok_or_else(|| {
-                "Il fornitore non ha concesso l'accesso continuativo: riprova il collegamento"
-                    .to_owned()
+                greatnote_core::tr!(
+                    "Il fornitore non ha concesso l'accesso continuativo: riprova il collegamento",
+                    "The provider did not grant continuous access: retry the connection"
+                )
             })?;
             let api = service(provider, &tokens.access_token);
             let label = api.account_label().map_err(message)?;
@@ -542,7 +561,10 @@ fn sync_subscription(app: &AppHandle, id: &str) {
     let result = read_secret(&subscription_user(id))
         .and_then(|url| {
             url.ok_or_else(|| {
-                "Indirizzo non trovato nel portachiavi: aggiungi di nuovo il calendario".to_owned()
+                greatnote_core::tr!(
+                    "Indirizzo non trovato nel portachiavi: aggiungi di nuovo il calendario",
+                    "Address not found in system keyring: add the calendar again"
+                )
             })
         })
         .and_then(|url| fetch_ics(&url).map_err(message))
@@ -686,7 +708,12 @@ pub async fn update_external_event(
         let reference = database
             .external_event_ref(&id)
             .map_err(message)?
-            .ok_or_else(|| "Non è un evento di un calendario esterno".to_owned())?;
+            .ok_or_else(|| {
+                greatnote_core::tr!(
+                    "Non è un evento di un calendario esterno",
+                    "Not an event from an external calendar"
+                )
+            })?;
         let account = database
             .calendar_account(&reference.account_id)
             .map_err(message)?;
@@ -704,7 +731,12 @@ pub async fn delete_external_event(app: AppHandle, id: String) -> CommandResult<
         let reference = database
             .external_event_ref(&id)
             .map_err(message)?
-            .ok_or_else(|| "Non è un evento di un calendario esterno".to_owned())?;
+            .ok_or_else(|| {
+                greatnote_core::tr!(
+                    "Non è un evento di un calendario esterno",
+                    "Not an event from an external calendar"
+                )
+            })?;
         let account = database
             .calendar_account(&reference.account_id)
             .map_err(message)?;
@@ -727,7 +759,12 @@ pub fn open_external_event(
     let link = event
         .web_link
         .filter(|link| link.starts_with("https://"))
-        .ok_or_else(|| "Collegamento all'evento non disponibile".to_owned())?;
+        .ok_or_else(|| {
+            greatnote_core::tr!(
+                "Collegamento all'evento non disponibile",
+                "Event link unavailable"
+            )
+        })?;
     app.opener().open_url(link, None::<&str>).map_err(message)
 }
 

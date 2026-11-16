@@ -1,6 +1,8 @@
 import { useState } from "react";
 import UpdatesSection from "./updates/UpdatesSection";
 import type { UpdateStatus } from "./updates/updatesApi";
+import CalendarIntegrations from "./calendar/CalendarIntegrations";
+import { isMobile } from "../app/platform";
 import { t } from "../i18n";
 import type { NoteWidth, StartView, ThemePreference, UiPreferences } from "../app/preferences";
 import { ZOOM_STEPS } from "../app/preferences";
@@ -60,8 +62,13 @@ export default function SettingsDialog({
   onInstallUpdate,
   onClose,
 }: SettingsDialogProps) {
-  const [section, setSection] = useState<SettingsSection>(initialSection);
-  const sections: { id: SettingsSection; label: string }[] = [
+  // Su Android e iOS gli aggiornamenti arrivano dallo store o da un nuovo
+  // pacchetto, non dall'app (docs/ANDROID_PORTING.md).
+  const hidden: SettingsSection[] = isMobile ? ["updates"] : [];
+  const [section, setSection] = useState<SettingsSection>(
+    hidden.includes(initialSection) ? "general" : initialSection,
+  );
+  const allSections: { id: SettingsSection; label: string }[] = [
     { id: "general", label: t.settingsGeneral },
     { id: "sidebar", label: t.settingsSidebar },
     { id: "notes", label: t.settingsNotes },
@@ -71,6 +78,7 @@ export default function SettingsDialog({
     { id: "data", label: t.settingsData },
     { id: "updates", label: t.updatesTitle },
   ];
+  const sections = allSections.filter((item) => !hidden.includes(item.id));
   const toggle = (key: keyof UiPreferences, label: string) => (
     <label className="checkbox-field">
       <input
@@ -121,6 +129,7 @@ export default function SettingsDialog({
         <div className="settings-content">
           {section === "general" && (
             <>
+              {isMobile && <p className="data-hint">{t.mobileUnavailableHint}</p>}
               <fieldset>
                 <legend>{t.settingsAppearance}</legend>
                 {radios<ThemePreference>("theme", preferences.theme, [
@@ -192,7 +201,15 @@ export default function SettingsDialog({
               status={aiStatus}
             />
           )}
-          {section === "integrations" && <IntegrationsSection />}
+          {section === "integrations" &&
+            (isMobile ? (
+              // Il server MCP si avvia da riga di comando: solo desktop.
+              <div className="ai-settings integrations-settings">
+                <CalendarIntegrations />
+              </div>
+            ) : (
+              <IntegrationsSection />
+            ))}
           {section === "sync" && (
             <SyncSection
               onOpenNote={(noteId) => {

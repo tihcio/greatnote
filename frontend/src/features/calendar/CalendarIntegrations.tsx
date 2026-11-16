@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { isMobile } from "../../app/platform";
 import { t } from "../../i18n";
 import { askConfirmation } from "../../lib/confirm";
 import { errorMessage, formatDateTime } from "../../lib/format";
@@ -111,7 +112,9 @@ export default function CalendarIntegrations() {
     status.accounts.length > 0 ||
     Boolean(status.clients.google_client_id || status.clients.microsoft_client_id);
   const subscriptions = <IcsSubscriptions onStatus={setStatus} status={status} />;
-  if (!available) return subscriptions;
+  // Su mobile restano solo i calendari iCal: il collegamento agli account
+  // Google e Microsoft usa un accesso dal browser pensato per il desktop.
+  if (!available || isMobile) return subscriptions;
 
   const changedClients =
     googleId.trim() !== status.clients.google_client_id ||

@@ -2,11 +2,18 @@ mod ai_commands;
 mod builtin_ai_commands;
 mod calendar_commands;
 mod data_commands;
+mod file_access;
 mod mcp_commands;
 mod planner_commands;
+mod reminder_alarms;
 mod secret_commands;
+mod secrets;
 mod sync_commands;
 mod ui_commands;
+#[cfg(desktop)]
+mod update_commands;
+#[cfg(mobile)]
+#[path = "update_commands_mobile.rs"]
 mod update_commands;
 
 use std::{
@@ -27,7 +34,6 @@ use greatnote_core::{
     trash::{EmptyTrashSummary, TrashItem, TrashKind},
 };
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_opener::OpenerExt;
 
 fn initialize_logging() {
     static LOGGING: OnceLock<()> = OnceLock::new();
@@ -116,11 +122,17 @@ fn add_note_attachment(
     data_base64: String,
 ) -> Result<Attachment, String> {
     if data_base64.len() > 35_000_000 {
-        return Err("Il file codificato supera il limite consentito".to_owned());
+        return Err(greatnote_core::tr!(
+            "Il file codificato supera il limite consentito",
+            "The encoded file exceeds the allowed limit"
+        ));
     }
-    let bytes = BASE64
-        .decode(data_base64)
-        .map_err(|error| format!("Codifica allegato non valida: {error}"))?;
+    let bytes = BASE64.decode(data_base64).map_err(|error| {
+        greatnote_core::tr!(
+            "Codifica allegato non valida: {error}",
+            "Invalid attachment encoding: {error}"
+        )
+    })?;
     let data_directory = database
         .data_directory()
         .map_err(|error| error.to_string())?
@@ -169,9 +181,18 @@ fn open_note_attachment(
     let path = database
         .verified_attachment_path(&note_id, &attachment_id, &data_directory)
         .map_err(|error| error.to_string())?;
-    app.opener()
-        .open_path(path.to_string_lossy().into_owned(), None::<&str>)
-        .map_err(|error| error.to_string())
+    let attachment = database
+        .list_attachments(&note_id)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|attachment| attachment.id == attachment_id)
+        .ok_or_else(|| greatnote_core::tr!("Allegato non trovato", "Attachment not found"))?;
+    file_access::open_file(
+        &app,
+        &path,
+        &attachment.original_filename,
+        &attachment.mime_type,
+    )
 }
 
 #[tauri::command]
@@ -493,20 +514,42 @@ fn set_note_tags(
         .map_err(|error| error.to_string())
 }
 
+/// Punto d'ingresso su Android e iOS, dove non esiste un `main`: un errore
+/// di avvio finisce nel registro di sistema invece che sul terminale.
+#[cfg(mobile)]
+#[tauri::mobile_entry_point]
+fn mobile_main() {
+    if let Err(error) = run() {
+        tracing::error!("Impossibile avviare Greatnote: {error}");
+    }
+}
+
 pub fn run() -> Result<(), Box<dyn Error>> {
     // `greatnote --mcp`: server MCP sullo standard input/output, senza
-    // finestra (avviato dal client MCP).
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.iter().any(|arg| arg == mcp_commands::MCP_FLAG) {
-        return mcp_commands::run_mcp(&args);
+    // finestra (avviato dal client MCP). Solo desktop.
+    #[cfg(desktop)]
+    {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        if args.iter().any(|arg| arg == mcp_commands::MCP_FLAG) {
+            return mcp_commands::run_mcp(&args);
+        }
     }
     initialize_logging();
-    tauri::Builder::default()
+    greatnote_core::l10n::init_from_environment();
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init());
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    // Lettura e scrittura dei documenti scelti dall'utente (content URI).
+    // Nessun permesso del plugin è concesso al frontend.
+    #[cfg(target_os = "android")]
+    let builder = builder
+        .plugin(tauri_plugin_fs::init())
+        .plugin(file_access::init());
+    builder
         .setup(|app| {
             let data_directory = resolve_data_directory(&app.path().app_data_dir()?);
             create_data_directory(&data_directory)?;
@@ -516,6 +559,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             let database = Database::open(data_directory.join(DATABASE_FILE))?;
             app.manage(database);
             app.manage(data_commands::PendingOperations::default());
+            file_access::clear_all(app.handle());
             app.manage(planner_commands::UiLanguage::default());
             app.manage(ai_commands::AiJobs::default());
             app.manage(builtin_ai_commands::ModelDownloads::default());
@@ -523,12 +567,16 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             app.manage(calendar_commands::CalendarState::default());
             app.manage(sync_commands::SyncRunState::default());
             data_commands::spawn_automatic_backup(app.handle());
+            reminder_alarms::setup(app.handle());
             planner_commands::spawn_reminder_scheduler(app.handle());
             ai_commands::spawn_auto_indexer(app.handle());
             calendar_commands::spawn_calendar_sync(app.handle());
             sync_commands::spawn_sync_loop(app.handle());
-            app.manage(update_commands::UpdateState::default());
-            update_commands::spawn_update_checker(app.handle());
+            #[cfg(desktop)]
+            {
+                app.manage(update_commands::UpdateState::default());
+                update_commands::spawn_update_checker(app.handle());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -614,6 +662,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             planner_commands::snooze_reminder,
             planner_commands::dismiss_reminder,
             planner_commands::delete_reminder,
+            planner_commands::get_notification_permission,
+            planner_commands::request_notification_permission,
             ui_commands::list_note_revisions,
             ui_commands::delete_note_revisions,
             ui_commands::open_note_link,
@@ -639,6 +689,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             ui_commands::read_clipboard_text,
             ui_commands::write_clipboard_text,
             ui_commands::copy_note_as_text,
+            ui_commands::share_note_text,
             ui_commands::app_info,
             ui_commands::open_note_window,
             ai_commands::get_ai_status,
@@ -710,7 +761,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                 // I processi del motore AI integrato non sopravvivono all'app.
                 builtin_ai_commands::shutdown();
                 // Un aggiornamento già scaricato si installa ora (ADR 0023).
+                #[cfg(desktop)]
                 update_commands::install_on_exit(app);
+                #[cfg(mobile)]
+                let _ = app;
             }
         });
     Ok(())

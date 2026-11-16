@@ -49,6 +49,18 @@ const kindIcons: Record<SwitchTarget["kind"], IconName> = {
 };
 
 /** I risultati di ricerca racchiudono i termini trovati tra U+E000 e U+E001. */
+/**
+ * Testo da cercare. Parole semplici sono cercate anche per prefisso, così i
+ * risultati compaiono mentre si scrive ("funz" trova "funziona"). Con
+ * punteggiatura o simboli il testo è cercato come frase esatta, perché non
+ * venga interpretato come filtro (`tag:`) o operatore.
+ */
+export function searchExpression(text: string): string {
+  if (!text) return "";
+  const plainWords = /^[\p{L}\p{N}\s]+$/u.test(text) && !/(^|\s)(AND|OR|NOT)(\s|$)/.test(text);
+  return plainWords ? text : `"${text.replaceAll('"', "")}"`;
+}
+
 function renderHighlighted(text: string): ReactNode {
   const parts = text.split(/([][^]*[])/g);
   return parts.map((part, index) =>
@@ -96,9 +108,9 @@ export default function QuickSwitcher({
     const timer = window.setTimeout(() => {
       const trimmed = query.trim();
       // Senza testo: le note recenti (o quelle dell'ambito scelto); con testo:
-      // ricerca nel titolo e nel contenuto (le parole sono cercate come frase).
+      // ricerca nel titolo e nel contenuto.
       void invoke<SearchResult[]>("search_notes", {
-        query: trimmed ? `"${trimmed.replaceAll('"', "")}"` : "",
+        query: searchExpression(trimmed),
         scope: limited && scope ? scope.kind : trimmed ? "all" : "recent",
         scopeId: limited && scope ? scope.id : null,
         limit: trimmed ? 20 : 10,

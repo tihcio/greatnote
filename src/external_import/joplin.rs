@@ -103,18 +103,27 @@ fn read_archive(path: &Path) -> Result<Archive, StorageError> {
     let invalid = |message: &str| StorageError::InvalidImport(message.to_owned());
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_file() {
-        return Err(invalid("il file selezionato non è valido"));
+        return Err(invalid(crate::tr_str!(
+            "il file selezionato non è valido",
+            "the selected file is not valid"
+        )));
     }
     let mut archive = tar::Archive::new(File::open(path)?);
     let mut items = HashMap::new();
     let mut blobs = HashMap::new();
     let mut total: u64 = 0;
-    let entries = archive
-        .entries()
-        .map_err(|_| invalid("il file non è un archivio JEX di Joplin"))?;
+    let entries = archive.entries().map_err(|_| {
+        invalid(crate::tr_str!(
+            "il file non è un archivio JEX di Joplin",
+            "the file is not a Joplin JEX archive"
+        ))
+    })?;
     for (index, entry) in entries.enumerate() {
         if index >= MAX_ENTRIES {
-            return Err(invalid("l'archivio contiene troppi elementi"));
+            return Err(invalid(crate::tr_str!(
+                "l'archivio contiene troppi elementi",
+                "the archive contains too many items"
+            )));
         }
         let entry = entry.map_err(|_| invalid("archivio JEX danneggiato"))?;
         if !entry.header().entry_type().is_file() {
@@ -145,9 +154,10 @@ fn read_archive(path: &Path) -> Result<Archive, StorageError> {
         }
         total += size;
         if total > MAX_IMPORT_TOTAL_BYTES {
-            return Err(invalid(
+            return Err(invalid(crate::tr_str!(
                 "l'archivio supera 512 MiB: esporta da Joplin un taccuino alla volta",
-            ));
+                "the archive exceeds 512 MiB: export one notebook at a time from Joplin"
+            )));
         }
         let mut bytes = Vec::with_capacity(size as usize);
         entry
@@ -166,7 +176,10 @@ fn read_archive(path: &Path) -> Result<Archive, StorageError> {
         }
     }
     if items.is_empty() {
-        return Err(invalid("il file non è un archivio JEX di Joplin"));
+        return Err(invalid(crate::tr_str!(
+            "il file non è un archivio JEX di Joplin",
+            "the file is not a Joplin JEX archive"
+        )));
     }
     Ok(Archive { items, blobs })
 }
@@ -205,8 +218,9 @@ pub fn plan_jex_import(path: &Path) -> Result<ImportPlan, StorageError> {
             .then_with(|| a.title.cmp(&b.title))
     });
     if notes.len() > MAX_IMPORT_FILES {
-        return Err(StorageError::InvalidImport(format!(
-            "l'archivio contiene più di {MAX_IMPORT_FILES} note: esporta un taccuino alla volta"
+        return Err(StorageError::InvalidImport(crate::tr!(
+            "l'archivio contiene più di {MAX_IMPORT_FILES} note: esporta un taccuino alla volta",
+            "the archive contains more than {MAX_IMPORT_FILES} notes: export one notebook at a time"
         )));
     }
 
@@ -273,7 +287,7 @@ fn build_note(
     budget: &mut u64,
 ) -> Result<ParsedNote, String> {
     let title = if item.title.trim().is_empty() {
-        "Nota senza titolo".to_owned()
+        crate::tr!("Nota senza titolo", "Untitled note")
     } else {
         item.title.trim().to_owned()
     };
@@ -299,7 +313,10 @@ fn build_note(
                     filename: name.clone(),
                     bytes: bytes.clone(),
                 }),
-                None => warnings.push(format!("risorsa mancante o troppo grande: {name}")),
+                None => warnings.push(crate::tr!(
+                    "risorsa mancante o troppo grande: {name}",
+                    "missing or too large resource: {name}"
+                )),
             }
         }
         Some(name)
@@ -359,8 +376,10 @@ fn build_note(
     note.links = links;
     note.warnings = warnings;
     if item.prop("is_todo") == Some("1") {
-        note.warnings
-            .push("attività di Joplin importata come nota".to_owned());
+        note.warnings.push(crate::tr!(
+            "attività di Joplin importata come nota",
+            "Joplin task imported as a note"
+        ));
     }
     finish(note, budget)
 }

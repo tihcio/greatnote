@@ -175,15 +175,27 @@ fn rpm_install_arguments(package: &Path) -> Vec<std::ffi::OsString> {
 #[cfg(target_os = "linux")]
 fn rpm_failure_message(code: Option<i32>, stderr: &str) -> String {
     match code {
-        Some(126) => "Installazione annullata: serve la password di amministratore".to_owned(),
-        Some(127) => "Autorizzazione negata: controlla la password di amministratore".to_owned(),
+        Some(126) => greatnote_core::tr!(
+            "Installazione annullata: serve la password di amministratore",
+            "Installation cancelled: administrator password required"
+        ),
+        Some(127) => greatnote_core::tr!(
+            "Autorizzazione negata: controlla la password di amministratore",
+            "Authorization denied: check the administrator password"
+        ),
         _ => {
             let reason = stderr
                 .lines()
                 .map(str::trim)
                 .rfind(|line| !line.is_empty())
-                .unwrap_or("errore sconosciuto");
-            format!("Installazione non riuscita: {reason}")
+                .unwrap_or(greatnote_core::tr_str!(
+                    "errore sconosciuto",
+                    "unknown error"
+                ));
+            greatnote_core::tr!(
+                "Installazione non riuscita: {reason}",
+                "Installation failed: {reason}"
+            )
         }
     }
 }
@@ -195,8 +207,12 @@ fn rpm_failure_message(code: Option<i32>, stderr: &str) -> String {
 fn install_rpm(app: &AppHandle, bytes: &[u8]) -> Result<(), String> {
     use std::{io::Write, os::unix::fs::OpenOptionsExt, process::Command};
 
-    let directory =
-        cache_directory(app).ok_or_else(|| "Cartella cache dell'app non disponibile".to_owned())?;
+    let directory = cache_directory(app).ok_or_else(|| {
+        greatnote_core::tr!(
+            "Cartella cache dell'app non disponibile",
+            "App cache folder unavailable"
+        )
+    })?;
     let package = directory.join(RPM_INSTALL_FILE);
     let write = || -> std::io::Result<()> {
         fs::create_dir_all(&directory)?;
@@ -213,7 +229,12 @@ fn install_rpm(app: &AppHandle, bytes: &[u8]) -> Result<(), String> {
         file.write_all(bytes)?;
         file.sync_all()
     };
-    write().map_err(|error| format!("Impossibile preparare il pacchetto: {error}"))?;
+    write().map_err(|error| {
+        greatnote_core::tr!(
+            "Impossibile preparare il pacchetto: {error}",
+            "Unable to prepare the package: {error}"
+        )
+    })?;
 
     let output = Command::new("pkexec")
         .args(rpm_install_arguments(&package))
@@ -221,8 +242,12 @@ fn install_rpm(app: &AppHandle, bytes: &[u8]) -> Result<(), String> {
     if let Err(error) = fs::remove_file(&package) {
         tracing::warn!("pacchetto temporaneo non rimosso: {error}");
     }
-    let output = output
-        .map_err(|error| format!("Impossibile avviare pkexec per chiedere la password: {error}"))?;
+    let output = output.map_err(|error| {
+        greatnote_core::tr!(
+            "Impossibile avviare pkexec per chiedere la password: {error}",
+            "Unable to start pkexec to request the password: {error}"
+        )
+    })?;
     if output.status.success() {
         return Ok(());
     }
@@ -233,7 +258,10 @@ fn install_rpm(app: &AppHandle, bytes: &[u8]) -> Result<(), String> {
 
 #[cfg(not(target_os = "linux"))]
 fn install_rpm(_app: &AppHandle, _bytes: &[u8]) -> Result<(), String> {
-    Err("Pacchetti .rpm non supportati su questo sistema".to_owned())
+    Err(greatnote_core::tr!(
+        "Pacchetti .rpm non supportati su questo sistema",
+        ".rpm packages not supported on this system"
+    ))
 }
 
 fn auto_update(app: &AppHandle) -> bool {
@@ -268,25 +296,43 @@ fn describe(error: &tauri_plugin_updater::Error) -> String {
     use tauri_plugin_updater::Error;
     match error {
         Error::TargetNotFound(_) | Error::TargetsNotFound(_) => {
-            "Non ci sono aggiornamenti automatici per questo tipo di installazione".to_owned()
+            greatnote_core::tr!(
+                "Non ci sono aggiornamenti automatici per questo tipo di installazione",
+                "No automatic updates available for this installation type"
+            )
         }
         Error::ReleaseNotFound => {
-            "Nessuna versione pubblicata trovata: riprova più tardi".to_owned()
+            greatnote_core::tr!(
+                "Nessuna versione pubblicata trovata: riprova più tardi",
+                "No published version found: try again later"
+            )
         }
         Error::PackageInstallFailed => {
-            "Installazione annullata o non riuscita: serve la password di amministratore".to_owned()
+            greatnote_core::tr!(
+                "Installazione annullata o non riuscita: serve la password di amministratore",
+                "Installation cancelled or failed: administrator password required"
+            )
         }
         Error::Reqwest(_) | Error::Network(_) => {
-            "Server degli aggiornamenti non raggiungibile: controlla la connessione".to_owned()
+            greatnote_core::tr!(
+                "Server degli aggiornamenti non raggiungibile: controlla la connessione",
+                "Update server unreachable: check your connection"
+            )
         }
         Error::Minisign(_)
         | Error::SignatureUtf8(_)
         | Error::Base64(_)
         | Error::SignedVersionMismatch { .. }
         | Error::MissingSignedVersion => {
-            "La firma dell'aggiornamento non è valida: l'aggiornamento è stato scartato".to_owned()
+            greatnote_core::tr!(
+                "La firma dell'aggiornamento non è valida: l'aggiornamento è stato scartato",
+                "The update signature is invalid: the update was discarded"
+            )
         }
-        other => format!("Aggiornamento non riuscito: {other}"),
+        other => greatnote_core::tr!(
+            "Aggiornamento non riuscito: {other}",
+            "Update failed: {other}"
+        ),
     }
 }
 
@@ -533,7 +579,10 @@ pub fn get_update_status(app: AppHandle) -> UpdateStatus {
 #[tauri::command]
 pub async fn check_for_updates(app: AppHandle) -> CommandResult<UpdateStatus> {
     if !supported() {
-        return Err("Gli aggiornamenti non sono disponibili nella versione di sviluppo".to_owned());
+        return Err(greatnote_core::tr!(
+            "Gli aggiornamenti non sono disponibili nella versione di sviluppo",
+            "Updates are not available in the development version"
+        ));
     }
     check_and_download(&app).await;
     Ok(status(&app))
@@ -559,7 +608,10 @@ pub fn set_auto_update(app: AppHandle, enabled: bool) -> CommandResult<UpdateSta
 pub fn install_update_now(app: AppHandle) -> CommandResult<()> {
     let pending = app.state::<UpdateState>().lock().pending.take();
     let Some(Pending { update, bytes }) = pending else {
-        return Err("Nessun aggiornamento pronto da installare".to_owned());
+        return Err(greatnote_core::tr!(
+            "Nessun aggiornamento pronto da installare",
+            "No update ready to install"
+        ));
     };
     set_phase(&app, UpdatePhase::Installing);
     tracing::info!(version = %update.version, "installazione dell'aggiornamento richiesta");

@@ -4,10 +4,12 @@ import type { Editor } from "@tiptap/react";
 import Icon from "../components/Icon";
 import { t } from "../i18n";
 import { separator } from "../app/menu";
+import { isMobile } from "../app/platform";
 import type { MenuAction, MenuEntry } from "../app/menu";
 import { askText } from "../lib/prompt";
 import MenuList from "../features/MenuList";
 import { blockCommands } from "./commands";
+import { startEncryptedText } from "./encryptedText";
 import { FONT_FAMILIES, FONT_SIZES, HIGHLIGHT_COLORS, TEXT_COLORS, isSafeLink } from "./extensions";
 import { canChangeIndent, changeIndent, currentTextAlign, setTextAlign } from "./textLayout";
 
@@ -17,6 +19,10 @@ interface EditorToolbarProps {
   onAddTask: () => void;
   /** Voci del menu AI (assente fuori dall'app desktop). */
   aiItems?: () => MenuEntry[];
+  /** Su mobile, dove manca il menu contestuale dell'editor, questi comandi
+   * stanno nel menu «Altro» della barra. */
+  onFindReplace?: () => void;
+  onPastePlain?: () => void;
 }
 
 /** Voci eseguibili che contengono il testo cercato, comprese quelle dei
@@ -59,7 +65,9 @@ function ToolbarMenu({
   useEffect(() => {
     if (!open) return;
     setQuery("");
-    search.current?.focus();
+    // Su mobile il campo non prende il focus da solo: aprirebbe la tastiera
+    // sopra il pannello delle voci.
+    if (!isMobile) search.current?.focus();
     const close = (event: MouseEvent) => {
       if (!container.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -99,6 +107,10 @@ function ToolbarMenu({
           ▾
         </span>
       </button>
+      {open && isMobile && (
+        // Sfondo del pannello in basso: un tocco fuori dalle voci lo chiude.
+        <div aria-hidden="true" className="menu-scrim" onClick={() => setOpen(false)} />
+      )}
       {open && !searchable && menu}
       {open && searchable && (
         <div className="toolbar-menu-popup" style={{ [align]: 0 }}>
@@ -185,7 +197,14 @@ export async function editLink(editor: Editor) {
 }
 
 /** Barra degli strumenti dell'editor, sul modello delle app di note. */
-export default function EditorToolbar({ editor, onAttach, onAddTask, aiItems }: EditorToolbarProps) {
+export default function EditorToolbar({
+  editor,
+  onAttach,
+  onAddTask,
+  aiItems,
+  onFindReplace,
+  onPastePlain,
+}: EditorToolbarProps) {
   // Aggiorna lo stato dei pulsanti quando cambia selezione o contenuto.
   const [, refresh] = useReducer((value: number) => value + 1, 0);
   useEffect(() => {
@@ -339,63 +358,120 @@ export default function EditorToolbar({ editor, onAttach, onAddTask, aiItems }: 
       for (const type of ["paragraph", "heading"]) chain.updateAttributes(type, { textAlign: null, indent: null });
       chain.run();
     }),
+    ...(isMobile ? mobileEditItems() : []),
   ];
+
+  // Sul desktop sono nel menu contestuale dell'editor; su mobile la
+  // pressione prolungata apre la selezione di sistema, quindi stanno qui.
+  function mobileEditItems(): MenuEntry[] {
+    const items: MenuEntry[] = [separator];
+    if (onPastePlain) items.push(action("paste-plain", t.menuPastePlain, onPastePlain));
+    items.push(
+      action("encrypt", editor.state.selection.empty ? t.encryptText : t.encryptSelection, () =>
+        startEncryptedText(editor),
+      ),
+    );
+    if (onFindReplace) items.push(action("find-replace", t.findReplace, onFindReplace));
+    return items;
+  }
 
   const styleLabel = headingLevel ? t.blockHeading(headingLevel) : t.blockText;
   const fontLabel = FONT_FAMILIES.find((family) => family.value === style.fontFamily)?.label ?? t.fontDefault;
   const sizeLabel = style.fontSize ? style.fontSize.replace("px", "") : "15";
 
+  const divider = (key: string) => <span className="toolbar-divider" key={key} />;
+  const insert = (
+    <ToolbarMenu
+      items={insertItems}
+      key="insert"
+      label={t.insertMenu}
+      text={<span className="toolbar-insert">＋ {t.insertMenu}</span>}
+    />
+  );
+  const history = [
+    <ToolbarButton disabled={!editor.can().undo()} key="undo" label={t.undo} onClick={() => editor.chain().focus().undo().run()}>
+      ↶
+    </ToolbarButton>,
+    <ToolbarButton disabled={!editor.can().redo()} key="redo" label={t.redo} onClick={() => editor.chain().focus().redo().run()}>
+      ↷
+    </ToolbarButton>,
+  ];
+  const blockStyle = <ToolbarMenu items={styleItems} key="style" label={t.textStyle} text={styleLabel} />;
+  const font = <ToolbarMenu items={fontItems} key="font" label={t.fontFamily} text={fontLabel} />;
+  const size = <ToolbarMenu items={sizeItems} key="size" label={t.fontSize} text={sizeLabel} />;
+  const color = (
+    <ToolbarMenu
+      items={colorItems}
+      key="color"
+      label={t.textColor}
+      text={<span className="color-swatch" style={{ background: style.color ?? "currentColor" }} />}
+    />
+  );
+  const marks = [
+    <ToolbarButton active={editor.isActive("bold")} key="bold" label={t.bold} onClick={() => editor.chain().focus().toggleBold().run()}>
+      <strong>B</strong>
+    </ToolbarButton>,
+    <ToolbarButton active={editor.isActive("italic")} key="italic" label={t.italic} onClick={() => editor.chain().focus().toggleItalic().run()}>
+      <em>I</em>
+    </ToolbarButton>,
+    <ToolbarButton active={editor.isActive("underline")} key="underline" label={t.underline} onClick={() => editor.chain().focus().toggleUnderline().run()}>
+      <span className="underline-icon">U</span>
+    </ToolbarButton>,
+  ];
+  const highlight = (
+    <ToolbarMenu items={highlightItems} key="highlight" label={t.highlight} text={<span className="highlight-icon">A</span>} />
+  );
+  const lists = [
+    <ToolbarButton active={editor.isActive("bulletList")} key="bullet" label={t.bulletList} onClick={() => editor.chain().focus().toggleBulletList().run()}>
+      •≡
+    </ToolbarButton>,
+    <ToolbarButton active={editor.isActive("orderedList")} key="ordered" label={t.orderedList} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+      1≡
+    </ToolbarButton>,
+    <ToolbarButton active={editor.isActive("taskList")} key="checklist" label={t.checklist} onClick={() => editor.chain().focus().toggleTaskList().run()}>
+      ☑
+    </ToolbarButton>,
+  ];
+  const link = (
+    <ToolbarButton active={editor.isActive("link")} key="link" label={t.insertLink} onClick={() => void editLink(editor)}>
+      <Icon name="link" size={15} />
+    </ToolbarButton>
+  );
+  const more = (
+    <ToolbarMenu align="right" items={moreItems} key="more" label={t.moreFormatting} searchable text={t.moreFormatting} />
+  );
+  const ai = aiItems && [
+    divider("d-ai"),
+    <ToolbarMenu align="right" items={aiItems} key="ai" label={t.aiMenuLabel} text={<span className="toolbar-ai">✦ AI</span>} />,
+  ];
+
+  // Su mobile la barra sta in fondo, sopra la tastiera, e scorre in
+  // orizzontale: i comandi più usati mentre si scrive vengono per primi.
+  const controls = isMobile
+    ? [history, divider("d1"), marks, lists, divider("d2"), blockStyle, insert, link, divider("d3"), highlight, color, size, font, more]
+    : [
+        insert,
+        divider("d1"),
+        history,
+        divider("d2"),
+        blockStyle,
+        font,
+        size,
+        divider("d3"),
+        color,
+        marks,
+        highlight,
+        divider("d4"),
+        lists,
+        divider("d5"),
+        link,
+        more,
+        ai,
+      ];
+
   return (
     <div className="editor-toolbar" role="toolbar" aria-label={t.formatting}>
-      <ToolbarMenu items={insertItems} label={t.insertMenu} text={<span className="toolbar-insert">＋ {t.insertMenu}</span>} />
-      <span className="toolbar-divider" />
-      <ToolbarButton disabled={!editor.can().undo()} label={t.undo} onClick={() => editor.chain().focus().undo().run()}>
-        ↶
-      </ToolbarButton>
-      <ToolbarButton disabled={!editor.can().redo()} label={t.redo} onClick={() => editor.chain().focus().redo().run()}>
-        ↷
-      </ToolbarButton>
-      <span className="toolbar-divider" />
-      <ToolbarMenu items={styleItems} label={t.textStyle} text={styleLabel} />
-      <ToolbarMenu items={fontItems} label={t.fontFamily} text={fontLabel} />
-      <ToolbarMenu items={sizeItems} label={t.fontSize} text={sizeLabel} />
-      <span className="toolbar-divider" />
-      <ToolbarMenu
-        items={colorItems}
-        label={t.textColor}
-        text={<span className="color-swatch" style={{ background: style.color ?? "currentColor" }} />}
-      />
-      <ToolbarButton active={editor.isActive("bold")} label={t.bold} onClick={() => editor.chain().focus().toggleBold().run()}>
-        <strong>B</strong>
-      </ToolbarButton>
-      <ToolbarButton active={editor.isActive("italic")} label={t.italic} onClick={() => editor.chain().focus().toggleItalic().run()}>
-        <em>I</em>
-      </ToolbarButton>
-      <ToolbarButton active={editor.isActive("underline")} label={t.underline} onClick={() => editor.chain().focus().toggleUnderline().run()}>
-        <span className="underline-icon">U</span>
-      </ToolbarButton>
-      <ToolbarMenu items={highlightItems} label={t.highlight} text={<span className="highlight-icon">A</span>} />
-      <span className="toolbar-divider" />
-      <ToolbarButton active={editor.isActive("bulletList")} label={t.bulletList} onClick={() => editor.chain().focus().toggleBulletList().run()}>
-        •≡
-      </ToolbarButton>
-      <ToolbarButton active={editor.isActive("orderedList")} label={t.orderedList} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
-        1≡
-      </ToolbarButton>
-      <ToolbarButton active={editor.isActive("taskList")} label={t.checklist} onClick={() => editor.chain().focus().toggleTaskList().run()}>
-        ☑
-      </ToolbarButton>
-      <span className="toolbar-divider" />
-      <ToolbarButton active={editor.isActive("link")} label={t.insertLink} onClick={() => void editLink(editor)}>
-        <Icon name="link" size={15} />
-      </ToolbarButton>
-      <ToolbarMenu align="right" items={moreItems} label={t.moreFormatting} searchable text={t.moreFormatting} />
-      {aiItems && (
-        <>
-          <span className="toolbar-divider" />
-          <ToolbarMenu align="right" items={aiItems} label={t.aiMenuLabel} text={<span className="toolbar-ai">✦ AI</span>} />
-        </>
-      )}
+      {controls}
     </div>
   );
 }

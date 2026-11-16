@@ -148,6 +148,11 @@ const messages = {
     editorContent: "Contenuto della nota",
     editorPlaceholder: "Scrivi qualcosa da ricordare…",
     navigation: "Navigazione",
+    openNavigation: "Apri la navigazione",
+    closeNavigation: "Chiudi la navigazione",
+    backToList: "Torna all'elenco",
+    mobileUnavailableHint:
+      "Su questo dispositivo non sono disponibili: motore AI integrato e Claude Code (l'AI funziona con un server compatibile con OpenAI, anche sul tuo computer), server MCP, sincronizzazione su cartella, stampa e importazione da cartelle. Le note create qui restano compatibili con la versione desktop.",
     navigationNotes: "Note",
     collapseSidebarSection: (section: string) => `Comprimi ${section}`,
     expandSidebarSection: (section: string) => `Espandi ${section}`,
@@ -292,6 +297,8 @@ const messages = {
     importObsidian: "Vault di Obsidian",
     importFromAppsHint:
       "Evernote: esporta ogni taccuino come file ENEX (puoi sceglierne più di uno). Joplin: File › Esporta tutto › JEX. Obsidian: scegli la cartella del vault. Taccuini, tag, date, allegati e collegamenti tra note vengono mantenuti; immagini e PDF incorporati diventano allegati della nota.",
+    importFromAppsHintMobile:
+      "Evernote: esporta ogni taccuino come file ENEX (puoi sceglierne più di uno). Joplin: File › Esporta tutto › JEX. Il vault di Obsidian si importa dalla versione per computer. Taccuini, tag, date, allegati e collegamenti tra note vengono mantenuti; immagini e PDF incorporati diventano allegati della nota.",
     chooseEnexTitle: "Scegli i file ENEX di Evernote",
     chooseJexTitle: "Scegli l'archivio JEX di Joplin",
     chooseVaultTitle: "Scegli la cartella del vault di Obsidian",
@@ -455,6 +462,13 @@ const messages = {
       `${today} oggi, ${overdue} in ritardo`,
     remindersIntro:
       "I promemoria scattano mentre Greatnote è aperta, con una notifica di sistema. Quelli persi ad app chiusa compaiono al successivo avvio.",
+    remindersIntroMobile:
+      "I promemoria arrivano come notifica anche ad app chiusa. Per risparmiare batteria Android può ritardarli di qualche minuto.",
+    notificationsOff:
+      "Le notifiche di Greatnote sono disattivate: i promemoria non verranno mostrati finché non le consenti.",
+    notificationsAllow: "Consenti le notifiche",
+    notificationsBlocked:
+      "Le notifiche sono bloccate nelle impostazioni di Android: attivale da Impostazioni › App › Greatnote › Notifiche.",
     firedReminders: "Da gestire",
     scheduledReminders: "Programmati",
     handledReminders: "Gestiti",
@@ -649,6 +663,7 @@ const messages = {
     menuLayoutForward: "Vista successiva",
     menuCopyAs: "Condividi come testo",
     menuCopyAsMarkdown: "Copia come Markdown",
+    menuShareWithApp: "Condividi con un'altra app…",
     menuCopyAsText: "Copia come testo semplice",
     menuMoveNote: "Sposta in…",
     menuMoveNoteConfirm: "Sposta",
@@ -685,6 +700,7 @@ const messages = {
     aboutDataFolder: "Cartella dati",
     aboutDatabaseSize: "Dimensione del database",
     noteActions: "Azioni sulla nota",
+    rowActions: "Azioni",
     homeNav: "Home",
     filesNav: "File",
     templatesNav: "Modelli",
@@ -1318,6 +1334,8 @@ const messages = {
     aiServer: "Server del modello",
     aiServerUrl: "Indirizzo API compatibile OpenAI",
     aiServerLocalHint: "Server su questo computer: le note non escono dal dispositivo.",
+    aiServerPhoneHint:
+      "Sul telefono «localhost» è il telefono stesso. Indica l'indirizzo del computer su cui gira il server, per esempio http://192.168.1.10:11434/v1: il server deve accettare connessioni dalla rete.",
     aiServerRemoteHint: "Server remoto: serve https e il tuo consenso; ogni invio viene comunque mostrato prima.",
     aiRemoteConsent: "Acconsento a inviare a questo server il testo delle note che scelgo di usare con l'AI",
     aiConsentRequired: "Per usare un server remoto devi dare il consenso all'invio dei dati.",
@@ -1504,6 +1522,11 @@ const messages = {
     editorContent: "Note content",
     editorPlaceholder: "Write something to remember…",
     navigation: "Navigation",
+    openNavigation: "Open navigation",
+    closeNavigation: "Close navigation",
+    backToList: "Back to the list",
+    mobileUnavailableHint:
+      "Not available on this device: built-in AI engine and Claude Code (AI works with an OpenAI-compatible server, including one on your computer), MCP server, folder sync, printing and importing from folders. Notes created here stay compatible with the desktop version.",
     navigationNotes: "Notes",
     collapseSidebarSection: (section: string) => `Collapse ${section}`,
     expandSidebarSection: (section: string) => `Expand ${section}`,
@@ -1647,6 +1670,8 @@ const messages = {
     importObsidian: "Obsidian vault",
     importFromAppsHint:
       "Evernote: export each notebook as an ENEX file (you can pick several). Joplin: File › Export all › JEX. Obsidian: choose the vault folder. Notebooks, tags, dates, attachments and links between notes are kept; embedded images and PDFs become note attachments.",
+    importFromAppsHintMobile:
+      "Evernote: export each notebook as an ENEX file (you can pick several). Joplin: File › Export all › JEX. Obsidian vaults are imported from the desktop version. Notebooks, tags, dates, attachments and links between notes are kept; embedded images and PDFs become note attachments.",
     chooseEnexTitle: "Choose Evernote ENEX files",
     chooseJexTitle: "Choose the Joplin JEX archive",
     chooseVaultTitle: "Choose the Obsidian vault folder",
@@ -1809,6 +1834,13 @@ const messages = {
     taskCountsLabel: (today: number, overdue: number) => `${today} today, ${overdue} overdue`,
     remindersIntro:
       "Reminders fire while Greatnote is open, with a system notification. Those missed while the app was closed appear at the next start.",
+    remindersIntroMobile:
+      "Reminders arrive as notifications even when the app is closed. To save battery, Android may delay them by a few minutes.",
+    notificationsOff:
+      "Greatnote notifications are off: reminders will not be shown until you allow them.",
+    notificationsAllow: "Allow notifications",
+    notificationsBlocked:
+      "Notifications are blocked in Android settings: turn them on in Settings › Apps › Greatnote › Notifications.",
     firedReminders: "Needs attention",
     scheduledReminders: "Scheduled",
     handledReminders: "Handled",
@@ -2002,6 +2034,7 @@ const messages = {
     menuLayoutForward: "Next view",
     menuCopyAs: "Share as text",
     menuCopyAsMarkdown: "Copy as Markdown",
+    menuShareWithApp: "Share with another app…",
     menuCopyAsText: "Copy as plain text",
     menuMoveNote: "Move to…",
     menuMoveNoteConfirm: "Move",
@@ -2038,6 +2071,7 @@ const messages = {
     aboutDataFolder: "Data folder",
     aboutDatabaseSize: "Database size",
     noteActions: "Note actions",
+    rowActions: "Actions",
     homeNav: "Home",
     filesNav: "Files",
     templatesNav: "Templates",
@@ -2668,6 +2702,8 @@ const messages = {
     aiServer: "Model server",
     aiServerUrl: "OpenAI-compatible API address",
     aiServerLocalHint: "Server on this computer: notes never leave the device.",
+    aiServerPhoneHint:
+      "On a phone, “localhost” is the phone itself. Enter the address of the computer running the server, for example http://192.168.1.10:11434/v1: the server must accept connections from the network.",
     aiServerRemoteHint: "Remote server: https and your consent are required; every request is still shown first.",
     aiRemoteConsent: "I consent to sending this server the text of the notes I choose to use with AI",
     aiConsentRequired: "To use a remote server you must consent to sending data.",

@@ -32,7 +32,7 @@ pub struct IcsCalendar {
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum IcsError {
-    #[error("il contenuto non è un calendario iCal")]
+    #[error("{}", crate::tr!("il contenuto non è un calendario iCal", "the content is not an iCal calendar"))]
     NotCalendar,
 }
 

@@ -194,14 +194,23 @@ struct ValidTask {
 fn validate_task(input: &TaskInput) -> Result<ValidTask, StorageError> {
     let title = normalize_title(
         &input.title,
-        StorageError::InvalidTask("il titolo deve contenere da 1 a 512 caratteri"),
+        StorageError::InvalidTask(crate::tr_str!(
+            "il titolo deve contenere da 1 a 512 caratteri",
+            "title must contain between 1 and 512 characters"
+        )),
     )?;
     let description = normalize_description(
         &input.description,
-        StorageError::InvalidTask("descrizione troppo lunga"),
+        StorageError::InvalidTask(crate::tr_str!(
+            "descrizione troppo lunga",
+            "description too long"
+        )),
     )?;
     if input.priority > 3 {
-        return Err(StorageError::InvalidTask("priorità non valida"));
+        return Err(StorageError::InvalidTask(crate::tr_str!(
+            "priorità non valida",
+            "invalid priority"
+        )));
     }
     let due_date = match input.due_date.as_deref().map(str::trim) {
         None | Some("") => None,
@@ -210,17 +219,22 @@ fn validate_task(input: &TaskInput) -> Result<ValidTask, StorageError> {
     let recurrence = match &input.recurrence {
         None => None,
         Some(rule) => {
-            let due = due_date.as_deref().ok_or(StorageError::InvalidTask(
-                "per ripetere un'attività serve una scadenza",
-            ))?;
+            let due = due_date
+                .as_deref()
+                .ok_or(StorageError::InvalidTask(crate::tr_str!(
+                    "per ripetere un'attività serve una scadenza",
+                    "a due date is required to repeat a task"
+                )))?;
             let rule = rule
                 .clone()
                 .validated(time::parse_date(due)?)
                 .map_err(StorageError::InvalidTask)?;
-            Some(
-                serde_json::to_string(&rule)
-                    .map_err(|_| StorageError::InvalidTask("ripetizione non valida"))?,
-            )
+            Some(serde_json::to_string(&rule).map_err(|_| {
+                StorageError::InvalidTask(crate::tr_str!(
+                    "ripetizione non valida",
+                    "invalid repetition"
+                ))
+            })?)
         }
     };
     Ok(ValidTask {
@@ -282,11 +296,17 @@ pub(crate) struct ValidEvent {
 pub(crate) fn validate_event(input: &EventInput) -> Result<ValidEvent, StorageError> {
     let title = normalize_title(
         &input.title,
-        StorageError::InvalidEvent("il titolo deve contenere da 1 a 512 caratteri"),
+        StorageError::InvalidEvent(crate::tr_str!(
+            "il titolo deve contenere da 1 a 512 caratteri",
+            "title must contain between 1 and 512 characters"
+        )),
     )?;
     let description = normalize_description(
         &input.description,
-        StorageError::InvalidEvent("descrizione troppo lunga"),
+        StorageError::InvalidEvent(crate::tr_str!(
+            "descrizione troppo lunga",
+            "description too long"
+        )),
     )?;
     let zone = Zone::resolve(input.timezone.as_deref())?;
     let note_id = input.note_id.clone().filter(|id| !id.is_empty());
@@ -295,12 +315,16 @@ pub(crate) fn validate_event(input: &EventInput) -> Result<ValidEvent, StorageEr
         let end = time::parse_date(input.end.trim())?;
         let days = (end - start).get_days() as i64;
         if days < 0 {
-            return Err(StorageError::InvalidEvent("la fine precede l'inizio"));
+            return Err(StorageError::InvalidEvent(crate::tr_str!(
+                "la fine precede l'inizio",
+                "end precedes start"
+            )));
         }
         if days >= MAX_EVENT_DAYS {
-            return Err(StorageError::InvalidEvent(
+            return Err(StorageError::InvalidEvent(crate::tr_str!(
                 "l'evento può durare al massimo un anno",
-            ));
+                "event can last at most one year"
+            )));
         }
         Ok(ValidEvent {
             title,
@@ -317,12 +341,16 @@ pub(crate) fn validate_event(input: &EventInput) -> Result<ValidEvent, StorageEr
         let start = time::local_to_utc(input.start.trim(), &zone)?;
         let end = time::local_to_utc(input.end.trim(), &zone)?;
         if end < start {
-            return Err(StorageError::InvalidEvent("la fine precede l'inizio"));
+            return Err(StorageError::InvalidEvent(crate::tr_str!(
+                "la fine precede l'inizio",
+                "end precedes start"
+            )));
         }
         if end.as_second() - start.as_second() > MAX_EVENT_DAYS * 86_400 {
-            return Err(StorageError::InvalidEvent(
+            return Err(StorageError::InvalidEvent(crate::tr_str!(
                 "l'evento può durare al massimo un anno",
-            ));
+                "event can last at most one year"
+            )));
         }
         Ok(ValidEvent {
             title,
@@ -479,9 +507,10 @@ impl Database {
     ) -> Result<Vec<Task>, StorageError> {
         let search = search.map(str::trim).filter(|value| !value.is_empty());
         if search.is_some_and(|value| value.chars().count() > MAX_SEARCH_CHARS) {
-            return Err(StorageError::InvalidSearchQuery(
-                "la ricerca può contenere al massimo 200 caratteri".to_owned(),
-            ));
+            return Err(StorageError::InvalidSearchQuery(crate::tr!(
+                "la ricerca può contenere al massimo 200 caratteri",
+                "search can contain at most 200 characters"
+            )));
         }
         let (condition, order) = match view {
             TaskView::Today => ("status = 'open' AND due_date = ?1", "priority DESC, title"),
@@ -675,7 +704,10 @@ impl Database {
         let zone = Zone::resolve(timezone)?;
         let remind_at = time::local_to_utc(local, &zone)?;
         if remind_at < time::add_minutes(now, -PAST_TOLERANCE_MINUTES)? {
-            return Err(StorageError::InvalidReminder("l'orario è già passato"));
+            return Err(StorageError::InvalidReminder(crate::tr_str!(
+                "l'orario è già passato",
+                "time has already passed"
+            )));
         }
         let id = Uuid::new_v4().to_string();
         let connection = self.connection()?;
@@ -859,7 +891,12 @@ fn schedule_next_occurrence(
     }
     let shift = due
         .until(next)
-        .map_err(|_| StorageError::InvalidTask("ripetizione non valida"))?
+        .map_err(|_| {
+            StorageError::InvalidTask(crate::tr_str!(
+                "ripetizione non valida",
+                "invalid repetition"
+            ))
+        })?
         .get_days();
     let reminders: Vec<(String, String, String)> = connection
         .prepare(
@@ -1184,9 +1221,10 @@ pub(crate) fn import_planner(
 fn validate_range(from: Date, to: Date) -> Result<(), StorageError> {
     let days = (to - from).get_days() as i64;
     if !(0..=MAX_RANGE_DAYS).contains(&days) {
-        return Err(StorageError::InvalidDateTime(
-            "intervallo di date non valido".to_owned(),
-        ));
+        return Err(StorageError::InvalidDateTime(crate::tr!(
+            "intervallo di date non valido",
+            "invalid date range"
+        )));
     }
     Ok(())
 }

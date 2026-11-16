@@ -634,3 +634,20 @@ Verifica manuale in `npm run tauri:dev`:
    `dev.greatnote.notes/` esiste già con un database vuoto) e verifica che le
    note siano presenti e che `gna.sqlite3`, `attachments/` e `backups/` siano
    stati spostati.
+
+## Android
+
+`npm run ui:screens:mobile` salva in `target/ui-screens/mobile/` le viste
+della disposizione per telefono, con lo stesso backend simulato del test
+dell'interfaccia. Serve per la revisione grafica: non sostituisce le prove
+su emulatore e dispositivo, i cui comandi ed esiti sono in
+`docs/ANDROID_PORTING.md` (§8 e §10).
+
+`npm run test:ui:mobile-targets` apre le stesse viste (Home, navigazione,
+elenco, nota con i suoi menu, attività, calendario mese/settimana/giorno con
+il dialog del nuovo evento, promemoria, tutte le sezioni delle impostazioni)
+e misura ogni pulsante, collegamento, casella e voce di menu visibile. Fallisce
+se un controllo è più piccolo di 44×44 px, la misura minima per il tocco
+adottata nel porting. Il testo della nota è escluso (collegamenti e caselle
+seguono la riga). Va eseguito dopo ogni modifica a `frontend/src/mobile.css`
+o ai componenti mostrati su mobile.

@@ -23,7 +23,6 @@ use greatnote_core::{
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 type CommandResult<T> = Result<T, String>;
@@ -63,17 +62,12 @@ fn dropbox_app_key() -> Option<&'static str> {
     })
 }
 
-fn keyring_entry() -> CommandResult<keyring::Entry> {
-    keyring::Entry::new(KEYRING_SERVICE, DROPBOX_REFRESH_USER)
-        .map_err(|error| format!("Portachiavi: {error}"))
+fn keyring_error(error: String) -> String {
+    format!("Portachiavi: {error}")
 }
 
 fn read_refresh_token() -> CommandResult<Option<String>> {
-    match keyring_entry()?.get_password() {
-        Ok(value) => Ok(Some(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(error) => Err(format!("Portachiavi: {error}")),
-    }
+    crate::secrets::read(KEYRING_SERVICE, DROPBOX_REFRESH_USER).map_err(keyring_error)
 }
 
 fn remember_token(state: &SyncRunState, tokens: &TokenSet) {
@@ -99,10 +93,18 @@ fn dropbox_access_token(app: &AppHandle) -> CommandResult<String> {
     {
         return Ok(token.clone());
     }
-    let key = dropbox_app_key()
-        .ok_or("Questa versione di Greatnote non include il collegamento a Dropbox")?;
-    let refresh = read_refresh_token()?
-        .ok_or("Accesso a Dropbox non trovato nel portachiavi: ricollega l'account")?;
+    let key = dropbox_app_key().ok_or_else(|| {
+        greatnote_core::tr!(
+            "Questa versione di Greatnote non include il collegamento a Dropbox",
+            "This version of Greatnote does not include the Dropbox integration"
+        )
+    })?;
+    let refresh = read_refresh_token()?.ok_or_else(|| {
+        greatnote_core::tr!(
+            "Accesso a Dropbox non trovato nel portachiavi: ricollega l'account",
+            "Dropbox access not found in system keyring: reconnect the account"
+        )
+    })?;
     let tokens = DropboxAuth::new(key)
         .refresh(&refresh)
         .map_err(|error| match error {
@@ -154,13 +156,13 @@ fn sync_with_transport(app: &AppHandle) -> Result<SyncReport, String> {
             }
         },
     };
-    let result = database.sync_now_with(store).map_err(message);
+    let result = database.sync_now_with(store);
     if let Err(error) = &result
-        && error.contains("non più valido")
+        && error.is_unauthorized()
     {
         forget_token(&app.state::<SyncRunState>());
     }
-    result
+    result.map_err(message)
 }
 
 async fn blocking<T: Send + 'static>(
@@ -262,19 +264,8 @@ pub fn dismiss_sync_conflict(database: State<'_, Database>, id: String) -> Comma
 #[tauri::command]
 pub async fn pick_sync_folder(app: AppHandle, title: String) -> CommandResult<Option<String>> {
     blocking(app, move |app| {
-        let mut builder = app.dialog().file().set_title(title);
-        if let Some(window) = app.get_webview_window("main") {
-            builder = builder.set_parent(&window);
-        }
-        builder
-            .blocking_pick_folder()
-            .map(|folder| {
-                folder
-                    .into_path()
-                    .map(|path| path.display().to_string())
-                    .map_err(message)
-            })
-            .transpose()
+        let folder = crate::data_commands::pick_folder(crate::data_commands::dialog(app, &title))?;
+        Ok(folder.map(|path| path.display().to_string()))
     })
     .await
 }
@@ -286,7 +277,7 @@ pub async fn pick_sync_folder(app: AppHandle, title: String) -> CommandResult<Op
 /// perché il browser può risolvere `localhost` in entrambi.
 fn bind_redirect() -> CommandResult<Vec<TcpListener>> {
     let v4 = TcpListener::bind(("127.0.0.1", REDIRECT_PORT)).map_err(|error| {
-        format!("La porta {REDIRECT_PORT} è occupata da un altro programma ({error}): chiudilo e riprova")
+        greatnote_core::tr!("La porta {REDIRECT_PORT} è occupata da un altro programma ({error}): chiudilo e riprova", "Port {REDIRECT_PORT} is occupied by another program ({error}): close it and try again")
     })?;
     let mut listeners = vec![v4];
     if let Ok(v6) = TcpListener::bind(SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 1], REDIRECT_PORT))) {
@@ -300,14 +291,21 @@ fn bind_redirect() -> CommandResult<Vec<TcpListener>> {
 #[tauri::command]
 pub async fn connect_dropbox(app: AppHandle, device_name: String) -> CommandResult<SyncView> {
     blocking(app, move |app| {
-        let key = dropbox_app_key()
-            .ok_or("Questa versione di Greatnote non include il collegamento a Dropbox")?;
+        let key = dropbox_app_key().ok_or_else(|| {
+            greatnote_core::tr!(
+                "Questa versione di Greatnote non include il collegamento a Dropbox",
+                "This version of Greatnote does not include the Dropbox integration"
+            )
+        })?;
         let state = app.state::<SyncRunState>();
         let cancel = Arc::new(AtomicBool::new(false));
         {
             let mut slot = state.connecting.lock().map_err(message)?;
             if slot.is_some() {
-                return Err("Un collegamento è già in corso".to_owned());
+                return Err(greatnote_core::tr!(
+                    "Un collegamento è già in corso",
+                    "A connection is already in progress"
+                ));
             }
             *slot = Some(Arc::clone(&cancel));
         }
@@ -318,25 +316,32 @@ pub async fn connect_dropbox(app: AppHandle, device_name: String) -> CommandResu
             let csrf = random_state();
             app.opener()
                 .open_url(auth.authorization_url(&csrf, &pkce), None::<&str>)
-                .map_err(|error| format!("Impossibile aprire il browser: {error}"))?;
+                .map_err(|error| {
+                    greatnote_core::tr!(
+                        "Impossibile aprire il browser: {error}",
+                        "Unable to open the browser: {error}"
+                    )
+                })?;
             let code = crate::calendar_commands::wait_for_code(&listeners, &csrf, &cancel)?;
             drop(listeners);
             // Dopo il login nel browser si torna a Greatnote.
             if let Some(window) = app.get_webview_window("main") {
+                #[cfg(desktop)]
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
             let tokens = auth.exchange_code(&code, &pkce.verifier).map_err(message)?;
-            let refresh = tokens
-                .refresh_token
-                .clone()
-                .ok_or("Dropbox non ha concesso l'accesso continuativo: riprova il collegamento")?;
+            let refresh = tokens.refresh_token.clone().ok_or_else(|| {
+                greatnote_core::tr!(
+                    "Dropbox non ha concesso l'accesso continuativo: riprova il collegamento",
+                    "Dropbox did not grant continuous access: retry the connection"
+                )
+            })?;
             let account = auth
                 .current_account(&tokens.access_token)
                 .map_err(message)?;
-            keyring_entry()?
-                .set_password(&refresh)
-                .map_err(|error| format!("Portachiavi: {error}"))?;
+            crate::secrets::write(KEYRING_SERVICE, DROPBOX_REFRESH_USER, &refresh)
+                .map_err(keyring_error)?;
             remember_token(&state, &tokens);
             Ok(account.label)
         })();
@@ -392,10 +397,7 @@ pub async fn disconnect_dropbox(app: AppHandle) -> CommandResult<SyncView> {
         {
             tracing::warn!(%error, "revoca dell'accesso Dropbox non riuscita");
         }
-        match keyring_entry()?.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => {}
-            Err(error) => return Err(format!("Portachiavi: {error}")),
-        }
+        crate::secrets::delete(KEYRING_SERVICE, DROPBOX_REFRESH_USER).map_err(keyring_error)?;
         forget_token(&app.state::<SyncRunState>());
         let database = app.state::<Database>();
         let previous = database.sync_settings().map_err(message)?;

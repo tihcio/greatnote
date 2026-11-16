@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { isMobile } from "../../app/platform";
 import { t } from "../../i18n";
 import { formatDay, formatTime, localDay } from "../../lib/dates";
 import type { CalendarEvent } from "../../types";
@@ -125,8 +126,13 @@ export default function TimeGrid({
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const columns = { "--days": days.length, "--hour-height": `${HOUR_HEIGHT}px` } as CSSProperties;
 
+  // Settimana su telefono: colonne di circa 45px, troppo strette per
+  // toccare un evento o scegliere un orario. È una panoramica: toccando un
+  // giorno (intestazione, eventi o spazio vuoto) si apre la vista del giorno.
+  const overview = isMobile && onShowDay !== undefined;
+
   return (
-    <div className="time-grid" ref={scroller} style={columns}>
+    <div className={`time-grid${overview ? " overview" : ""}`} ref={scroller} style={columns}>
       <div className="time-grid-top">
         <div className="time-grid-row">
           <div className="time-grid-gutter" />
@@ -162,7 +168,12 @@ export default function TimeGrid({
         <div className="time-grid-row time-grid-all-day">
           <div className="time-grid-gutter">{t.allDayShort}</div>
           {days.map((day) => (
-            <div className="time-grid-all-day-cell" key={day} onContextMenu={(pointer) => onDayMenu(pointer, day)}>
+            <div
+              className="time-grid-all-day-cell"
+              key={day}
+              onClick={overview ? () => onShowDay?.(day) : undefined}
+              onContextMenu={(pointer) => onDayMenu(pointer, day)}
+            >
               {renderAllDay(day)}
             </div>
           ))}
@@ -183,6 +194,10 @@ export default function TimeGrid({
             data-day={day}
             key={day}
             onClick={(pointer) => {
+              if (overview) {
+                onShowDay?.(day);
+                return;
+              }
               // Solo lo spazio vuoto: i clic sugli eventi li aprono.
               if (pointer.target !== pointer.currentTarget) return;
               const offset = pointer.clientY - pointer.currentTarget.getBoundingClientRect().top;

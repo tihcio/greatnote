@@ -177,7 +177,7 @@ pub(crate) fn error_message(body: &Value) -> String {
         .or_else(|| body.get("message"))
         .and_then(Value::as_str)
         .or_else(|| body.as_str())
-        .unwrap_or("nessun dettaglio");
+        .unwrap_or(crate::tr_str!("nessun dettaglio", "no details"));
     let cleaned: String = message
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
@@ -189,15 +189,17 @@ pub(crate) fn error_message(body: &Value) -> String {
 fn transport_error(error: ureq::Error) -> CalendarError {
     match error {
         ureq::Error::Timeout(_) => CalendarError::Network("tempo scaduto".to_owned()),
-        ureq::Error::HostNotFound => {
-            CalendarError::Network("server non raggiungibile: sei connesso a internet?".to_owned())
-        }
+        ureq::Error::HostNotFound => CalendarError::Network(crate::tr!(
+            "server non raggiungibile: sei connesso a internet?",
+            "server unreachable: are you connected to the internet?"
+        )),
         ureq::Error::ConnectionFailed => {
-            CalendarError::Network("connessione non riuscita".to_owned())
+            CalendarError::Network(crate::tr!("connessione non riuscita", "connection failed"))
         }
-        ureq::Error::BodyExceedsLimit(_) => {
-            CalendarError::InvalidResponse("risposta troppo grande".to_owned())
-        }
+        ureq::Error::BodyExceedsLimit(_) => CalendarError::InvalidResponse(crate::tr!(
+            "risposta troppo grande",
+            "response too large"
+        )),
         other => {
             let text: String = other.to_string().chars().take(MAX_ERROR_MESSAGE).collect();
             CalendarError::Network(text)

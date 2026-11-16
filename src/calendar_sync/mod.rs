@@ -59,29 +59,29 @@ impl Provider {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CalendarError {
-    #[error("Accesso non più valido: ricollega l'account")]
+    #[error("{}", crate::tr!("Accesso non più valido: ricollega l'account", "Access no longer valid: reconnect the account"))]
     Unauthorized,
-    #[error("Operazione non consentita dal fornitore: {0}")]
+    #[error("{}", crate::tr!("Operazione non consentita dal fornitore: {0}", "Operation not allowed by provider: {0}", .0))]
     Forbidden(String),
-    #[error("Evento o calendario non trovato")]
+    #[error("{}", crate::tr!("Evento o calendario non trovato", "Event or calendar not found"))]
     NotFound,
-    #[error("L'evento è stato modificato altrove nel frattempo: sincronizza e riprova")]
+    #[error("{}", crate::tr!("L'evento è stato modificato altrove nel frattempo: sincronizza e riprova", "The event was modified elsewhere in the meantime: sync and try again"))]
     Conflict,
-    #[error("Troppe richieste al fornitore: riprova tra qualche minuto")]
+    #[error("{}", crate::tr!("Troppe richieste al fornitore: riprova tra qualche minuto", "Too many requests to provider: try again in a few minutes"))]
     RateLimited,
-    #[error("Errore del fornitore ({status}): {message}")]
+    #[error("{}", crate::tr!("Errore del fornitore ({0}): {1}", "Provider error ({0}): {1}", .status, .message))]
     Http { status: u16, message: String },
     #[error("Rete: {0}")]
     Network(String),
-    #[error("Risposta non valida: {0}")]
+    #[error("{}", crate::tr!("Risposta non valida: {0}", "Invalid response: {0}", .0))]
     InvalidResponse(String),
-    #[error("Accesso non riuscito: {0}")]
+    #[error("{}", crate::tr!("Accesso non riuscito: {0}", "Access failed: {0}", .0))]
     OAuth(String),
-    #[error("Evento non valido")]
+    #[error("{}", crate::tr!("Evento non valido", "Invalid event"))]
     InvalidEvent,
-    #[error("Indirizzo non valido: usa l'indirizzo iCal (https:// o webcal://) del calendario")]
+    #[error("{}", crate::tr!("Indirizzo non valido: usa l'indirizzo iCal (https:// o webcal://) del calendario", "Invalid address: use the iCal address (https:// or webcal://) of the calendar"))]
     InvalidUrl,
-    #[error("Questo evento non si può modificare da Greatnote: aprilo nel calendario d'origine")]
+    #[error("{}", crate::tr!("Questo evento non si può modificare da Greatnote: aprilo nel calendario d'origine", "This event cannot be modified from Greatnote: open it in the source calendar"))]
     ReadOnly,
     #[error(transparent)]
     Storage(#[from] StorageError),
@@ -227,20 +227,28 @@ pub(crate) fn parse_remote_instant(value: &str) -> Result<String, CalendarError>
     value
         .parse::<Timestamp>()
         .map(time::format_utc)
-        .map_err(|_| CalendarError::InvalidResponse(format!("orario non valido: {value}")))
+        .map_err(|_| {
+            CalendarError::InvalidResponse(crate::tr!(
+                "orario non valido: {value}",
+                "invalid time: {value}"
+            ))
+        })
 }
 
 /// Fine esclusiva → fine inclusa, mai prima dell'inizio.
 pub(crate) fn previous_day(end_exclusive: &str, start: &str) -> Result<String, CalendarError> {
     let parse = |value: &str| {
-        value
-            .parse::<Date>()
-            .map_err(|_| CalendarError::InvalidResponse(format!("data non valida: {value}")))
+        value.parse::<Date>().map_err(|_| {
+            CalendarError::InvalidResponse(crate::tr!(
+                "data non valida: {value}",
+                "invalid date: {value}"
+            ))
+        })
     };
     let start = parse(start)?;
-    let end = parse(end_exclusive)?
-        .yesterday()
-        .map_err(|_| CalendarError::InvalidResponse("data fuori intervallo".to_owned()))?;
+    let end = parse(end_exclusive)?.yesterday().map_err(|_| {
+        CalendarError::InvalidResponse(crate::tr!("data fuori intervallo", "date out of range"))
+    })?;
     Ok(end.max(start).to_string())
 }
 
@@ -674,8 +682,9 @@ impl Database {
     ) -> Result<CalendarEvent, StorageError> {
         let calendar = self.external_calendar(calendar_id)?;
         let provider = self.calendar_account(&calendar.account_id)?.provider;
-        let stored = normalize(event, calendar.can_edit)
-            .ok_or(StorageError::InvalidEvent("evento esterno non valido"))?;
+        let stored = normalize(event, calendar.can_edit).ok_or(StorageError::InvalidEvent(
+            crate::tr_str!("evento esterno non valido", "invalid external event"),
+        ))?;
         let mut connection = self.connection()?;
         let transaction = connection.transaction()?;
         let id = upsert_event(
@@ -783,14 +792,16 @@ impl CalendarClients {
                     .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
         };
         if !plain(&google_client_id) {
-            return Err(StorageError::InvalidEvent(
+            return Err(StorageError::InvalidEvent(crate::tr_str!(
                 "ID client di Google non valido (es. 1234-abc.apps.googleusercontent.com)",
-            ));
+                "Invalid Google client ID (e.g. 1234-abc.apps.googleusercontent.com)"
+            )));
         }
         if !microsoft_client_id.is_empty() && Uuid::parse_str(&microsoft_client_id).is_err() {
-            return Err(StorageError::InvalidEvent(
+            return Err(StorageError::InvalidEvent(crate::tr_str!(
                 "ID applicazione Microsoft non valido: è un GUID come 00000000-0000-0000-0000-000000000000",
-            ));
+                "Invalid Microsoft application ID: it is a GUID like 00000000-0000-0000-0000-000000000000"
+            )));
         }
         Ok(Self {
             google_client_id,

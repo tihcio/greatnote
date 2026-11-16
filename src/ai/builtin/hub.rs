@@ -156,7 +156,10 @@ impl HubClient {
         hardware: &HardwareInfo,
     ) -> Result<HubRepoDetails, AiError> {
         if !is_valid_repo_id(repo) {
-            return Err(AiError::Hub("nome del repository non valido".to_owned()));
+            return Err(AiError::Hub(crate::tr!(
+                "nome del repository non valido",
+                "invalid repository name"
+            )));
         }
         let info = read_response(self.agent.get(&format!("{API}/{repo}")).call())?;
         let info = parse_repo_info(&info)?;
@@ -174,8 +177,9 @@ impl HubClient {
 fn validate_query(query: &str) -> Result<String, AiError> {
     let query = query.trim();
     if query.chars().count() > MAX_QUERY_CHARS || query.chars().any(char::is_control) {
-        return Err(AiError::Hub(format!(
-            "ricerca non valida: al massimo {MAX_QUERY_CHARS} caratteri"
+        return Err(AiError::Hub(crate::tr!(
+            "ricerca non valida: al massimo {MAX_QUERY_CHARS} caratteri",
+            "invalid search: maximum {MAX_QUERY_CHARS} characters"
         )));
     }
     Ok(query.to_owned())
@@ -185,30 +189,35 @@ fn read_response(
     result: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
 ) -> Result<String, AiError> {
     let mut response = result.map_err(|error| match error {
-        ureq::Error::Timeout(_) => {
-            AiError::Hub("Hugging Face non risponde, riprova più tardi".to_owned())
-        }
-        ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => {
-            AiError::Hub("connessione non riuscita: controlla la rete".to_owned())
-        }
+        ureq::Error::Timeout(_) => AiError::Hub(crate::tr!(
+            "Hugging Face non risponde, riprova più tardi",
+            "Hugging Face is not responding, try again later"
+        )),
+        ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => AiError::Hub(crate::tr!(
+            "connessione non riuscita: controlla la rete",
+            "connection failed: check your network"
+        )),
         other => AiError::Hub(other.to_string()),
     })?;
     match response.status().as_u16() {
         200 => {}
         // Hugging Face risponde 401 anche per i repository inesistenti.
         401 | 403 | 404 => {
-            return Err(AiError::Hub(
-                "repository non trovato oppure privato".to_owned(),
-            ));
+            return Err(AiError::Hub(crate::tr!(
+                "repository non trovato oppure privato",
+                "repository not found or private"
+            )));
         }
         429 => {
-            return Err(AiError::Hub(
-                "troppe richieste a Hugging Face: riprova tra qualche minuto".to_owned(),
-            ));
+            return Err(AiError::Hub(crate::tr!(
+                "troppe richieste a Hugging Face: riprova tra qualche minuto",
+                "too many requests to Hugging Face: try again in a few minutes"
+            )));
         }
         status => {
-            return Err(AiError::Hub(format!(
-                "Hugging Face ha risposto con il codice {status}"
+            return Err(AiError::Hub(crate::tr!(
+                "Hugging Face ha risposto con il codice {status}",
+                "Hugging Face responded with code {status}"
             )));
         }
     }
@@ -217,11 +226,19 @@ fn read_response(
         .with_config()
         .limit(MAX_RESPONSE_BYTES)
         .read_to_string()
-        .map_err(|error| AiError::Hub(format!("risposta non letta: {error}")))
+        .map_err(|error| {
+            AiError::Hub(crate::tr!(
+                "risposta non letta: {error}",
+                "response not read: {error}"
+            ))
+        })
 }
 
 fn invalid(what: &str) -> AiError {
-    AiError::Hub(format!("risposta non valida ({what})"))
+    AiError::Hub(crate::tr!(
+        "risposta non valida ({what})",
+        "invalid response ({what})"
+    ))
 }
 
 fn string_field(value: &Value, key: &str) -> Option<String> {
@@ -311,15 +328,18 @@ pub struct RepoInfo {
 pub fn parse_repo_info(body: &str) -> Result<RepoInfo, AiError> {
     let value: Value = serde_json::from_str(body).map_err(|_| invalid("repository"))?;
     if is_gated(&value) {
-        return Err(AiError::Hub(
-            "il repository richiede di accettare le condizioni d'uso su Hugging Face: non è scaricabile dall'app"
-                .to_owned(),
-        ));
+        return Err(AiError::Hub(crate::tr!(
+            "il repository richiede di accettare le condizioni d'uso su Hugging Face: non è scaricabile dall'app",
+            "the repository requires accepting the terms of use on Hugging Face: it cannot be downloaded from the app"
+        )));
     }
     if value.get("disabled").and_then(Value::as_bool) == Some(true)
         || value.get("private").and_then(Value::as_bool) == Some(true)
     {
-        return Err(AiError::Hub("repository non disponibile".to_owned()));
+        return Err(AiError::Hub(crate::tr!(
+            "repository non disponibile",
+            "repository unavailable"
+        )));
     }
     let revision = value
         .get("sha")
@@ -519,7 +539,7 @@ pub fn build_details(
     let license = info
         .license
         .clone()
-        .unwrap_or_else(|| "non indicata".to_owned());
+        .unwrap_or_else(|| crate::tr!("non indicata", "not specified"));
     let mut variants = Vec::new();
     if role != ModelRole::Vision || has_projector {
         for (stem, mut parts) in groups {

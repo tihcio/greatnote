@@ -58,9 +58,18 @@ impl BuiltinProvider {
         let model = store
             .find_with_role(model_id, role)
             .ok_or(AiError::NotConfigured(match role {
-                ModelRole::Chat => "scegli un modello per la chat tra quelli scaricabili",
-                ModelRole::Embedding => "scegli un modello per la ricerca semantica",
-                ModelRole::Vision => "scegli un modello per leggere le immagini",
+                ModelRole::Chat => crate::tr_str!(
+                    "scegli un modello per la chat tra quelli scaricabili",
+                    "choose a chat model from the downloadable ones"
+                ),
+                ModelRole::Embedding => crate::tr_str!(
+                    "scegli un modello per la ricerca semantica",
+                    "choose a model for semantic search"
+                ),
+                ModelRole::Vision => crate::tr_str!(
+                    "scegli un modello per leggere le immagini",
+                    "choose a model for reading images"
+                ),
             }))?;
         let model = match &self.vision_model {
             Some(vision) if role == ModelRole::Chat && vision.model == model.model => vision,

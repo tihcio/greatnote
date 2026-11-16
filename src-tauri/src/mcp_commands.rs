@@ -2,15 +2,10 @@
 //! finestra) e comandi delle impostazioni per attivarlo e vederne il
 //! registro. Il protocollo e gli strumenti sono in `greatnote_core::mcp`.
 
-use std::{
-    error::Error,
-    io::{self, BufReader},
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use greatnote_core::{
-    data_dir::DATABASE_FILE,
-    mcp::{AuditEntry, McpServer, McpSettings, read_audit},
+    mcp::{AuditEntry, McpSettings, read_audit},
     storage::Database,
 };
 use serde::Serialize;
@@ -18,53 +13,81 @@ use tauri::{AppHandle, Manager, State};
 
 type CommandResult<T> = Result<T, String>;
 
-/// Identificatore dell'app (`tauri.conf.json`), che dà il nome alla
-/// cartella dati quando il server parte senza Tauri.
-const APP_IDENTIFIER: &str = "dev.greatnote.notes";
-const LEGACY_IDENTIFIER: &str = "dev.gna.notes";
 pub const MCP_FLAG: &str = "--mcp";
 const DATA_DIR_FLAG: &str = "--data-dir";
 
-/// Cartella dati: quella indicata con `--data-dir` oppure la stessa
-/// dell'app (con la cartella del vecchio nome se è l'unica con le note).
-fn data_directory(args: &[String]) -> Result<PathBuf, Box<dyn Error>> {
-    if let Some(index) = args.iter().position(|arg| arg == DATA_DIR_FLAG) {
-        let path = args
-            .get(index + 1)
-            .ok_or("--data-dir richiede un percorso")?;
-        return Ok(PathBuf::from(path));
-    }
-    let base = dirs::data_dir().ok_or("cartella dati dell'utente non trovata")?;
-    let current = base.join(APP_IDENTIFIER);
-    let legacy = base.join(LEGACY_IDENTIFIER);
-    if !current.join(DATABASE_FILE).exists() && legacy.join(DATABASE_FILE).exists() {
-        return Ok(legacy);
-    }
-    Ok(current)
-}
+#[cfg(desktop)]
+pub use stdio::run_mcp;
 
-/// Avvia il server MCP sullo standard input/output. I log vanno su stderr:
-/// stdout è riservato ai messaggi del protocollo.
-pub fn run_mcp(args: &[String]) -> Result<(), Box<dyn Error>> {
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_writer(io::stderr)
-        .init();
-    let directory = data_directory(args)?;
-    let path = directory.join(DATABASE_FILE);
-    if !path.exists() {
-        return Err(format!(
-            "database non trovato in {}: apri Greatnote almeno una volta",
-            directory.display()
-        )
-        .into());
+/// Modalità `greatnote --mcp`: esiste solo dove l'app è un eseguibile
+/// avviabile da un client MCP, quindi non su Android e iOS.
+#[cfg(desktop)]
+mod stdio {
+    use std::{
+        error::Error,
+        io::{self, BufReader},
+        path::PathBuf,
+    };
+
+    use greatnote_core::{data_dir::DATABASE_FILE, mcp::McpServer, storage::Database};
+
+    use super::DATA_DIR_FLAG;
+
+    /// Identificatore dell'app (`tauri.conf.json`), che dà il nome alla
+    /// cartella dati quando il server parte senza Tauri.
+    pub(super) const APP_IDENTIFIER: &str = "dev.greatnote.notes";
+    const LEGACY_IDENTIFIER: &str = "dev.gna.notes";
+
+    /// Cartella dati: quella indicata con `--data-dir` oppure la stessa
+    /// dell'app (con la cartella del vecchio nome se è l'unica con le note).
+    pub(super) fn data_directory(args: &[String]) -> Result<PathBuf, Box<dyn Error>> {
+        if let Some(index) = args.iter().position(|arg| arg == DATA_DIR_FLAG) {
+            let path = args.get(index + 1).ok_or_else(|| {
+                greatnote_core::tr!(
+                    "--data-dir richiede un percorso",
+                    "--data-dir requires a path"
+                )
+            })?;
+            return Ok(PathBuf::from(path));
+        }
+        let base = dirs::data_dir().ok_or_else(|| {
+            greatnote_core::tr!(
+                "cartella dati dell'utente non trovata",
+                "user data folder not found"
+            )
+        })?;
+        let current = base.join(APP_IDENTIFIER);
+        let legacy = base.join(LEGACY_IDENTIFIER);
+        if !current.join(DATABASE_FILE).exists() && legacy.join(DATABASE_FILE).exists() {
+            return Ok(legacy);
+        }
+        Ok(current)
     }
-    let database = Database::open_read_only(&path)?;
-    let server = McpServer::new(database, directory);
-    server.serve(BufReader::new(io::stdin().lock()), io::stdout().lock())?;
-    Ok(())
+
+    /// Avvia il server MCP sullo standard input/output. I log vanno su stderr:
+    /// stdout è riservato ai messaggi del protocollo.
+    pub fn run_mcp(args: &[String]) -> Result<(), Box<dyn Error>> {
+        let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_writer(io::stderr)
+            .init();
+        let directory = data_directory(args)?;
+        let path = directory.join(DATABASE_FILE);
+        if !path.exists() {
+            return Err(greatnote_core::tr!(
+                "database non trovato in {}: apri Greatnote almeno una volta",
+                "database not found in {}: open Greatnote at least once",
+                directory.display()
+            )
+            .into());
+        }
+        let database = Database::open_read_only(&path)?;
+        let server = McpServer::new(database, directory);
+        server.serve(BufReader::new(io::stdin().lock()), io::stdout().lock())?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -143,7 +166,10 @@ pub fn set_mcp_allow_write(app: AppHandle, allowed: bool) -> CommandResult<McpSt
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{
+        stdio::{APP_IDENTIFIER, data_directory},
+        *,
+    };
 
     #[test]
     fn identifier_matches_tauri_config() {

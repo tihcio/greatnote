@@ -22,18 +22,28 @@ const MAX_BATCH_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FolderError {
-    #[error("cartella di sincronizzazione non accessibile: {0}")]
+    #[error("{}", crate::tr!("cartella di sincronizzazione non accessibile: {0}", "sync folder not accessible: {0}", .0))]
     Io(#[from] std::io::Error),
     #[error(
-        "la cartella contiene una libreria di formato {0}, più recente di questa versione di Greatnote"
+        "{}",
+        crate::tr!(
+            "la cartella contiene una libreria di formato {}, più recente di questa versione di Greatnote",
+            "the folder contains a library in format {}, newer than this version of Greatnote",
+            .0
+        )
     )]
     NewerFormat(u32),
-    #[error("file di sincronizzazione non valido: {0}")]
+    #[error("{}", crate::tr!("file di sincronizzazione non valido: {0}", "invalid sync file: {0}", .0))]
     Invalid(String),
-    #[error("il file esiste già")]
+    #[error("{}", crate::tr!("il file esiste già", "file already exists"))]
     Exists,
     #[error("{0}")]
     Remote(String),
+    /// Il servizio remoto (es. Dropbox) ha rifiutato le credenziali: va
+    /// ricollegato l'account. Distinto da `Remote` perché l'app dimentica
+    /// il token invece di riprovare.
+    #[error("{}", crate::tr!("Accesso a {0} non più valido: ricollega l'account", "Access to {0} has expired: reconnect the account", .0))]
+    Unauthorized(&'static str),
 }
 
 /// Archivio di file della libreria. I percorsi sono relativi alla radice
@@ -59,7 +69,10 @@ impl LocalStore {
         if !folder.is_dir() {
             return Err(FolderError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                "la cartella scelta non esiste",
+                crate::tr!(
+                    "la cartella scelta non esiste",
+                    "the chosen folder does not exist"
+                ),
             )));
         }
         let root = folder.join(ROOT);
@@ -78,9 +91,12 @@ impl LocalStore {
 /// Scrittura atomica: file temporaneo nascosto nella stessa cartella, poi
 /// rinomina (i lettori ignorano i nomi non attesi).
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let directory = path
-        .parent()
-        .ok_or_else(|| std::io::Error::other("percorso senza cartella"))?;
+    let directory = path.parent().ok_or_else(|| {
+        std::io::Error::other(crate::tr_str!(
+            "percorso senza cartella",
+            "path without a folder"
+        ))
+    })?;
     fs::create_dir_all(directory)?;
     let name = path
         .file_name()
@@ -227,9 +243,10 @@ impl SyncFolder {
                     return Err(FolderError::NewerFormat(format.format));
                 }
                 if !valid_id(&format.library) {
-                    return Err(FolderError::Invalid(
-                        "format.json: libreria non valida".to_owned(),
-                    ));
+                    return Err(FolderError::Invalid(crate::tr!(
+                        "format.json: libreria non valida",
+                        "format.json: invalid library"
+                    )));
                 }
                 format.library
             }
@@ -301,8 +318,9 @@ impl SyncFolder {
             serde_json::to_vec(batch).map_err(|error| FolderError::Invalid(error.to_string()))?;
         let path = format!("{}/{}", changes_dir(&batch.device), batch_name(batch.seq));
         match self.store.write(&path, &bytes, true) {
-            Err(FolderError::Exists) => Err(FolderError::Invalid(format!(
+            Err(FolderError::Exists) => Err(FolderError::Invalid(crate::tr!(
                 "il lotto {} esiste già",
+                "batch {} already exists",
                 batch.seq
             ))),
             other => other,
@@ -319,12 +337,17 @@ impl SyncFolder {
             return Ok(None);
         };
         if bytes.len() > MAX_BATCH_BYTES {
-            return Err(FolderError::Invalid(format!("lotto {seq} troppo grande")));
+            return Err(FolderError::Invalid(crate::tr!(
+                "lotto {seq} troppo grande",
+                "batch {seq} too large"
+            )));
         }
         match serde_json::from_slice::<Batch>(&bytes) {
             Ok(batch) if batch.device == device && batch.seq == seq => Ok(Some(batch)),
-            Ok(_) => Err(FolderError::Invalid(format!(
-                "lotto {seq} con intestazione incoerente"
+            Ok(_) => Err(FolderError::Invalid(crate::tr!(
+                "lotto {} con intestazione incoerente",
+                "batch {} has an inconsistent header",
+                seq
             ))),
             // Probabilmente ancora in trasferimento: si riprova più tardi.
             Err(error) if error.is_eof() => Ok(None),
@@ -334,16 +357,17 @@ impl SyncFolder {
 
     /// Copia un allegato nei blob se non c'è già.
     pub(crate) fn put_blob(&self, sha256: &str, source: &Path) -> Result<(), FolderError> {
-        let path =
-            blob_path(sha256).ok_or_else(|| FolderError::Invalid("hash non valido".to_owned()))?;
+        let path = blob_path(sha256)
+            .ok_or_else(|| FolderError::Invalid(crate::tr!("hash non valido", "invalid hash")))?;
         if self.store.exists(&path)? {
             return Ok(());
         }
         let bytes = fs::read(source)?;
         if format!("{:x}", Sha256::digest(&bytes)) != sha256 {
-            return Err(FolderError::Invalid(
-                "un allegato locale non corrisponde al suo hash".to_owned(),
-            ));
+            return Err(FolderError::Invalid(crate::tr!(
+                "un allegato locale non corrisponde al suo hash",
+                "a local attachment does not match its hash"
+            )));
         }
         match self.store.write(&path, &bytes, true) {
             // Stesso hash, stesso contenuto: scritto da un altro dispositivo.

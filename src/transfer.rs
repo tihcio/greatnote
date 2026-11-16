@@ -171,7 +171,12 @@ pub(crate) fn partial_path(destination: &Path) -> Result<PathBuf, StorageError> 
     let file_name = destination
         .file_name()
         .and_then(|name| name.to_str())
-        .ok_or_else(|| StorageError::Export("percorso di destinazione non valido".to_owned()))?;
+        .ok_or_else(|| {
+            StorageError::Export(crate::tr!(
+                "percorso di destinazione non valido",
+                "invalid destination path"
+            ))
+        })?;
     Ok(destination.with_file_name(format!(".{file_name}.{}.partial", Uuid::new_v4().simple())))
 }
 
@@ -291,8 +296,9 @@ fn copy_attachment_to_zip(
         .join(&attachment.stored_filename);
     let metadata = fs::symlink_metadata(&path).map_err(|_| StorageError::AttachmentIntegrity)?;
     if !metadata.is_file() || metadata.len() != attachment.size_bytes {
-        return Err(StorageError::Export(format!(
+        return Err(StorageError::Export(crate::tr!(
             "l'allegato «{}» è mancante o danneggiato",
+            "attachment «{}» is missing or corrupted",
             attachment.original_filename
         )));
     }
@@ -301,8 +307,9 @@ fn copy_attachment_to_zip(
     io::copy(&mut File::open(&path)?, &mut writer)?;
     let (sha256, size) = writer.finish();
     if sha256 != attachment.sha256 {
-        return Err(StorageError::Export(format!(
+        return Err(StorageError::Export(crate::tr!(
             "l'allegato «{}» non supera la verifica d'integrità",
+            "attachment «{}» failed integrity check",
             attachment.original_filename
         )));
     }
@@ -834,22 +841,30 @@ fn file_kind(path: &Path) -> Option<FileKind> {
 }
 
 pub(crate) fn read_limited(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| "file non leggibile".to_owned())?;
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|_| crate::tr!("file non leggibile", "file not readable"))?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err("i collegamenti simbolici e i file speciali non sono importati".to_owned());
+        return Err(crate::tr!(
+            "i collegamenti simbolici e i file speciali non sono importati",
+            "symbolic links and special files are not imported"
+        ));
     }
     if metadata.len() > limit {
-        return Err(format!(
+        return Err(crate::tr!(
             "il file supera il limite di {} MiB",
+            "file exceeds the {} MiB limit",
             limit / (1024 * 1024)
         ));
     }
     let mut bytes = Vec::new();
     File::open(path)
         .and_then(|file| file.take(limit + 1).read_to_end(&mut bytes))
-        .map_err(|_| "file non leggibile".to_owned())?;
+        .map_err(|_| crate::tr!("file non leggibile", "file not readable"))?;
     if bytes.len() as u64 > limit {
-        return Err("il file è cambiato durante la lettura".to_owned());
+        return Err(crate::tr!(
+            "il file è cambiato durante la lettura",
+            "file changed during reading"
+        ));
     }
     Ok(bytes)
 }
@@ -864,17 +879,21 @@ fn resolve_attachment(root: &Path, base: &Path, reference: &str) -> Result<PathB
             .components()
             .any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
     {
-        return Err(format!("percorso allegato non consentito: {reference}"));
+        return Err(crate::tr!(
+            "percorso allegato non consentito: {reference}",
+            "attachment path not allowed: {reference}"
+        ));
     }
     let candidate = base.join(relative);
     let canonical_root = root
         .canonicalize()
-        .map_err(|_| "cartella non leggibile".to_owned())?;
+        .map_err(|_| crate::tr!("cartella non leggibile", "folder not readable"))?;
     let mut current = candidate.as_path();
     while let Some(parent) = current.parent() {
         if fs::symlink_metadata(current).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-            return Err(format!(
-                "allegato tramite collegamento simbolico: {reference}"
+            return Err(crate::tr!(
+                "allegato tramite collegamento simbolico: {reference}",
+                "attachment via symbolic link: {reference}"
             ));
         }
         if parent == root {
@@ -882,30 +901,42 @@ fn resolve_attachment(root: &Path, base: &Path, reference: &str) -> Result<PathB
         }
         current = parent;
     }
-    let canonical = candidate
-        .canonicalize()
-        .map_err(|_| format!("allegato non trovato: {reference}"))?;
+    let canonical = candidate.canonicalize().map_err(|_| {
+        crate::tr!(
+            "allegato non trovato: {reference}",
+            "attachment not found: {reference}"
+        )
+    })?;
     if !canonical.starts_with(&canonical_root) {
-        return Err(format!(
-            "allegato fuori dalla cartella importata: {reference}"
+        return Err(crate::tr!(
+            "allegato fuori dalla cartella importata: {reference}",
+            "attachment outside imported folder: {reference}"
         ));
     }
     Ok(canonical)
 }
 
 fn parse_import_file(path: &Path, root: &Path, budget: &mut u64) -> Result<ParsedNote, String> {
-    let kind = file_kind(path).ok_or_else(|| "formato non supportato".to_owned())?;
+    let kind = file_kind(path)
+        .ok_or_else(|| crate::tr!("formato non supportato", "unsupported format"))?;
     let bytes = read_limited(path, MAX_IMPORT_FILE_BYTES)?;
-    *budget = budget
-        .checked_sub(bytes.len() as u64)
-        .ok_or_else(|| "limite complessivo dell'importazione superato".to_owned())?;
-    let text =
-        String::from_utf8(bytes).map_err(|_| "il file non è codificato in UTF-8".to_owned())?;
+    *budget = budget.checked_sub(bytes.len() as u64).ok_or_else(|| {
+        crate::tr!(
+            "limite complessivo dell'importazione superato",
+            "overall import limit exceeded"
+        )
+    })?;
+    let text = String::from_utf8(bytes).map_err(|_| {
+        crate::tr!(
+            "il file non è codificato in UTF-8",
+            "file is not encoded in UTF-8"
+        )
+    })?;
     let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
     let stem = path
         .file_stem()
         .and_then(|stem| stem.to_str())
-        .unwrap_or("Nota importata")
+        .unwrap_or(crate::tr_str!("Nota importata", "Imported note"))
         .to_owned();
     let (parsed, source) = match kind {
         FileKind::Markdown => (markdown_to_document(text), "markdown"),
@@ -944,16 +975,18 @@ fn parse_import_file(path: &Path, root: &Path, budget: &mut u64) -> Result<Parse
         match resolved {
             Ok((resolved, bytes)) => {
                 if sniff_attachment_type(&bytes).is_err() {
-                    warnings.push(format!(
-                        "allegato di tipo non supportato ignorato: {reference}"
+                    warnings.push(crate::tr!(
+                        "allegato di tipo non supportato ignorato: {reference}",
+                        "unsupported attachment type ignored: {reference}"
                     ));
                     continue;
                 }
                 match budget.checked_sub(bytes.len() as u64) {
                     Some(remaining) => *budget = remaining,
                     None => {
-                        warnings.push(format!(
-                            "allegato ignorato per limite di dimensione: {reference}"
+                        warnings.push(crate::tr!(
+                            "allegato ignorato per limite di dimensione: {reference}",
+                            "attachment ignored due to size limit: {reference}"
                         ));
                         continue;
                     }
@@ -961,7 +994,7 @@ fn parse_import_file(path: &Path, root: &Path, budget: &mut u64) -> Result<Parse
                 let filename = resolved
                     .file_name()
                     .and_then(|name| name.to_str())
-                    .unwrap_or("allegato")
+                    .unwrap_or(crate::tr_str!("allegato", "attachment"))
                     .to_owned();
                 attachment_sources.push(resolved);
                 attachments.push(ImportedAttachment { filename, bytes });
@@ -1039,9 +1072,10 @@ pub fn plan_files_import(paths: &[PathBuf]) -> Result<ImportPlan, StorageError> 
 pub fn plan_folder_import(root: &Path) -> Result<ImportPlan, StorageError> {
     let metadata = fs::symlink_metadata(root)?;
     if !metadata.is_dir() {
-        return Err(StorageError::InvalidImport(
-            "la cartella selezionata non è valida".to_owned(),
-        ));
+        return Err(StorageError::InvalidImport(crate::tr!(
+            "la cartella selezionata non è valida",
+            "the selected folder is not valid"
+        )));
     }
     let mut found = Vec::new();
     let mut pending = vec![(root.to_path_buf(), 0usize)];
@@ -1060,8 +1094,9 @@ pub fn plan_folder_import(root: &Path) -> Result<ImportPlan, StorageError> {
             } else if file_type.is_file() && file_kind(&path).is_some() {
                 found.push(path);
                 if found.len() > MAX_IMPORT_FILES {
-                    return Err(StorageError::InvalidImport(format!(
-                        "la cartella contiene più di {MAX_IMPORT_FILES} note"
+                    return Err(StorageError::InvalidImport(crate::tr!(
+                        "la cartella contiene più di {MAX_IMPORT_FILES} note",
+                        "the folder contains more than {MAX_IMPORT_FILES} notes"
                     )));
                 }
             }
@@ -1113,15 +1148,17 @@ fn verified_entry<R: Read + io::Seek>(
     limit: u64,
 ) -> Result<Vec<u8>, StorageError> {
     if file.size > limit {
-        return Err(StorageError::InvalidImport(format!(
+        return Err(StorageError::InvalidImport(crate::tr!(
             "voce troppo grande: {}",
+            "item too large: {}",
             file.path
         )));
     }
     let bytes = read_zip_entry(archive, &file.path, limit)?;
     if bytes.len() as u64 != file.size || format!("{:x}", Sha256::digest(&bytes)) != file.sha256 {
-        return Err(StorageError::InvalidImport(format!(
+        return Err(StorageError::InvalidImport(crate::tr!(
             "verifica d'integrità fallita per {}",
+            "integrity check failed for {}",
             file.path
         )));
     }
@@ -1142,11 +1179,17 @@ pub fn plan_archive_import(path: &Path) -> Result<ImportPlan, StorageError> {
         ARCHIVE_MANIFEST,
         MAX_ARCHIVE_MANIFEST_BYTES,
     )?)
-    .map_err(|_| StorageError::InvalidImport("manifest dell'archivio non valido".to_owned()))?;
+    .map_err(|_| {
+        StorageError::InvalidImport(crate::tr!(
+            "manifest dell'archivio non valido",
+            "invalid archive manifest"
+        ))
+    })?;
     if manifest.format != ARCHIVE_FORMAT || manifest.version != ARCHIVE_FORMAT_VERSION {
-        return Err(StorageError::InvalidImport(
-            "il file non è un archivio GNA supportato".to_owned(),
-        ));
+        return Err(StorageError::InvalidImport(crate::tr!(
+            "il file non è un archivio GNA supportato",
+            "the file is not a supported GNA archive"
+        )));
     }
     let attachment_paths: HashSet<&str> = manifest
         .attachments
@@ -1157,15 +1200,20 @@ pub fn plan_archive_import(path: &Path) -> Result<ImportPlan, StorageError> {
     let mut files = Vec::new();
     for file in &manifest.notes {
         if !is_valid_archive_note_path(&file.path) {
-            return Err(StorageError::InvalidImport(format!(
+            return Err(StorageError::InvalidImport(crate::tr!(
                 "voce non valida: {}",
+                "invalid item: {}",
                 file.path
             )));
         }
         let outcome = verified_entry(&mut archive, file, MAX_ARCHIVE_NOTE_BYTES)
             .and_then(|bytes| {
-                serde_json::from_slice::<ArchiveNote>(&bytes)
-                    .map_err(|_| StorageError::InvalidImport("nota non leggibile".to_owned()))
+                serde_json::from_slice::<ArchiveNote>(&bytes).map_err(|_| {
+                    StorageError::InvalidImport(crate::tr!(
+                        "nota non leggibile",
+                        "note not readable"
+                    ))
+                })
             })
             .and_then(|note| {
                 validate_document(&note.content).map_err(StorageError::InvalidDocument)?;
@@ -1173,9 +1221,10 @@ pub fn plan_archive_import(path: &Path) -> Result<ImportPlan, StorageError> {
                 if Uuid::parse_str(&note.id).is_err()
                     || format!("notes/{}.json", note.id) != file.path
                 {
-                    return Err(StorageError::InvalidImport(
-                        "identificativo non valido".to_owned(),
-                    ));
+                    return Err(StorageError::InvalidImport(crate::tr!(
+                        "identificativo non valido",
+                        "invalid identifier"
+                    )));
                 }
                 for attachment in &note.attachments {
                     let valid = attachment
@@ -1184,9 +1233,10 @@ pub fn plan_archive_import(path: &Path) -> Result<ImportPlan, StorageError> {
                         .is_some_and(is_stored_attachment_name)
                         && attachment_paths.contains(attachment.path.as_str());
                     if !valid {
-                        return Err(StorageError::InvalidImport(
-                            "allegato non presente nell'archivio".to_owned(),
-                        ));
+                        return Err(StorageError::InvalidImport(crate::tr!(
+                            "allegato non presente nell'archivio",
+                            "attachment not present in the archive"
+                        )));
                     }
                 }
                 Ok(note)
@@ -1655,7 +1705,11 @@ fn commit_files(
                     images.insert(attachment.filename.clone(), attachment_id);
                 }
             } else {
-                warnings.push(format!("allegato ignorato: {}", attachment.filename));
+                warnings.push(crate::tr!(
+                    "allegato ignorato: {}",
+                    "attachment ignored: {}",
+                    attachment.filename
+                ));
             }
         }
         if plan.collection.is_some() && !images.is_empty() {
@@ -1962,13 +2016,19 @@ fn commit_archive(
         for attachment in &note.attachments {
             let entry = attachment_entries
                 .get(attachment.path.as_str())
-                .ok_or_else(|| StorageError::InvalidImport("allegato mancante".to_owned()))?;
+                .ok_or_else(|| {
+                    StorageError::InvalidImport(crate::tr!(
+                        "allegato mancante",
+                        "missing attachment"
+                    ))
+                })?;
             let bytes = verified_entry(&mut archive, entry, MAX_ATTACHMENT_BYTES as u64)?;
             if bytes.len() as u64 != attachment.size_bytes
                 || format!("{:x}", Sha256::digest(&bytes)) != attachment.sha256
             {
-                return Err(StorageError::InvalidImport(format!(
+                return Err(StorageError::InvalidImport(crate::tr!(
                     "allegato danneggiato: {}",
+                    "corrupted attachment: {}",
                     attachment.original_filename
                 )));
             }
@@ -2002,8 +2062,9 @@ fn commit_archive(
             )? {
                 report.attachments += 1;
             } else {
-                warnings.push(format!(
+                warnings.push(crate::tr!(
                     "allegato ignorato: {}",
+                    "attachment ignored: {}",
                     attachment.original_filename
                 ));
             }

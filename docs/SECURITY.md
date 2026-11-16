@@ -383,6 +383,39 @@ locali.
   la firma minisign protegge il canale di aggiornamento, non la prima
   installazione scaricata a mano.
 
+## Android (in sviluppo)
+
+La versione Android non è ancora distribuita; queste sono le scelte già
+applicate. Stato e prove in `docs/ANDROID_PORTING.md`.
+
+- **Dati nella cartella privata dell'app**, non accessibile alle altre app.
+  Nessun permesso di archiviazione viene richiesto: i file entrano ed escono
+  solo dal selettore di sistema, un documento alla volta, per scelta
+  dell'utente.
+- **Backup automatico di Android disattivato** (`allowBackup="false"`): le
+  note non vengono copiate nell'account Google. I backup sono quelli
+  dell'app.
+- **Copie temporanee.** I documenti scelti vengono copiati in
+  `<cache>/transfer/` per essere letti dal core, e rimossi a fine
+  operazione, all'annullamento e all'avvio. Un backup in chiaro scelto per
+  il ripristino resta quindi in cache, in forma leggibile dalla sola app,
+  fino a quel momento.
+- **Apertura degli allegati.** L'altra app riceve la sola lettura di una
+  copia del singolo allegato in `<cache>/open/`, tramite `FileProvider`. Il
+  componente che la apre rifiuta ogni percorso fuori da quella cartella. La
+  copia è rimossa alla successiva apertura e all'avvio.
+- **Segreti** (token di Dropbox, in futuro chiave API dell'AI): preferenze
+  cifrate con una chiave dell'Android Keystore, tramite
+  `android-native-keyring-store`. Se il Keystore non è disponibile la
+  funzione che richiede il segreto fallisce: non esiste un ripiego in chiaro.
+- **Condivisione.** Il testo di una nota esce dall'app solo dal pannello
+  «Condividi» di Android, dopo una scelta esplicita della nota e dell'app
+  di destinazione.
+- **Plugin `fs`** attivo solo su Android e usato solo dal lato Rust: il
+  frontend non ha alcun permesso sul filesystem.
+- **Permessi dichiarati:** solo `INTERNET`, oggi non usato da nessuna
+  funzione attiva su mobile (servirà a sincronizzazione, iCal e AI).
+
 ## Limiti e mitigazioni pianificate
 
 - **Perdita o corruzione dati:** backup manuali/automatici con hash, backup

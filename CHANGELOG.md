@@ -4,6 +4,47 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+- **AI integrata: la risposta non resta più nascosta dietro il
+  ragionamento.** Con Gemma 4 l'assistente mostrava un lungo ragionamento
+  in inglese («Here's a thinking process…») e la risposta arrivava solo
+  dopo, spesso oltre il tempo massimo. Il motore ora concede al modello un
+  ragionamento breve nel suo canale separato, che non viene mostrato:
+  compare solo la risposta, con pochi secondi di attesa in più.
+
+- **Messaggi d'errore in inglese.** Con il sistema in inglese gli errori
+  prodotti dal motore dell'app comparivano in italiano. Ora circa 420
+  messaggi (note, ricerca, allegati, backup, importazione, calendari,
+  sincronizzazione, AI, aggiornamenti) seguono la lingua dell'interfaccia,
+  anche su Android (ADR 0027). Anche i titoli predefiniti delle note
+  importate («Nota senza titolo») seguono la lingua. Il riconoscimento
+  dell'accesso Dropbox scaduto non dipende più dal testo dell'errore.
+
+- **Sincronizzazione: niente falsi conflitti su un dispositivo nuovo.** Un
+  dispositivo che entrava in una libreria già usata da altri due
+  riapplicava la loro storia e segnalava come «modifiche contemporanee» i
+  vecchi conflitti tra quei dispositivi, anche senza aver modificato nulla.
+  Ora la storia precedente all'ingresso non genera avvisi; i conflitti che
+  riguardano le modifiche fatte sul dispositivo restano segnalati.
+
+- **Ricerca rapida mentre scrivi.** La ricerca di `Ctrl+K` trova le note
+  anche con una parola scritta a metà («funz» trova «funziona»); prima
+  cercava solo la frase esatta. Con punteggiatura o simboli resta la frase
+  esatta.
+
+- **Android: lavori in corso.** Il progetto si compila per Android e ha una
+  disposizione per telefono con cui creare e modificare note, allegare
+  file, fare backup e ripristini (anche di backup creati sul desktop) e
+  importare ed esportare; i promemoria arrivano come notifiche di sistema
+  anche ad app chiusa. Sincronizzazione Dropbox, calendari iCal,
+  condivisione verso altre app e AI con un server compatibile OpenAI usano
+  lo stesso codice del desktop. Su mobile «Trova e sostituisci», «Testo
+  cifrato» e «Incolla senza formattazione» sono nel menu «Altro» della
+  barra; dopo una chiusura forzata l'app riapre la nota che era aperta.
+  La build di rilascio si firma con una chiave fuori dal repository.
+  Provato su emulatore e su un Pixel 7 Pro; non esiste ancora una versione
+  Android distribuita. Stato e piano in `docs/ANDROID_PORTING.md`.
+  Nessun cambiamento per Linux e Windows.
+
 ## 0.2.5 — 2026-11-11
 
 - **Calendario con griglia oraria.** Le viste **Settimana** e la nuova

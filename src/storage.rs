@@ -46,105 +46,105 @@ pub(crate) const MAX_ATTACHMENT_BYTES: usize = 25 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
-    #[error("Errore SQLite: {0}")]
+    #[error("{}", crate::tr!("Errore SQLite: {0}", "SQLite error: {0}", .0))]
     Sqlite(#[from] rusqlite::Error),
-    #[error("Errore di serializzazione del documento: {0}")]
+    #[error("{}", crate::tr!("Errore di serializzazione del documento: {0}", "Document serialization error: {0}", .0))]
     Json(#[from] serde_json::Error),
-    #[error("Errore di accesso al file del database: {0}")]
+    #[error("{}", crate::tr!("Errore di accesso al file del database: {0}", "Database file access error: {0}", .0))]
     Io(#[from] std::io::Error),
-    #[error("Il database è stato aggiornato da una versione più recente dell'app")]
+    #[error("{}", crate::tr!("Il database è stato aggiornato da una versione più recente dell'app", "The database was updated by a newer version of the app"))]
     NewerDatabaseVersion,
     #[error(
-        "Questo evento appartiene a un calendario esterno: va modificato tramite il suo account"
+        "{}", crate::tr!("Questo evento appartiene a un calendario esterno: va modificato tramite il suo account", "This event belongs to an external calendar: it must be modified via its account")
     )]
     ExternalEvent,
-    #[error("Account o calendario esterno non trovato")]
+    #[error("{}", crate::tr!("Account o calendario esterno non trovato", "External account or calendar not found"))]
     CalendarNotFound,
     #[error(
-        "Il database ha lo schema {0}, diverso da quello di questa versione: apri prima Greatnote per aggiornarlo"
+        "{}", crate::tr!("Il database ha lo schema {0}, diverso da quello di questa versione: apri prima Greatnote per aggiornarlo", "The database has schema {0}, which differs from this version: open Greatnote first to update it", .0)
     )]
     IncompatibleSchema(u32),
-    #[error("Titolo non valido: massimo {MAX_TITLE_LENGTH} caratteri")]
+    #[error("{}", crate::tr!("Titolo non valido: massimo {0} caratteri", "Invalid title: maximum {0} characters", .MAX_TITLE_LENGTH))]
     InvalidTitle,
-    #[error("Nome non valido: deve contenere da 1 a {MAX_ORGANIZATION_NAME_LENGTH} caratteri")]
+    #[error("{}", crate::tr!("Nome non valido: deve contenere da 1 a {0} caratteri", "Invalid name: must contain between 1 and {0} characters", .MAX_ORGANIZATION_NAME_LENGTH))]
     InvalidOrganizationName,
-    #[error("Nome tag non valido: deve contenere da 1 a {MAX_TAG_NAME_LENGTH} caratteri")]
+    #[error("{}", crate::tr!("Nome tag non valido: deve contenere da 1 a {0} caratteri", "Invalid tag name: must contain between 1 and {0} characters", .MAX_TAG_NAME_LENGTH))]
     InvalidTagName,
-    #[error("Descrizione non valida: massimo {MAX_DESCRIPTION_LENGTH} caratteri")]
+    #[error("{}", crate::tr!("Descrizione non valida: massimo {0} caratteri", "Invalid description: maximum {0} characters", .MAX_DESCRIPTION_LENGTH))]
     InvalidDescription,
-    #[error("Documento non valido: {0}")]
+    #[error("{}", crate::tr!("Documento non valido: {0}", "Invalid document: {0}", .0))]
     InvalidDocument(&'static str),
-    #[error("Ricerca non valida: {0}")]
+    #[error("{}", crate::tr!("Ricerca non valida: {0}", "Invalid search: {0}", .0))]
     InvalidSearchQuery(String),
-    #[error("Vista di ricerca non valida")]
+    #[error("{}", crate::tr!("Vista di ricerca non valida", "Invalid search view"))]
     InvalidSearchScope,
-    #[error("Intervallo di paginazione non valido")]
+    #[error("{}", crate::tr!("Intervallo di paginazione non valido", "Invalid pagination range"))]
     InvalidPage,
-    #[error("Nota non trovata")]
+    #[error("{}", crate::tr!("Nota non trovata", "Note not found"))]
     NoteNotFound,
-    #[error("Allegato non valido: {0}")]
+    #[error("{}", crate::tr!("Allegato non valido: {0}", "Invalid attachment: {0}", .0))]
     InvalidAttachment(&'static str),
-    #[error("Il formato del file non è supportato")]
+    #[error("{}", crate::tr!("Il formato del file non è supportato", "The file format is not supported"))]
     UnsupportedAttachmentType,
-    #[error("Allegato duplicato: questo file è già presente nella nota")]
+    #[error("{}", crate::tr!("Allegato duplicato: questo file è già presente nella nota", "Duplicate attachment: this file is already present in the note"))]
     DuplicateAttachment,
-    #[error("Allegato non trovato")]
+    #[error("{}", crate::tr!("Allegato non trovato", "Attachment not found"))]
     AttachmentNotFound,
-    #[error("L'allegato è mancante o non supera la verifica di integrità")]
+    #[error("{}", crate::tr!("L'allegato è mancante o non supera la verifica di integrità", "Attachment is missing or fails integrity check"))]
     AttachmentIntegrity,
-    #[error("Collegamento tra note non valido")]
+    #[error("{}", crate::tr!("Collegamento tra note non valido", "Invalid note link"))]
     InvalidNoteLink,
-    #[error("Spazio non trovato")]
+    #[error("{}", crate::tr!("Spazio non trovato", "Space not found"))]
     SpaceNotFound,
-    #[error("Taccuino non trovato")]
+    #[error("{}", crate::tr!("Taccuino non trovato", "Notebook not found"))]
     NotebookNotFound,
-    #[error("Tag non trovato")]
+    #[error("{}", crate::tr!("Tag non trovato", "Tag not found"))]
     TagNotFound,
-    #[error("Blocco del database non disponibile")]
+    #[error("{}", crate::tr!("Blocco del database non disponibile", "Database lock unavailable"))]
     DatabaseLock,
-    #[error("Archivio ZIP non leggibile: {0}")]
+    #[error("{}", crate::tr!("Archivio ZIP non leggibile: {0}", "Unreadable ZIP archive: {0}", .0))]
     Zip(#[from] zip::result::ZipError),
-    #[error("Backup non valido: {0}")]
+    #[error("{}", crate::tr!("Backup non valido: {0}", "Invalid backup: {0}", .0))]
     InvalidBackup(String),
-    #[error("Il backup è cifrato: inserisci la password per verificarlo")]
+    #[error("{}", crate::tr!("Il backup è cifrato: inserisci la password per verificarlo", "Backup is encrypted: enter password to verify"))]
     BackupPassphraseRequired,
     #[error("Password errata")]
     WrongBackupPassphrase,
-    #[error("La password deve contenere almeno {0} caratteri")]
+    #[error("{}", crate::tr!("La password deve contenere almeno {0} caratteri", "Password must contain at least {0} characters", .0))]
     WeakBackupPassphrase(usize),
-    #[error("Importazione non valida: {0}")]
+    #[error("{}", crate::tr!("Importazione non valida: {0}", "Invalid import: {0}", .0))]
     InvalidImport(String),
-    #[error("Esportazione non riuscita: {0}")]
+    #[error("{}", crate::tr!("Esportazione non riuscita: {0}", "Export failed: {0}", .0))]
     Export(String),
-    #[error("Impostazione non valida: {0}")]
+    #[error("{}", crate::tr!("Impostazione non valida: {0}", "Invalid setting: {0}", .0))]
     InvalidSetting(&'static str),
-    #[error("Operazione disponibile solo per un database su file")]
+    #[error("{}", crate::tr!("Operazione disponibile solo per un database su file", "Operation available only for file-based database"))]
     InMemoryDatabase,
-    #[error("Data o orario non validi: {0}")]
+    #[error("{}", crate::tr!("Data o orario non validi: {0}", "Invalid date or time: {0}", .0))]
     InvalidDateTime(String),
-    #[error("Fuso orario non riconosciuto")]
+    #[error("{}", crate::tr!("Fuso orario non riconosciuto", "Unrecognized timezone"))]
     InvalidTimeZone,
-    #[error("Attività non valida: {0}")]
+    #[error("{}", crate::tr!("Attività non valida: {0}", "Invalid task: {0}", .0))]
     InvalidTask(&'static str),
-    #[error("Attività non trovata")]
+    #[error("{}", crate::tr!("Attività non trovata", "Task not found"))]
     TaskNotFound,
-    #[error("Evento non valido: {0}")]
+    #[error("{}", crate::tr!("Evento non valido: {0}", "Invalid event: {0}", .0))]
     InvalidEvent(&'static str),
-    #[error("Evento non trovato")]
+    #[error("{}", crate::tr!("Evento non trovato", "Event not found"))]
     EventNotFound,
-    #[error("Promemoria non valido: {0}")]
+    #[error("{}", crate::tr!("Promemoria non valido: {0}", "Invalid reminder: {0}", .0))]
     InvalidReminder(&'static str),
-    #[error("Promemoria non trovato")]
+    #[error("{}", crate::tr!("Promemoria non trovato", "Reminder not found"))]
     ReminderNotFound,
-    #[error("Esiste già un tag con questo nome")]
+    #[error("{}", crate::tr!("Esiste già un tag con questo nome", "A tag with this name already exists"))]
     DuplicateTagName,
-    #[error("Un tag con questo nome è nel cestino: ripristinalo oppure eliminalo definitivamente")]
+    #[error("{}", crate::tr!("Un tag con questo nome è nel cestino: ripristinalo oppure eliminalo definitivamente", "A tag with this name is in the trash: restore it or delete it permanently"))]
     TagNameInTrash,
-    #[error("Elemento non trovato nel cestino")]
+    #[error("{}", crate::tr!("Elemento non trovato nel cestino", "Item not found in trash"))]
     TrashItemNotFound,
-    #[error("Revisione non trovata")]
+    #[error("{}", crate::tr!("Revisione non trovata", "Revision not found"))]
     RevisionNotFound,
-    #[error("Modello non trovato")]
+    #[error("{}", crate::tr!("Modello non trovato", "Model not found"))]
     TemplateNotFound,
 }
 
@@ -1270,7 +1270,10 @@ pub(crate) fn normalize_filename(filename: &str) -> Result<String, StorageError>
     let basename = filename
         .rsplit(['/', '\\'])
         .next()
-        .ok_or(StorageError::InvalidAttachment("nome file mancante"))?;
+        .ok_or(StorageError::InvalidAttachment(crate::tr_str!(
+            "nome file mancante",
+            "missing filename"
+        )))?;
     let normalized = basename
         .chars()
         .filter(|character| !character.is_control())
@@ -1282,7 +1285,10 @@ pub(crate) fn normalize_filename(filename: &str) -> Result<String, StorageError>
         || normalized == ".."
         || normalized.chars().count() > 255
     {
-        return Err(StorageError::InvalidAttachment("nome file non valido"));
+        return Err(StorageError::InvalidAttachment(crate::tr_str!(
+            "nome file non valido",
+            "invalid filename"
+        )));
     }
     Ok(normalized)
 }
@@ -1291,9 +1297,10 @@ pub(crate) fn sniff_attachment_type(
     bytes: &[u8],
 ) -> Result<(&'static str, &'static str), StorageError> {
     if bytes.is_empty() || bytes.len() > MAX_ATTACHMENT_BYTES {
-        return Err(StorageError::InvalidAttachment(
+        return Err(StorageError::InvalidAttachment(crate::tr_str!(
             "il file deve avere dimensioni comprese tra 1 byte e 25 MiB",
-        ));
+            "file size must be between 1 byte and 25 MiB"
+        )));
     }
     if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Ok(("image/png", "png"));
@@ -1369,7 +1376,7 @@ pub(crate) fn normalize_title(title: &str) -> Result<String, StorageError> {
     }
 
     if trimmed.is_empty() {
-        Ok("Nota senza titolo".to_owned())
+        Ok(crate::tr!("Nota senza titolo", "Untitled note"))
     } else {
         Ok(trimmed.to_owned())
     }

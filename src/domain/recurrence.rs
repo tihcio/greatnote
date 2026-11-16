@@ -66,12 +66,18 @@ impl Recurrence {
     /// è il punto di partenza della serie).
     pub fn validated(mut self, due: Date) -> Result<Self, &'static str> {
         if !(1..=MAX_INTERVAL).contains(&self.interval) {
-            return Err("intervallo della ripetizione non valido (da 1 a 99)");
+            return Err(crate::tr_str!(
+                "intervallo della ripetizione non valido (da 1 a 99)",
+                "invalid repetition interval (1 to 99)"
+            ));
         }
         match self.frequency {
             Frequency::Weekly => {
                 if self.weekdays.iter().any(|day| !(1..=7).contains(day)) {
-                    return Err("giorno della settimana non valido");
+                    return Err(crate::tr_str!(
+                        "giorno della settimana non valido",
+                        "invalid day of the week"
+                    ));
                 }
                 self.weekdays.sort_unstable();
                 self.weekdays.dedup();
@@ -81,7 +87,10 @@ impl Recurrence {
                 self.weekdays.clear();
                 let day = self.month_day.unwrap_or(due.day() as u8);
                 if !(1..=31).contains(&day) {
-                    return Err("giorno del mese non valido");
+                    return Err(crate::tr_str!(
+                        "giorno del mese non valido",
+                        "invalid day of the month"
+                    ));
                 }
                 self.month_day = Some(day);
             }
@@ -94,9 +103,14 @@ impl Recurrence {
             if until.is_empty() {
                 self.until = None;
             } else {
-                let date: Date = until.parse().map_err(|_| "data di fine non valida")?;
+                let date: Date = until
+                    .parse()
+                    .map_err(|_| crate::tr_str!("data di fine non valida", "invalid end date"))?;
                 if date < due {
-                    return Err("la ripetizione finisce prima della scadenza");
+                    return Err(crate::tr_str!(
+                        "la ripetizione finisce prima della scadenza",
+                        "repetition ends before the due date"
+                    ));
                 }
                 self.until = Some(date.to_string());
             }

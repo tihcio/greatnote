@@ -72,8 +72,9 @@ pub fn plan_enex_import(paths: &[PathBuf]) -> Result<ImportPlan, StorageError> {
             }),
         }
         if files.len() > MAX_IMPORT_FILES {
-            return Err(StorageError::InvalidImport(format!(
-                "puoi importare al massimo {MAX_IMPORT_FILES} note alla volta"
+            return Err(StorageError::InvalidImport(crate::tr!(
+                "puoi importare al massimo {MAX_IMPORT_FILES} note alla volta",
+                "you can import at most {MAX_IMPORT_FILES} notes at a time"
             )));
         }
     }
@@ -93,11 +94,16 @@ fn read_enex(
     budget: &mut u64,
     files: &mut Vec<PlannedNote>,
 ) -> Result<(), String> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| "file non leggibile".to_owned())?;
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|_| crate::tr!("file non leggibile", "file not readable"))?;
     if !metadata.is_file() {
-        return Err("i collegamenti simbolici e i file speciali non sono importati".to_owned());
+        return Err(crate::tr!(
+            "i collegamenti simbolici e i file speciali non sono importati",
+            "symbolic links and special files are not imported"
+        ));
     }
-    let file = File::open(path).map_err(|_| "file non leggibile".to_owned())?;
+    let file =
+        File::open(path).map_err(|_| crate::tr!("file non leggibile", "file not readable"))?;
     let mut reader = Reader::from_reader(BufReader::new(file));
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
@@ -107,8 +113,9 @@ fn read_enex(
     let mut count = 0usize;
     loop {
         let event = reader.read_event_into(&mut buffer).map_err(|error| {
-            format!(
+            crate::tr!(
                 "file ENEX non valido (posizione {}): {error}",
+                "invalid ENEX file (position {}): {error}",
                 reader.buffer_position()
             )
         })?;
@@ -150,7 +157,7 @@ fn read_enex(
                     let source_name = format!(
                         "{source} › {}",
                         if title.is_empty() {
-                            format!("nota {count}")
+                            crate::tr!("nota {count}", "note {count}")
                         } else {
                             title.clone()
                         }
@@ -189,10 +196,16 @@ fn read_enex(
         buffer.clear();
     }
     if !seen_export {
-        return Err("non è un file ENEX di Evernote".to_owned());
+        return Err(crate::tr!(
+            "non è un file ENEX di Evernote",
+            "not an Evernote ENEX file"
+        ));
     }
     if count == 0 {
-        return Err("il file ENEX non contiene note".to_owned());
+        return Err(crate::tr!(
+            "il file ENEX non contiene note",
+            "the ENEX file contains no notes"
+        ));
     }
     Ok(())
 }
@@ -285,10 +298,13 @@ fn extension_for(mime: &str) -> &'static str {
 
 fn build_note(raw: RawNote, notebook: &str, budget: &mut u64) -> Result<ParsedNote, String> {
     if raw.content_too_large {
-        return Err("il contenuto della nota supera 8 MiB".to_owned());
+        return Err(crate::tr!(
+            "il contenuto della nota supera 8 MiB",
+            "note content exceeds 8 MiB"
+        ));
     }
     let title = if raw.title.trim().is_empty() {
-        "Nota senza titolo".to_owned()
+        crate::tr!("Nota senza titolo", "Untitled note")
     } else {
         raw.title.trim().to_owned()
     };
@@ -302,7 +318,10 @@ fn build_note(raw: RawNote, notebook: &str, budget: &mut u64) -> Result<ParsedNo
             resource.file_name.trim().to_owned()
         };
         if resource.too_large {
-            warnings.push(format!("allegato oltre 25 MiB ignorato: {name}"));
+            warnings.push(crate::tr!(
+                "allegato oltre 25 MiB ignorato: {name}",
+                "attachment over 25 MiB ignored: {name}"
+            ));
             continue;
         }
         let compact: String = resource
@@ -311,7 +330,10 @@ fn build_note(raw: RawNote, notebook: &str, budget: &mut u64) -> Result<ParsedNo
             .filter(|c| !c.is_whitespace())
             .collect();
         let Ok(bytes) = BASE64.decode(compact.as_bytes()) else {
-            warnings.push(format!("allegato non decodificabile ignorato: {name}"));
+            warnings.push(crate::tr!(
+                "allegato non decodificabile ignorato: {name}",
+                "undecodable attachment ignored: {name}"
+            ));
             continue;
         };
         let hash = format!("{:x}", Md5::digest(&bytes));
@@ -380,7 +402,7 @@ fn enml_to_html(
             "en-media" => {
                 let label = attribute(tag, "hash")
                     .and_then(|hash| by_hash.get(&hash.to_ascii_lowercase()).cloned())
-                    .unwrap_or_else(|| "allegato".to_owned());
+                    .unwrap_or_else(|| crate::tr!("allegato", "attachment"));
                 output.push_str(&format!(
                     "<span> {} </span>",
                     escape_html(&attachment_marker(&label))
@@ -397,7 +419,10 @@ fn enml_to_html(
                 }
             }
             "en-crypt" => {
-                warnings.push("testo cifrato di Evernote non importato".to_owned());
+                warnings.push(crate::tr!(
+                    "testo cifrato di Evernote non importato",
+                    "encrypted Evernote text not imported"
+                ));
                 output.push_str("<p>[testo cifrato di Evernote non importato]</p>");
                 consumed = after
                     .find("</en-crypt>")

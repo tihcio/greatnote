@@ -166,9 +166,10 @@ pub(crate) fn private_directory(path: &Path) -> Result<(), StorageError> {
     fs::create_dir_all(path)?;
     let metadata = fs::symlink_metadata(path)?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(StorageError::InvalidBackup(
-            "la cartella di destinazione non è una directory sicura".to_owned(),
-        ));
+        return Err(StorageError::InvalidBackup(crate::tr!(
+            "la cartella di destinazione non è una directory sicura",
+            "the destination folder is not a secure directory"
+        )));
     }
     #[cfg(unix)]
     {
@@ -307,9 +308,9 @@ pub(crate) fn create_backup_with_connection(
     let final_path = directory.join(&file_name);
 
     let result = (|| -> Result<u64, StorageError> {
-        let snapshot_text = snapshot
-            .to_str()
-            .ok_or_else(|| StorageError::InvalidBackup("percorso non UTF-8".to_owned()))?;
+        let snapshot_text = snapshot.to_str().ok_or_else(|| {
+            StorageError::InvalidBackup(crate::tr!("percorso non UTF-8", "path is not UTF-8"))
+        })?;
         connection.execute("VACUUM INTO ?1", [snapshot_text])?;
         let schema_version: u32 =
             connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -408,15 +409,20 @@ pub fn list_backups(data_directory: &Path) -> Result<Vec<BackupInfo>, StorageErr
 /// Risolve il nome di un backup interno senza accettare percorsi.
 pub fn backup_path(data_directory: &Path, file_name: &str) -> Result<PathBuf, StorageError> {
     if parse_backup_name(file_name).is_none() {
-        return Err(StorageError::InvalidBackup(
-            "nome del backup non valido".to_owned(),
-        ));
+        return Err(StorageError::InvalidBackup(crate::tr!(
+            "nome del backup non valido",
+            "invalid backup name"
+        )));
     }
     let path = data_directory.join("backups").join(file_name);
-    let metadata = fs::symlink_metadata(&path)
-        .map_err(|_| StorageError::InvalidBackup("backup non trovato".to_owned()))?;
+    let metadata = fs::symlink_metadata(&path).map_err(|_| {
+        StorageError::InvalidBackup(crate::tr!("backup non trovato", "backup not found"))
+    })?;
     if !metadata.is_file() {
-        return Err(StorageError::InvalidBackup("backup non trovato".to_owned()));
+        return Err(StorageError::InvalidBackup(crate::tr!(
+            "backup non trovato",
+            "backup not found"
+        )));
     }
     Ok(path)
 }
@@ -448,7 +454,10 @@ pub fn encrypt_backup_file(
 ) -> Result<(), StorageError> {
     let secret = passphrase(passphrase_text)?;
     if is_encrypted_backup(source)? {
-        return Err(invalid("il file è già cifrato"));
+        return Err(invalid(crate::tr_str!(
+            "il file è già cifrato",
+            "the file is already encrypted"
+        )));
     }
     let partial = crate::transfer::partial_path(destination)?;
     let result = (|| {
@@ -460,7 +469,12 @@ pub fn encrypt_backup_file(
         recipient.set_work_factor(10);
         let encryptor =
             age::Encryptor::with_recipients(std::iter::once(&recipient as &dyn age::Recipient))
-                .map_err(|_| invalid("cifratura non disponibile"))?;
+                .map_err(|_| {
+                    invalid(crate::tr_str!(
+                        "cifratura non disponibile",
+                        "encryption not available"
+                    ))
+                })?;
         let mut writer = encryptor.wrap_output(create_private_file(&partial)?)?;
         io::copy(&mut File::open(source)?, &mut writer)?;
         let file = writer.finish()?;
@@ -488,11 +502,17 @@ fn decrypt_backup_file(
     let target = data_directory.join(format!("{DECRYPTED_PREFIX}{}.zip", Uuid::new_v4().simple()));
     let result = (|| {
         let decryptor = age::Decryptor::new_buffered(io::BufReader::new(File::open(source)?))
-            .map_err(|_| invalid("file cifrato non riconosciuto"))?;
+            .map_err(|_| {
+                invalid(crate::tr_str!(
+                    "file cifrato non riconosciuto",
+                    "encrypted file not recognized"
+                ))
+            })?;
         if !decryptor.is_scrypt() {
-            return Err(invalid(
+            return Err(invalid(crate::tr_str!(
                 "il file è cifrato con chiavi, non con una password",
-            ));
+                "the file is encrypted with keys, not a password"
+            )));
         }
         let mut reader = decryptor
             .decrypt(std::iter::once(&identity as &dyn age::Identity))
@@ -500,10 +520,14 @@ fn decrypt_backup_file(
                 age::DecryptError::DecryptionFailed
                 | age::DecryptError::KeyDecryptionFailed
                 | age::DecryptError::NoMatchingKeys => StorageError::WrongBackupPassphrase,
-                age::DecryptError::ExcessiveWork { .. } => invalid(
+                age::DecryptError::ExcessiveWork { .. } => invalid(crate::tr_str!(
                     "la cifratura richiede più risorse di quelle consentite su questo computer",
-                ),
-                _ => invalid("file cifrato non leggibile"),
+                    "encryption requires more resources than allowed on this computer"
+                )),
+                _ => invalid(crate::tr_str!(
+                    "file cifrato non leggibile",
+                    "encrypted file not readable"
+                )),
             })?;
         let mut file = create_private_file(&target)?;
         // La password è già verificata dall'header: un blocco che non supera
@@ -569,15 +593,17 @@ pub(crate) fn read_zip_entry<R: Read + io::Seek>(
 ) -> Result<Vec<u8>, StorageError> {
     let entry = archive.by_name(name)?;
     if entry.size() > limit {
-        return Err(StorageError::InvalidBackup(format!(
-            "la voce {name} è troppo grande"
+        return Err(StorageError::InvalidBackup(crate::tr!(
+            "la voce {name} è troppo grande",
+            "the entry {name} is too large"
         )));
     }
     let mut bytes = Vec::new();
     entry.take(limit + 1).read_to_end(&mut bytes)?;
     if bytes.len() as u64 > limit {
-        return Err(StorageError::InvalidBackup(format!(
-            "la voce {name} è troppo grande"
+        return Err(StorageError::InvalidBackup(crate::tr!(
+            "la voce {name} è troppo grande",
+            "the entry {name} is too large"
         )));
     }
     Ok(bytes)
@@ -607,14 +633,23 @@ fn extract_backup(
         MANIFEST_ENTRY,
         MAX_MANIFEST_BYTES,
     )?)
-    .map_err(|_| invalid("manifest mancante o non leggibile"))?;
+    .map_err(|_| {
+        invalid(crate::tr_str!(
+            "manifest mancante o non leggibile",
+            "manifest missing or unreadable"
+        ))
+    })?;
     if manifest.format != BACKUP_FORMAT || manifest.version != BACKUP_FORMAT_VERSION {
-        return Err(invalid("formato di backup non riconosciuto"));
+        return Err(invalid(crate::tr_str!(
+            "formato di backup non riconosciuto",
+            "unrecognized backup format"
+        )));
     }
     if manifest.schema_version == 0 || manifest.schema_version > CURRENT_SCHEMA_VERSION {
-        return Err(invalid(
+        return Err(invalid(crate::tr_str!(
             "il backup è stato creato da una versione più recente dell'app",
-        ));
+            "the backup was created by a newer version of the app"
+        )));
     }
 
     let mut seen = HashSet::new();
@@ -626,8 +661,9 @@ fn extract_backup(
                 .strip_prefix("attachments/")
                 .is_some_and(is_stored_attachment_name);
         if !valid || !seen.insert(file.path.clone()) || file.sha256.len() != 64 {
-            return Err(invalid(format!(
+            return Err(invalid(crate::tr!(
                 "voce non valida nel manifest: {}",
+                "invalid entry in manifest: {}",
                 file.path
             )));
         }
@@ -636,7 +672,10 @@ fn extract_backup(
         }
     }
     if !seen.contains(DATABASE_ENTRY) {
-        return Err(invalid("il backup non contiene il database"));
+        return Err(invalid(crate::tr_str!(
+            "il backup non contiene il database",
+            "the backup does not contain the database"
+        )));
     }
 
     private_directory(staging)?;
@@ -651,7 +690,11 @@ fn extract_backup(
             crate::storage::MAX_ATTACHMENT_BYTES as u64
         };
         if file.size > limit {
-            return Err(invalid(format!("dimensione non valida: {}", file.path)));
+            return Err(invalid(crate::tr!(
+                "dimensione non valida: {}",
+                "invalid size: {}",
+                file.path
+            )));
         }
         let entry = archive.by_name(&file.path)?;
         let target = if file.path == DATABASE_ENTRY {
@@ -677,8 +720,9 @@ fn extract_backup(
             }
         };
         if size != file.size || sha256 != file.sha256 {
-            return Err(invalid(format!(
+            return Err(invalid(crate::tr!(
                 "verifica d'integrità fallita per {}",
+                "integrity check failed for {}",
                 file.path
             )));
         }
@@ -691,7 +735,10 @@ fn extract_backup(
     }
     let schema_version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     if schema_version != manifest.schema_version {
-        return Err(invalid("versione dello schema incoerente con il manifest"));
+        return Err(invalid(crate::tr_str!(
+            "versione dello schema incoerente con il manifest",
+            "schema version inconsistent with the manifest"
+        )));
     }
     let note_count = count(&connection, "SELECT COUNT(*) FROM notes")?;
     let mut attachment_count = 0;
@@ -702,7 +749,10 @@ fn extract_backup(
         for name in names {
             let name = name?;
             if !attachment_files.contains(&name) {
-                return Err(invalid("il backup non contiene tutti gli allegati"));
+                return Err(invalid(crate::tr_str!(
+                    "il backup non contiene tutti gli allegati",
+                    "the backup does not contain all attachments"
+                )));
             }
             attachment_count += 1;
         }
@@ -780,14 +830,16 @@ impl Database {
         settings: BackupSettings,
     ) -> Result<BackupSettings, StorageError> {
         if !(1..=365).contains(&settings.interval_days) {
-            return Err(StorageError::InvalidSetting(
+            return Err(StorageError::InvalidSetting(crate::tr_str!(
                 "l'intervallo deve essere tra 1 e 365 giorni",
-            ));
+                "the interval must be between 1 and 365 days"
+            )));
         }
         if !(1..=100).contains(&settings.retention) {
-            return Err(StorageError::InvalidSetting(
+            return Err(StorageError::InvalidSetting(crate::tr_str!(
                 "il numero di backup conservati deve essere tra 1 e 100",
-            ));
+                "the number of retained backups must be between 1 and 100"
+            )));
         }
         let mut connection = self.connection()?;
         let transaction = connection.transaction()?;

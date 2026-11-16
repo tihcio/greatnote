@@ -23,7 +23,9 @@ use greatnote_core::{
 };
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
-use tauri_plugin_dialog::{DialogExt, FileDialogBuilder, FilePath};
+use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
+
+use crate::file_access::{self, Area, filtered};
 
 type CommandResult<T> = Result<T, String>;
 
@@ -62,10 +64,12 @@ pub struct ExternalBackup {
 fn pending_backup(
     pending: &PendingOperations,
 ) -> CommandResult<std::sync::MutexGuard<'_, Option<PendingBackup>>> {
-    pending
-        .external_backup
-        .lock()
-        .map_err(|_| "Stato del ripristino non disponibile".to_owned())
+    pending.external_backup.lock().map_err(|_| {
+        greatnote_core::tr!(
+            "Stato del ripristino non disponibile",
+            "Restore status unavailable"
+        )
+    })
 }
 
 pub(crate) async fn blocking<T, F>(app: AppHandle, task: F) -> CommandResult<T>
@@ -78,32 +82,39 @@ where
         .map_err(|error| error.to_string())?
 }
 
-fn dialog(app: &AppHandle, title: &str) -> FileDialogBuilder<tauri::Wry> {
-    let mut builder = app.dialog().file().set_title(title);
-    if let Some(window) = app.get_webview_window("main") {
-        builder = builder.set_parent(&window);
-    }
+pub(crate) fn dialog(app: &AppHandle, title: &str) -> FileDialogBuilder<tauri::Wry> {
+    let builder = app.dialog().file().set_title(title);
+    // Su Android e iOS il selettore è una schermata di sistema, senza
+    // finestra a cui agganciarsi.
+    #[cfg(desktop)]
+    let builder = match app.get_webview_window("main") {
+        Some(window) => builder.set_parent(&window),
+        None => builder,
+    };
     builder
 }
 
-fn into_path(file: Option<FilePath>) -> CommandResult<Option<PathBuf>> {
-    file.map(|file| file.into_path().map_err(|error| error.to_string()))
+/// Selettore di cartelle. Android e iOS non lo offrono: le funzioni che ne
+/// dipendono restituiscono un errore leggibile e l'interfaccia non le propone.
+#[cfg(desktop)]
+pub(crate) fn pick_folder(
+    builder: FileDialogBuilder<tauri::Wry>,
+) -> CommandResult<Option<PathBuf>> {
+    builder
+        .blocking_pick_folder()
+        .map(|folder| folder.into_path().map_err(|error| error.to_string()))
         .transpose()
 }
 
-fn with_extension(path: PathBuf, extension: &str) -> PathBuf {
-    let matches = path
-        .extension()
-        .and_then(|value| value.to_str())
-        .is_some_and(|value| value.eq_ignore_ascii_case(extension));
-    if matches {
-        path
-    } else {
-        let mut name = path.file_name().unwrap_or_default().to_os_string();
-        name.push(".");
-        name.push(extension);
-        path.with_file_name(name)
-    }
+#[cfg(mobile)]
+pub(crate) fn pick_folder(
+    builder: FileDialogBuilder<tauri::Wry>,
+) -> CommandResult<Option<PathBuf>> {
+    let _ = builder;
+    Err(greatnote_core::tr!(
+        "La scelta di una cartella non è disponibile su questo dispositivo",
+        "Folder selection is not available on this device"
+    ))
 }
 
 fn file_name(path: &Path) -> String {
@@ -134,19 +145,17 @@ pub async fn export_note_file(
             ExportFormat::Html => ("HTML", "html"),
             ExportFormat::Text => ("Text", "txt"),
         };
-        let Some(path) = into_path(
-            dialog(app, &title)
-                .set_file_name(&exported.file_name)
-                .add_filter(filter, &[extension])
-                .blocking_save_file(),
-        )?
-        else {
+        let builder = filtered(
+            dialog(app, &title).set_file_name(&exported.file_name),
+            filter,
+            &[extension],
+        );
+        let Some(output) = file_access::pick_output(app, builder, extension)? else {
             return Ok(None);
         };
-        let path = with_extension(path, extension);
-        write_file_atomically(&path, exported.contents.as_bytes())
+        write_file_atomically(output.path(), exported.contents.as_bytes())
             .map_err(|error| error.to_string())?;
-        Ok(Some(file_name(&path)))
+        output.finish(app).map(Some)
     })
     .await
 }
@@ -160,23 +169,21 @@ pub async fn export_markdown_zip(
     title: String,
 ) -> CommandResult<Option<ExportSummary>> {
     blocking(app, move |app| {
-        let Some(path) = into_path(
+        let builder = filtered(
             dialog(app, &title)
-                .set_file_name(format!("{}.zip", sanitize_file_name(&default_name, "note")))
-                .add_filter("ZIP", &["zip"])
-                .blocking_save_file(),
-        )?
-        else {
+                .set_file_name(format!("{}.zip", sanitize_file_name(&default_name, "note"))),
+            "ZIP",
+            &["zip"],
+        );
+        let Some(output) = file_access::pick_output(app, builder, "zip")? else {
             return Ok(None);
         };
-        app.state::<Database>()
-            .export_markdown_zip(
-                notebook_id.as_deref(),
-                &unfiled_folder,
-                &with_extension(path, "zip"),
-            )
-            .map(Some)
-            .map_err(|error| error.to_string())
+        let summary = app
+            .state::<Database>()
+            .export_markdown_zip(notebook_id.as_deref(), &unfiled_folder, output.path())
+            .map_err(|error| error.to_string())?;
+        output.finish(app)?;
+        Ok(Some(summary))
     })
     .await
 }
@@ -188,22 +195,23 @@ pub async fn export_full_archive(
     title: String,
 ) -> CommandResult<Option<ExportSummary>> {
     blocking(app, move |app| {
-        let Some(path) = into_path(
-            dialog(app, &title)
-                .set_file_name(format!(
-                    "{}.zip",
-                    sanitize_file_name(&default_name, "greatnote")
-                ))
-                .add_filter("ZIP", &["zip"])
-                .blocking_save_file(),
-        )?
-        else {
+        let builder = filtered(
+            dialog(app, &title).set_file_name(format!(
+                "{}.zip",
+                sanitize_file_name(&default_name, "greatnote")
+            )),
+            "ZIP",
+            &["zip"],
+        );
+        let Some(output) = file_access::pick_output(app, builder, "zip")? else {
             return Ok(None);
         };
-        app.state::<Database>()
-            .export_archive(&with_extension(path, "zip"))
-            .map(Some)
-            .map_err(|error| error.to_string())
+        let summary = app
+            .state::<Database>()
+            .export_archive(output.path())
+            .map_err(|error| error.to_string())?;
+        output.finish(app)?;
+        Ok(Some(summary))
     })
     .await
 }
@@ -218,66 +226,55 @@ pub async fn prepare_import(
         let builder = dialog(app, &title);
         let plan = match source.as_str() {
             "files" => {
-                let Some(files) = builder
-                    .add_filter(
-                        "Markdown, HTML, testo",
-                        &["md", "markdown", "html", "htm", "txt"],
-                    )
-                    .blocking_pick_files()
-                else {
+                let builder = filtered(
+                    builder,
+                    "Markdown, HTML, testo",
+                    &["md", "markdown", "html", "htm", "txt"],
+                );
+                let Some(paths) = file_access::pick_inputs(app, builder, Area::Import)? else {
                     return Ok(None);
                 };
-                let paths = files
-                    .into_iter()
-                    .map(|file| file.into_path().map_err(|error| error.to_string()))
-                    .collect::<CommandResult<Vec<_>>>()?;
                 plan_files_import(&paths)
             }
             "folder" => {
-                let Some(folder) = into_path(builder.blocking_pick_folder())? else {
+                let Some(folder) = pick_folder(builder)? else {
                     return Ok(None);
                 };
                 plan_folder_import(&folder)
             }
             "archive" => {
-                let Some(file) =
-                    into_path(builder.add_filter("ZIP", &["zip"]).blocking_pick_file())?
-                else {
+                let builder = filtered(builder, "ZIP", &["zip"]);
+                let Some(file) = file_access::pick_input(app, builder, Area::Import)? else {
                     return Ok(None);
                 };
                 plan_archive_import(&file)
             }
             "evernote" => {
-                let Some(files) = builder
-                    .add_filter("Evernote ENEX", &["enex"])
-                    .blocking_pick_files()
-                else {
+                let builder = filtered(builder, "Evernote ENEX", &["enex"]);
+                let Some(paths) = file_access::pick_inputs(app, builder, Area::Import)? else {
                     return Ok(None);
                 };
-                let paths = files
-                    .into_iter()
-                    .map(|file| file.into_path().map_err(|error| error.to_string()))
-                    .collect::<CommandResult<Vec<_>>>()?;
                 greatnote_core::external_import::enex::plan_enex_import(&paths)
             }
             "joplin" => {
-                let Some(file) = into_path(
-                    builder
-                        .add_filter("Joplin JEX", &["jex"])
-                        .blocking_pick_file(),
-                )?
-                else {
+                let builder = filtered(builder, "Joplin JEX", &["jex"]);
+                let Some(file) = file_access::pick_input(app, builder, Area::Import)? else {
                     return Ok(None);
                 };
                 greatnote_core::external_import::joplin::plan_jex_import(&file)
             }
             "obsidian" => {
-                let Some(folder) = into_path(builder.blocking_pick_folder())? else {
+                let Some(folder) = pick_folder(builder)? else {
                     return Ok(None);
                 };
                 greatnote_core::external_import::obsidian::plan_obsidian_import(&folder)
             }
-            _ => return Err("Origine dell'importazione non valida".to_owned()),
+            _ => {
+                return Err(greatnote_core::tr!(
+                    "Origine dell'importazione non valida",
+                    "Invalid import source"
+                ));
+            }
         }
         .map_err(|error| error.to_string())?;
         let preview = app
@@ -286,11 +283,12 @@ pub async fn prepare_import(
             .map_err(|error| error.to_string())?;
         let token = token();
         let pending = app.state::<PendingOperations>();
-        *pending
-            .import
-            .lock()
-            .map_err(|_| "Stato dell'importazione non disponibile".to_owned())? =
-            Some((token.clone(), plan));
+        *pending.import.lock().map_err(|_| {
+            greatnote_core::tr!(
+                "Stato dell'importazione non disponibile",
+                "Import status unavailable"
+            )
+        })? = Some((token.clone(), plan));
         Ok(Some(PreparedImport { token, preview }))
     })
     .await
@@ -305,35 +303,48 @@ pub async fn commit_import(
     blocking(app, move |app| {
         let pending = app.state::<PendingOperations>();
         let plan = {
-            let mut guard = pending
-                .import
-                .lock()
-                .map_err(|_| "Stato dell'importazione non disponibile".to_owned())?;
+            let mut guard = pending.import.lock().map_err(|_| {
+                greatnote_core::tr!(
+                    "Stato dell'importazione non disponibile",
+                    "Import status unavailable"
+                )
+            })?;
             match guard.take() {
                 Some((stored, plan)) if stored == token => plan,
                 other => {
                     *guard = other;
-                    return Err(
-                        "L'anteprima dell'importazione è scaduta: ripeti la selezione".to_owned(),
-                    );
+                    return Err(greatnote_core::tr!(
+                        "L'anteprima dell'importazione è scaduta: ripeti la selezione",
+                        "Import preview has expired: please select again"
+                    ));
                 }
             }
         };
-        app.state::<Database>()
+        let report = app
+            .state::<Database>()
             .commit_import(&plan, &destination)
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string());
+        file_access::clear(app, Area::Import);
+        report
     })
     .await
 }
 
 #[tauri::command]
-pub fn cancel_import(pending: State<'_, PendingOperations>, token: String) -> CommandResult<()> {
-    let mut guard = pending
-        .import
-        .lock()
-        .map_err(|_| "Stato dell'importazione non disponibile".to_owned())?;
+pub fn cancel_import(
+    app: AppHandle,
+    pending: State<'_, PendingOperations>,
+    token: String,
+) -> CommandResult<()> {
+    let mut guard = pending.import.lock().map_err(|_| {
+        greatnote_core::tr!(
+            "Stato dell'importazione non disponibile",
+            "Import status unavailable"
+        )
+    })?;
     if guard.as_ref().is_some_and(|(stored, _)| *stored == token) {
         *guard = None;
+        file_access::clear(&app, Area::Import);
     }
     Ok(())
 }
@@ -407,22 +418,20 @@ pub async fn export_backup(
             Some(_) => (format!("{file_name}.age"), "age", "age"),
             None => (file_name.clone(), "ZIP", "zip"),
         };
-        let Some(path) = into_path(
-            dialog(app, &title)
-                .set_file_name(&suggested)
-                .add_filter(filter, &[extension])
-                .blocking_save_file(),
-        )?
-        else {
+        let builder = filtered(
+            dialog(app, &title).set_file_name(&suggested),
+            filter,
+            &[extension],
+        );
+        let Some(output) = file_access::pick_output(app, builder, extension)? else {
             return Ok(None);
         };
-        let path = with_extension(path, extension);
         match passphrase {
-            Some(passphrase) => encrypt_backup_file(&source, &path, &passphrase),
-            None => copy_file_atomically(&source, &path),
+            Some(passphrase) => encrypt_backup_file(&source, output.path(), &passphrase),
+            None => copy_file_atomically(&source, output.path()),
         }
         .map_err(|error| error.to_string())?;
-        Ok(Some(self::file_name(&path)))
+        output.finish(app).map(Some)
     })
     .await
 }
@@ -433,12 +442,8 @@ pub async fn inspect_external_backup(
     title: String,
 ) -> CommandResult<Option<ExternalBackup>> {
     blocking(app, move |app| {
-        let Some(path) = into_path(
-            dialog(app, &title)
-                .add_filter("ZIP, age", &["zip", "age"])
-                .blocking_pick_file(),
-        )?
-        else {
+        let builder = filtered(dialog(app, &title), "ZIP, age", &["zip", "age"]);
+        let Some(path) = file_access::pick_input(app, builder, Area::Backup)? else {
             return Ok(None);
         };
         // Una selezione precedente (e la sua eventuale copia decifrata) viene
@@ -482,7 +487,12 @@ pub async fn unlock_external_backup(
     blocking(app, move |app| {
         let path = match pending_backup(&app.state::<PendingOperations>())?.as_ref() {
             Some(pending) if pending.token == token => pending.path.clone(),
-            _ => return Err("Seleziona di nuovo il file di backup".to_owned()),
+            _ => {
+                return Err(greatnote_core::tr!(
+                    "Seleziona di nuovo il file di backup",
+                    "Select the backup file again"
+                ));
+            }
         };
         let decrypted = app
             .state::<Database>()
@@ -494,7 +504,12 @@ pub async fn unlock_external_backup(
         match guard.as_mut() {
             Some(pending) if pending.token == token => pending.decrypted = Some(decrypted),
             // Selezione cambiata nel frattempo: la copia viene eliminata.
-            _ => return Err("Seleziona di nuovo il file di backup".to_owned()),
+            _ => {
+                return Err(greatnote_core::tr!(
+                    "Seleziona di nuovo il file di backup",
+                    "Select the backup file again"
+                ));
+            }
         }
         Ok(ExternalBackup {
             token,
@@ -516,7 +531,10 @@ pub async fn restore_external_backup(app: AppHandle, token: String) -> CommandRe
                 Some(pending) if pending.token == token => pending,
                 other => {
                     *guard = other;
-                    return Err("Seleziona di nuovo il file di backup".to_owned());
+                    return Err(greatnote_core::tr!(
+                        "Seleziona di nuovo il file di backup",
+                        "Select the backup file again"
+                    ));
                 }
             }
         };
@@ -526,21 +544,26 @@ pub async fn restore_external_backup(app: AppHandle, token: String) -> CommandRe
             Some(decrypted) => decrypted.path(),
             None => pending.path.as_path(),
         };
-        app.state::<Database>()
+        let restored = app
+            .state::<Database>()
             .restore_backup_file(source)
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string());
+        file_access::clear(app, Area::Backup);
+        restored
     })
     .await
 }
 
 #[tauri::command]
 pub fn cancel_external_backup(
+    app: AppHandle,
     pending: State<'_, PendingOperations>,
     token: String,
 ) -> CommandResult<()> {
     let mut guard = pending_backup(&pending)?;
     if guard.as_ref().is_some_and(|stored| stored.token == token) {
         *guard = None;
+        file_access::clear(&app, Area::Backup);
     }
     Ok(())
 }
@@ -585,7 +608,18 @@ pub async fn rebuild_search_index(app: AppHandle) -> CommandResult<u64> {
 /// Apre il dialog di stampa di sistema (consente anche il salvataggio PDF).
 #[tauri::command]
 pub fn print_window(window: WebviewWindow) -> CommandResult<()> {
-    window.print().map_err(|error| error.to_string())
+    #[cfg(desktop)]
+    {
+        window.print().map_err(|error| error.to_string())
+    }
+    #[cfg(mobile)]
+    {
+        let _ = window;
+        Err(greatnote_core::tr!(
+            "La stampa non è disponibile su questo dispositivo",
+            "Printing is not available on this device"
+        ))
+    }
 }
 
 /// Backup automatico all'avvio, fuori dal thread principale.

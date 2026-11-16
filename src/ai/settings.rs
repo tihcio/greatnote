@@ -128,9 +128,10 @@ impl AiSettings {
         self.embedding_model = validate_model(&self.embedding_model)?;
         self.vision_model = validate_model(&self.vision_model)?;
         if !(VISION_SIDE_RANGE.0..=VISION_SIDE_RANGE.1).contains(&self.vision_max_side) {
-            return Err(AiError::InvalidSettings(
+            return Err(AiError::InvalidSettings(crate::tr_str!(
                 "risoluzione delle immagini fuori dall'intervallo consentito",
-            ));
+                "image resolution out of allowed range"
+            )));
         }
         self.claude_path = self.claude_path.trim().to_owned();
         if !self.claude_path.is_empty()
@@ -138,9 +139,10 @@ impl AiSettings {
                 || self.claude_path.chars().any(char::is_control)
                 || !std::path::Path::new(&self.claude_path).is_absolute())
         {
-            return Err(AiError::InvalidSettings(
+            return Err(AiError::InvalidSettings(crate::tr_str!(
                 "il percorso di Claude Code deve essere assoluto (es. /home/utente/.local/bin/claude)",
-            ));
+                "the Claude Code path must be absolute (e.g. /home/user/.local/bin/claude)"
+            )));
         }
         if self.provider == ProviderKind::ClaudeCode {
             // Claude Code non fornisce embedding: niente indice semantico.
@@ -156,9 +158,10 @@ impl AiSettings {
                 (&self.vision_model, ModelRole::Vision),
             ] {
                 if !model.is_empty() && !is_valid_model_id(model, role) {
-                    return Err(AiError::InvalidSettings(
+                    return Err(AiError::InvalidSettings(crate::tr_str!(
                         "modello non presente tra quelli del motore integrato",
-                    ));
+                        "model not found in built-in AI engine"
+                    )));
                 }
             }
         }
@@ -176,14 +179,20 @@ impl AiSettings {
         for id in self.excluded_notebook_ids {
             let id = id.trim().to_owned();
             if id.is_empty() || id.len() > 64 || !id.chars().all(is_id_char) {
-                return Err(AiError::InvalidSettings("taccuino escluso non valido"));
+                return Err(AiError::InvalidSettings(crate::tr_str!(
+                    "taccuino escluso non valido",
+                    "invalid excluded notebook"
+                )));
             }
             if !excluded.contains(&id) {
                 excluded.push(id);
             }
         }
         if excluded.len() > MAX_EXCLUDED_NOTEBOOKS {
-            return Err(AiError::InvalidSettings("troppi taccuini esclusi"));
+            return Err(AiError::InvalidSettings(crate::tr_str!(
+                "troppi taccuini esclusi",
+                "too many excluded notebooks"
+            )));
         }
         self.excluded_notebook_ids = excluded;
         Ok(self)
@@ -223,16 +232,20 @@ impl AiSettings {
     pub fn ensure_chat_model(&self) -> Result<&str, AiError> {
         // Con Claude Code il modello vuoto è quello predefinito dell'account.
         if self.chat_model.is_empty() && self.provider != ProviderKind::ClaudeCode {
-            return Err(AiError::NotConfigured("scegli un modello per la chat"));
+            return Err(AiError::NotConfigured(crate::tr_str!(
+                "scegli un modello per la chat",
+                "choose a model for chat"
+            )));
         }
         Ok(&self.chat_model)
     }
 
     pub fn ensure_embedding_model(&self) -> Result<&str, AiError> {
         if self.embedding_model.is_empty() {
-            return Err(AiError::NotConfigured(
+            return Err(AiError::NotConfigured(crate::tr_str!(
                 "scegli un modello di embedding per la ricerca semantica",
-            ));
+                "choose an embedding model for semantic search"
+            )));
         }
         Ok(&self.embedding_model)
     }
@@ -254,7 +267,10 @@ fn is_id_char(character: char) -> bool {
 fn validate_model(name: &str) -> Result<String, AiError> {
     let name = name.trim();
     if name.chars().count() > MAX_MODEL_NAME || name.chars().any(char::is_control) {
-        return Err(AiError::InvalidSettings("nome del modello non valido"));
+        return Err(AiError::InvalidSettings(crate::tr_str!(
+            "nome del modello non valido",
+            "invalid model name"
+        )));
     }
     Ok(name.to_owned())
 }
@@ -271,12 +287,15 @@ pub struct Endpoint {
 
 impl Endpoint {
     pub fn parse(url: &str) -> Result<Self, AiError> {
-        const INVALID: AiError = AiError::InvalidSettings(
-            "indirizzo del server non valido (esempio: http://localhost:11434/v1)",
-        );
+        let invalid = || {
+            AiError::InvalidSettings(crate::tr_str!(
+                "indirizzo del server non valido (esempio: http://localhost:11434/v1)",
+                "invalid server address (example: http://localhost:11434/v1)"
+            ))
+        };
         let url = url.trim().trim_end_matches('/');
         if url.len() > MAX_URL_LENGTH || url.chars().any(|c| c.is_whitespace() || c.is_control()) {
-            return Err(INVALID);
+            return Err(invalid());
         }
         let lower = url.to_ascii_lowercase();
         let (https, rest) = if let Some(rest) = lower.strip_prefix("https://") {
@@ -284,18 +303,18 @@ impl Endpoint {
         } else if let Some(rest) = lower.strip_prefix("http://") {
             (false, &url[url.len() - rest.len()..])
         } else {
-            return Err(INVALID);
+            return Err(invalid());
         };
         if rest.contains(['?', '#', '@', '\\']) {
-            return Err(INVALID);
+            return Err(invalid());
         }
         let authority = rest.split('/').next().unwrap_or_default();
         let host = if let Some(bracketed) = authority.strip_prefix('[') {
-            let (address, after) = bracketed.split_once(']').ok_or(INVALID)?;
-            if !(after.is_empty() || valid_port(after.strip_prefix(':').ok_or(INVALID)?)) {
-                return Err(INVALID);
+            let (address, after) = bracketed.split_once(']').ok_or_else(invalid)?;
+            if !(after.is_empty() || valid_port(after.strip_prefix(':').ok_or_else(invalid)?)) {
+                return Err(invalid());
             }
-            address.parse::<Ipv6Addr>().map_err(|_| INVALID)?;
+            address.parse::<Ipv6Addr>().map_err(|_| invalid())?;
             address.to_owned()
         } else {
             let (host, port) = match authority.rsplit_once(':') {
@@ -303,14 +322,14 @@ impl Endpoint {
                 None => (authority, None),
             };
             if port.is_some_and(|port| !valid_port(port)) {
-                return Err(INVALID);
+                return Err(invalid());
             }
             if host.is_empty()
                 || !host
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
             {
-                return Err(INVALID);
+                return Err(invalid());
             }
             host.to_ascii_lowercase()
         };
@@ -320,9 +339,10 @@ impl Endpoint {
             https,
         };
         if !endpoint.is_local() && !https {
-            return Err(AiError::InvalidSettings(
+            return Err(AiError::InvalidSettings(crate::tr_str!(
                 "un server che non è sul tuo computer deve usare https",
-            ));
+                "A server not on your computer must use https"
+            )));
         }
         Ok(endpoint)
     }
@@ -376,7 +396,10 @@ impl Database {
         let settings = settings.validated()?;
         let value = serde_json::to_string(&settings).map_err(StorageError::from)?;
         if value.len() > 4096 {
-            return Err(AiError::InvalidSettings("impostazioni troppo estese"));
+            return Err(AiError::InvalidSettings(crate::tr_str!(
+                "impostazioni troppo estese",
+                "settings too large"
+            )));
         }
         let connection = self.connection()?;
         connection

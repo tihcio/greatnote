@@ -57,21 +57,36 @@ pub fn empty_document() -> Value {
 }
 
 pub fn validate_document(document: &Value) -> Result<(), &'static str> {
-    let serialized = serde_json::to_vec(document).map_err(|_| "Documento non valido")?;
+    let serialized = serde_json::to_vec(document)
+        .map_err(|_| crate::tr_str!("Documento non valido", "Invalid document"))?;
     if serialized.len() > 1_048_576 {
-        return Err("Il contenuto della nota supera il limite di 1 MiB");
+        return Err(crate::tr_str!(
+            "Il contenuto della nota supera il limite di 1 MiB",
+            "Note content exceeds the 1 MiB limit"
+        ));
     }
 
-    let root = document
-        .as_object()
-        .ok_or("Il documento deve essere un oggetto JSON")?;
+    let root = document.as_object().ok_or_else(|| {
+        crate::tr_str!(
+            "Il documento deve essere un oggetto JSON",
+            "Document must be a JSON object"
+        )
+    })?;
     if root.get("type").and_then(Value::as_str) != Some("doc") {
-        return Err("Il documento deve avere il tipo 'doc'");
+        return Err(crate::tr_str!(
+            "Il documento deve avere il tipo 'doc'",
+            "Document must have type 'doc'"
+        ));
     }
     let content = root
         .get("content")
         .and_then(Value::as_array)
-        .ok_or("Il documento deve contenere un array 'content'")?;
+        .ok_or_else(|| {
+            crate::tr_str!(
+                "Il documento deve contenere un array 'content'",
+                "Document must contain a 'content' array"
+            )
+        })?;
 
     for node in content {
         validate_node(node, 0)?;
@@ -114,7 +129,10 @@ fn validate_layout_attrs(object: &serde_json::Map<String, Value>) -> Result<(), 
     if align_valid && indent_valid {
         Ok(())
     } else {
-        Err("Il documento contiene un allineamento o un rientro non valido")
+        Err(crate::tr_str!(
+            "Il documento contiene un allineamento o un rientro non valido",
+            "Document contains invalid alignment or indentation"
+        ))
     }
 }
 
@@ -130,9 +148,12 @@ fn validate_style_attrs(mark: &Value) -> Result<(), &'static str> {
     let Some(attrs) = mark.get("attrs") else {
         return Ok(());
     };
-    let attrs = attrs
-        .as_object()
-        .ok_or("Gli attributi di un contrassegno devono essere un oggetto")?;
+    let attrs = attrs.as_object().ok_or_else(|| {
+        crate::tr_str!(
+            "Gli attributi di un contrassegno devono essere un oggetto",
+            "Mark attributes must be an object"
+        )
+    })?;
     let mark_type = mark.get("type").and_then(Value::as_str).unwrap_or("");
     for (key, value) in attrs {
         let valid = match (mark_type, key.as_str()) {
@@ -148,7 +169,10 @@ fn validate_style_attrs(mark: &Value) -> Result<(), &'static str> {
             _ => true,
         };
         if !valid {
-            return Err("Il documento contiene uno stile del testo non valido");
+            return Err(crate::tr_str!(
+                "Il documento contiene uno stile del testo non valido",
+                "Document contains invalid text style"
+            ));
         }
     }
     Ok(())
@@ -157,14 +181,19 @@ fn validate_style_attrs(mark: &Value) -> Result<(), &'static str> {
 /// Immagine nel testo: solo un riferimento a un allegato della nota (mai un
 /// URL o un percorso), testo alternativo e larghezza facoltativi.
 fn validate_image(object: &serde_json::Map<String, Value>) -> Result<(), &'static str> {
-    const INVALID: &str = "Il documento contiene un'immagine non valida";
+    let invalid = || {
+        crate::tr_str!(
+            "Il documento contiene un'immagine non valida",
+            "The document contains an invalid image"
+        )
+    };
     if object.contains_key("content") || object.contains_key("marks") {
-        return Err(INVALID);
+        return Err(invalid());
     }
     let attrs = object
         .get("attrs")
         .and_then(Value::as_object)
-        .ok_or(INVALID)?;
+        .ok_or_else(invalid)?;
     for (key, value) in attrs {
         let valid = match key.as_str() {
             "attachmentId" => value.as_str().is_some_and(is_attachment_id),
@@ -181,11 +210,11 @@ fn validate_image(object: &serde_json::Map<String, Value>) -> Result<(), &'stati
             _ => false,
         };
         if !valid {
-            return Err(INVALID);
+            return Err(invalid());
         }
     }
     if !attrs.contains_key("attachmentId") {
-        return Err(INVALID);
+        return Err(invalid());
     }
     Ok(())
 }
@@ -193,14 +222,19 @@ fn validate_image(object: &serde_json::Map<String, Value>) -> Result<(), &'stati
 /// Testo cifrato con password (`crate::secret_text`): solo il testo age
 /// armored e un suggerimento facoltativo, nessun contenuto figlio.
 fn validate_encrypted_text(object: &serde_json::Map<String, Value>) -> Result<(), &'static str> {
-    const INVALID: &str = "Il documento contiene un testo cifrato non valido";
+    let invalid = || {
+        crate::tr_str!(
+            "Il documento contiene un testo cifrato non valido",
+            "The document contains invalid encrypted text"
+        )
+    };
     if object.contains_key("content") || object.contains_key("marks") {
-        return Err(INVALID);
+        return Err(invalid());
     }
     let attrs = object
         .get("attrs")
         .and_then(Value::as_object)
-        .ok_or(INVALID)?;
+        .ok_or_else(invalid)?;
     for (key, value) in attrs {
         let valid = match key.as_str() {
             "ciphertext" => value
@@ -215,11 +249,11 @@ fn validate_encrypted_text(object: &serde_json::Map<String, Value>) -> Result<()
             _ => false,
         };
         if !valid {
-            return Err(INVALID);
+            return Err(invalid());
         }
     }
     if !attrs.contains_key("ciphertext") {
-        return Err(INVALID);
+        return Err(invalid());
     }
     Ok(())
 }
@@ -236,21 +270,29 @@ pub const MAX_ANNOTATION_POINTS: usize = 2000;
 /// - `arrow`, `rect`, `ellipse`: due punti (inizio e fine);
 /// - `text`: un punto e un testo (nota scritta sull'immagine).
 pub fn validate_annotations(value: &Value) -> Result<(), &'static str> {
-    const INVALID: &str = "Le annotazioni dell'immagine non sono valide";
-    let shapes = value.as_array().ok_or(INVALID)?;
+    let invalid = || {
+        crate::tr_str!(
+            "Le annotazioni dell'immagine non sono valide",
+            "The image annotations are not valid"
+        )
+    };
+    let shapes = value.as_array().ok_or_else(invalid)?;
     if shapes.len() > MAX_IMAGE_ANNOTATIONS {
         return Err("Troppe annotazioni sull'immagine");
     }
     let coordinate = |value: &Value| value.as_f64().is_some_and(|v| (-0.05..=1.05).contains(&v));
     for shape in shapes {
-        let shape = shape.as_object().ok_or(INVALID)?;
+        let shape = shape.as_object().ok_or_else(invalid)?;
         if shape
             .keys()
             .any(|key| !matches!(key.as_str(), "kind" | "color" | "size" | "points" | "text"))
         {
-            return Err(INVALID);
+            return Err(invalid());
         }
-        let kind = shape.get("kind").and_then(Value::as_str).ok_or(INVALID)?;
+        let kind = shape
+            .get("kind")
+            .and_then(Value::as_str)
+            .ok_or_else(invalid)?;
         let color_ok = shape
             .get("color")
             .and_then(Value::as_str)
@@ -262,7 +304,7 @@ pub fn validate_annotations(value: &Value) -> Result<(), &'static str> {
         let points = shape
             .get("points")
             .and_then(Value::as_array)
-            .ok_or(INVALID)?;
+            .ok_or_else(invalid)?;
         let points_ok = points.iter().all(|point| {
             point
                 .as_array()
@@ -283,7 +325,7 @@ pub fn validate_annotations(value: &Value) -> Result<(), &'static str> {
             (_, Some(_)) => false,
         };
         if !(color_ok && size_ok && points_ok && count_ok && text_ok) {
-            return Err(INVALID);
+            return Err(invalid());
         }
     }
     Ok(())
@@ -328,16 +370,24 @@ pub fn remap_image_attachments(
 
 fn validate_node(node: &Value, depth: usize) -> Result<(), &'static str> {
     if depth > 20 {
-        return Err("La struttura del documento è troppo profonda");
+        return Err(crate::tr_str!(
+            "La struttura del documento è troppo profonda",
+            "Document structure is too deep"
+        ));
     }
 
-    let object = node
-        .as_object()
-        .ok_or("Ogni nodo del documento deve essere un oggetto")?;
-    let node_type = object
-        .get("type")
-        .and_then(Value::as_str)
-        .ok_or("Ogni nodo del documento deve avere un tipo")?;
+    let object = node.as_object().ok_or_else(|| {
+        crate::tr_str!(
+            "Ogni nodo del documento deve essere un oggetto",
+            "Every document node must be an object"
+        )
+    })?;
+    let node_type = object.get("type").and_then(Value::as_str).ok_or_else(|| {
+        crate::tr_str!(
+            "Ogni nodo del documento deve avere un tipo",
+            "Every document node must have a type"
+        )
+    })?;
     if !matches!(
         node_type,
         "paragraph"
@@ -359,7 +409,10 @@ fn validate_node(node: &Value, depth: usize) -> Result<(), &'static str> {
             | "image"
             | "encryptedText"
     ) {
-        return Err("Il documento contiene un tipo di nodo non supportato");
+        return Err(crate::tr_str!(
+            "Il documento contiene un tipo di nodo non supportato",
+            "Document contains an unsupported node type"
+        ));
     }
     if node_type == "image" {
         validate_image(object)?;
@@ -372,17 +425,25 @@ fn validate_node(node: &Value, depth: usize) -> Result<(), &'static str> {
     }
 
     if node_type == "text" && object.get("text").and_then(Value::as_str).is_none() {
-        return Err("Un nodo di testo deve contenere una stringa");
+        return Err(crate::tr_str!(
+            "Un nodo di testo deve contenere una stringa",
+            "Text node must contain a string"
+        ));
     }
     if let Some(marks) = object.get("marks") {
-        let marks = marks
-            .as_array()
-            .ok_or("I contrassegni del testo devono essere un array")?;
+        let marks = marks.as_array().ok_or_else(|| {
+            crate::tr_str!(
+                "I contrassegni del testo devono essere un array",
+                "Text marks must be an array"
+            )
+        })?;
         for mark in marks {
-            let mark_type = mark
-                .get("type")
-                .and_then(Value::as_str)
-                .ok_or("Ogni contrassegno deve avere un tipo")?;
+            let mark_type = mark.get("type").and_then(Value::as_str).ok_or_else(|| {
+                crate::tr_str!(
+                    "Ogni contrassegno deve avere un tipo",
+                    "Every mark must have a type"
+                )
+            })?;
             if !matches!(
                 mark_type,
                 "bold"
@@ -396,15 +457,21 @@ fn validate_node(node: &Value, depth: usize) -> Result<(), &'static str> {
                     | "superscript"
                     | "subscript"
             ) {
-                return Err("Il documento contiene un contrassegno non supportato");
+                return Err(crate::tr_str!(
+                    "Il documento contiene un contrassegno non supportato",
+                    "Document contains an unsupported mark"
+                ));
             }
             validate_style_attrs(mark)?;
         }
     }
     if let Some(children) = object.get("content") {
-        let children = children
-            .as_array()
-            .ok_or("Il contenuto di un nodo deve essere un array")?;
+        let children = children.as_array().ok_or_else(|| {
+            crate::tr_str!(
+                "Il contenuto di un nodo deve essere un array",
+                "Node content must be an array"
+            )
+        })?;
         for child in children {
             validate_node(child, depth + 1)?;
         }

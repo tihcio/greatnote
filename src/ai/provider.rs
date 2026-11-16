@@ -94,9 +94,10 @@ pub trait AiProvider: Send + Sync {
         _mime: &str,
         _cancel: &AtomicBool,
     ) -> Result<String, AiError> {
-        Err(AiError::NotConfigured(
+        Err(AiError::NotConfigured(crate::tr_str!(
             "questo provider non può leggere immagini",
-        ))
+            "this provider cannot read images"
+        )))
     }
 }
 
@@ -153,7 +154,10 @@ impl OpenAiCompatible {
             request = request.header("Authorization", format!("Bearer {}", key.0));
         }
         let bytes = serde_json::to_vec(body).map_err(|error| {
-            AiError::InvalidResponse(format!("richiesta non serializzabile: {error}"))
+            AiError::InvalidResponse(crate::tr!(
+                "richiesta non serializzabile: {error}",
+                "request not serializable: {error}"
+            ))
         })?;
         let response = request.send(&bytes[..]).map_err(transport_error)?;
         check_status(response)
@@ -172,18 +176,22 @@ impl OpenAiCompatible {
 fn transport_error(error: ureq::Error) -> AiError {
     match error {
         ureq::Error::Timeout(_) => AiError::Timeout,
-        ureq::Error::HostNotFound => AiError::Connection("server non trovato".to_owned()),
-        ureq::Error::ConnectionFailed => AiError::Connection(
-            "connessione rifiutata: il server è avviato all'indirizzo indicato?".to_owned(),
-        ),
+        ureq::Error::HostNotFound => {
+            AiError::Connection(crate::tr!("server non trovato", "server not found"))
+        }
+        ureq::Error::ConnectionFailed => AiError::Connection(crate::tr!(
+            "connessione rifiutata: il server è avviato all'indirizzo indicato?",
+            "connection refused: is the server running at the specified address?"
+        )),
         ureq::Error::Io(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {
-            AiError::Connection(
-                "connessione rifiutata: il server è avviato all'indirizzo indicato?".to_owned(),
-            )
+            AiError::Connection(crate::tr!(
+                "connessione rifiutata: il server è avviato all'indirizzo indicato?",
+                "connection refused: is the server running at the specified address?"
+            ))
         }
         ureq::Error::Io(error) if error.kind() == std::io::ErrorKind::TimedOut => AiError::Timeout,
         ureq::Error::BodyExceedsLimit(_) => {
-            AiError::InvalidResponse("risposta troppo grande".to_owned())
+            AiError::InvalidResponse(crate::tr!("risposta troppo grande", "response too large"))
         }
         other => AiError::Connection(truncate(&other.to_string(), MAX_ERROR_MESSAGE)),
     }
@@ -238,7 +246,7 @@ fn error_message(body: &str) -> String {
         .unwrap_or_else(|| body.to_owned());
     let message = message.trim();
     if message.is_empty() {
-        "nessun dettaglio".to_owned()
+        crate::tr!("nessun dettaglio", "no details")
     } else {
         truncate(message, MAX_ERROR_MESSAGE)
     }
@@ -271,11 +279,10 @@ fn read_json(mut response: ureq::http::Response<ureq::Body>) -> Result<Value, Ai
             // Tipico di un indirizzo che punta all'interfaccia web invece che
             // all'API (es. Open WebUI senza `/api`).
             AiError::InvalidResponse(
-                "il server ha risposto con una pagina web invece che con l'API: controlla l'indirizzo (per Open WebUI usa http://localhost:3000/api)"
-                    .to_owned(),
+                crate::tr!("il server ha risposto con una pagina web invece che con l'API: controlla l'indirizzo (per Open WebUI usa http://localhost:3000/api)", "the server responded with a web page instead of the API: check the address (for Open WebUI use http://localhost:3000/api)"),
             )
         } else {
-            AiError::InvalidResponse("il server non ha restituito JSON".to_owned())
+            AiError::InvalidResponse(crate::tr!("il server non ha restituito JSON", "the server did not return JSON"))
         }
     })
 }
@@ -314,7 +321,12 @@ impl AiProvider for OpenAiCompatible {
         let content = value
             .pointer("/choices/0/message/content")
             .and_then(Value::as_str)
-            .ok_or_else(|| AiError::InvalidResponse("risposta senza testo".to_owned()))?;
+            .ok_or_else(|| {
+                AiError::InvalidResponse(crate::tr!(
+                    "risposta senza testo",
+                    "response without text"
+                ))
+            })?;
         let mut output = OutputFilter::default();
         output.push(content, &mut |_| {})?;
         output.finish()
@@ -330,10 +342,12 @@ impl AiProvider for OpenAiCompatible {
 
     fn list_models(&self) -> Result<Vec<String>, AiError> {
         let value = read_json(self.get("models")?)?;
-        let data = value
-            .get("data")
-            .and_then(Value::as_array)
-            .ok_or_else(|| AiError::InvalidResponse("elenco dei modelli assente".to_owned()))?;
+        let data = value.get("data").and_then(Value::as_array).ok_or_else(|| {
+            AiError::InvalidResponse(crate::tr!(
+                "elenco dei modelli assente",
+                "model list missing"
+            ))
+        })?;
         let mut models: Vec<String> = data
             .iter()
             .filter_map(|model| model.get("id").and_then(Value::as_str))
@@ -374,7 +388,12 @@ impl AiProvider for OpenAiCompatible {
             let content = value
                 .pointer("/choices/0/message/content")
                 .and_then(Value::as_str)
-                .ok_or_else(|| AiError::InvalidResponse("risposta senza testo".to_owned()))?;
+                .ok_or_else(|| {
+                    AiError::InvalidResponse(crate::tr!(
+                        "risposta senza testo",
+                        "response without text"
+                    ))
+                })?;
             output.push(content, on_delta)?;
             return output.finish();
         }
@@ -395,7 +414,10 @@ impl AiProvider for OpenAiCompatible {
                 break;
             }
             let event: Value = serde_json::from_str(data).map_err(|_| {
-                AiError::InvalidResponse("frammento della risposta non leggibile".to_owned())
+                AiError::InvalidResponse(crate::tr!(
+                    "frammento della risposta non leggibile",
+                    "unreadable response fragment"
+                ))
             })?;
             if event.get("error").is_some() {
                 return Err(AiError::Http {
@@ -439,7 +461,10 @@ fn parse_embeddings(value: &Value, expected: usize) -> Result<Vec<Vec<f32>>, AiE
         .and_then(Value::as_array)
         .ok_or_else(|| invalid("elenco assente"))?;
     if data.len() != expected {
-        return Err(invalid("numero di vettori diverso dai testi inviati"));
+        return Err(invalid(crate::tr_str!(
+            "numero di vettori diverso dai testi inviati",
+            "number of vectors differs from sent texts"
+        )));
     }
     let mut indexed: Vec<(usize, Vec<f32>)> = Vec::with_capacity(expected);
     for (position, item) in data.iter().enumerate() {
@@ -452,7 +477,10 @@ fn parse_embeddings(value: &Value, expected: usize) -> Result<Vec<Vec<f32>>, AiE
             .and_then(Value::as_array)
             .ok_or_else(|| invalid("vettore assente"))?;
         if numbers.is_empty() || numbers.len() > MAX_DIMENSIONS {
-            return Err(invalid("dimensione del vettore non supportata"));
+            return Err(invalid(crate::tr_str!(
+                "dimensione del vettore non supportata",
+                "unsupported vector dimension"
+            )));
         }
         let vector = numbers
             .iter()
@@ -463,7 +491,7 @@ fn parse_embeddings(value: &Value, expected: usize) -> Result<Vec<Vec<f32>>, AiE
                     .filter(|number| number.is_finite())
             })
             .collect::<Option<Vec<f32>>>()
-            .ok_or_else(|| invalid("valori non numerici"))?;
+            .ok_or_else(|| invalid(crate::tr_str!("valori non numerici", "non-numeric values")))?;
         indexed.push((index, vector));
     }
     indexed.sort_by_key(|(index, _)| *index);
@@ -545,7 +573,10 @@ impl OutputFilter {
                     }
                     let chunk = std::mem::take(&mut self.pending);
                     if self.text.chars().count() + chunk.chars().count() > MAX_OUTPUT_CHARS {
-                        return Err(AiError::InvalidResponse("risposta troppo lunga".to_owned()));
+                        return Err(AiError::InvalidResponse(crate::tr!(
+                            "risposta troppo lunga",
+                            "response too long"
+                        )));
                     }
                     self.text.push_str(&chunk);
                     on_delta(&chunk);

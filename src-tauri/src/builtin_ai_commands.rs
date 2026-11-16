@@ -52,10 +52,12 @@ fn message(error: impl ToString) -> String {
 
 /// Motore integrato, disponibile dopo [`setup`].
 pub(crate) fn runtime() -> CommandResult<Arc<BuiltinRuntime>> {
-    RUNTIME
-        .get()
-        .cloned()
-        .ok_or_else(|| "Motore AI integrato non inizializzato".to_owned())
+    RUNTIME.get().cloned().ok_or_else(|| {
+        greatnote_core::tr!(
+            "Motore AI integrato non inizializzato",
+            "Built-in AI engine not initialized"
+        )
+    })
 }
 
 /// Hardware del computer; la prima chiamata interroga il motore.
@@ -280,7 +282,12 @@ pub async fn start_hub_model_download(
             .into_iter()
             .map(|variant| variant.model)
             .find(|model| model.id == model_id)
-            .ok_or("Variante non più disponibile su Hugging Face: aggiorna l'elenco")?;
+            .ok_or_else(|| {
+                greatnote_core::tr!(
+                    "Variante non più disponibile su Hugging Face: aggiorna l'elenco",
+                    "This variant is no longer available on Hugging Face: refresh the list"
+                )
+            })?;
         let runtime = runtime()?;
         // Un modello già registrato a un'altra revisione viene aggiornato:
         // i file della revisione precedente, se non condivisi, si eliminano.
@@ -288,7 +295,10 @@ pub async fn start_hub_model_download(
             && previous != model
         {
             if app.state::<ModelDownloads>().is_active(&model.id) {
-                return Err("Download già in corso".to_owned());
+                return Err(greatnote_core::tr!(
+                    "Download già in corso",
+                    "Download already in progress"
+                ));
             }
             let others: Vec<CatalogModel> = runtime
                 .store()
@@ -338,12 +348,17 @@ fn begin_download(app: &AppHandle, model: CatalogModel) -> CommandResult<()> {
     let downloads = app.state::<ModelDownloads>();
     let cancel = Arc::new(AtomicBool::new(false));
     {
-        let mut active = downloads
-            .active
-            .lock()
-            .map_err(|_| "Stato dei download non disponibile".to_owned())?;
+        let mut active = downloads.active.lock().map_err(|_| {
+            greatnote_core::tr!(
+                "Stato dei download non disponibile",
+                "Download status not available"
+            )
+        })?;
         if active.contains_key(&model.id) {
-            return Err("Download già in corso".to_owned());
+            return Err(greatnote_core::tr!(
+                "Download già in corso",
+                "Download already in progress"
+            ));
         }
         // Due download non scrivono mai sullo stesso file.
         let shares_file = active
@@ -355,9 +370,10 @@ fn begin_download(app: &AppHandle, model: CatalogModel) -> CommandResult<()> {
                     .any(|file| model.files().any(|own| own.file_name == file.file_name))
             });
         if shares_file {
-            return Err(
-                "Un altro download in corso usa lo stesso file: attendi che finisca".to_owned(),
-            );
+            return Err(greatnote_core::tr!(
+                "Un altro download in corso usa lo stesso file: attendi che finisca",
+                "Another download in progress uses the same file: wait for it to finish"
+            ));
         }
         active.insert(model.id.clone(), Arc::clone(&cancel));
     }
@@ -401,7 +417,11 @@ fn begin_download(app: &AppHandle, model: CatalogModel) -> CommandResult<()> {
         if let Ok(mut active) = downloads.active.lock() {
             active.remove(&model_id);
         }
-        return Err(format!("Download non avviato: {error}"));
+        return Err(greatnote_core::tr!(
+            "Download non avviato: {}",
+            "Download not started: {}",
+            error
+        ));
     }
     Ok(())
 }
@@ -433,7 +453,7 @@ pub async fn delete_builtin_model(
             .ok_or("Modello sconosciuto")?;
         let downloads = app.state::<ModelDownloads>();
         if downloads.is_active(&model.id) {
-            return Err("Interrompi il download prima di eliminare il modello".to_owned());
+            return Err(greatnote_core::tr!("Interrompi il download prima di eliminare il modello", "Stop the download before deleting the model"));
         }
         let settings = app.state::<Database>().ai_settings().map_err(message)?;
         let in_use = settings.provider == ProviderKind::Builtin
@@ -445,10 +465,10 @@ pub async fn delete_builtin_model(
             .iter()
             .any(|selected| selected.as_str() == model.id);
         if in_use {
-            return Err(
-                "Il modello è in uso: scegline un altro nelle impostazioni AI e salva prima di eliminarlo"
-                    .to_owned(),
-            );
+            return Err(greatnote_core::tr!(
+                "Il modello è in uso: scegline un altro nelle impostazioni AI e salva prima di eliminarlo",
+                "The model is in use: choose another one in the AI settings and save before deleting it"
+            ));
         }
         // Su Windows un file aperto da un server non si può eliminare.
         runtime.stop_all();

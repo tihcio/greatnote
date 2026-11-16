@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { isMobile } from "../app/platform";
 import { t } from "../i18n";
 import { suggestedReminder } from "../lib/dates";
 import { errorMessage, formatDateTime } from "../lib/format";
@@ -47,6 +48,14 @@ export default function EntityReminders({
     try {
       await invoke<Reminder>("create_reminder", { entityType, entityId, localTime });
       setError(null);
+      // Su mobile il promemoria è una notifica di sistema: al primo si chiede
+      // il permesso; se manca, il promemoria resta salvato ma va detto.
+      if (isMobile) {
+        const permission = await invoke<string>("request_notification_permission");
+        if (permission !== "granted") {
+          setError(permission === "denied" ? t.notificationsBlocked : t.notificationsOff);
+        }
+      }
       setLocalTime(suggestedReminder());
       await load();
       onChanged?.();

@@ -886,13 +886,17 @@ impl Database {
 
     pub fn set_ui_preferences(&self, preferences: &Value) -> Result<Value, StorageError> {
         if !preferences.is_object() {
-            return Err(StorageError::InvalidSetting(
+            return Err(StorageError::InvalidSetting(crate::tr_str!(
                 "le preferenze devono essere un oggetto",
-            ));
+                "preferences must be an object"
+            )));
         }
         let serialized = serde_json::to_string(preferences)?;
         if serialized.len() > MAX_PREFERENCES_BYTES {
-            return Err(StorageError::InvalidSetting("preferenze troppo grandi"));
+            return Err(StorageError::InvalidSetting(crate::tr_str!(
+                "preferenze troppo grandi",
+                "preferences too large"
+            )));
         }
         let connection = self.connection()?;
         connection.execute(

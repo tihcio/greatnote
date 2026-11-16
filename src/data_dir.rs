@@ -98,7 +98,10 @@ pub fn migrate_legacy_data_directory(
                 if fs::symlink_metadata(current.join(entry)).is_ok() {
                     return Err(StorageError::Io(io::Error::new(
                         io::ErrorKind::AlreadyExists,
-                        format!("la cartella dati contiene già {entry}"),
+                        crate::tr!(
+                            "la cartella dati contiene già {entry}",
+                            "the data folder already contains {entry}"
+                        ),
                     )));
                 }
             }

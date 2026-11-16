@@ -85,7 +85,12 @@ impl MicrosoftCalendar {
                 Some(next) if next.starts_with(&format!("{}/", self.base_url)) => {
                     url = next.to_owned()
                 }
-                Some(_) => return Err(invalid("pagina successiva su un altro server")),
+                Some(_) => {
+                    return Err(invalid(crate::tr_str!(
+                        "pagina successiva su un altro server",
+                        "next page on another server"
+                    )));
+                }
                 None => break,
             }
         }
@@ -98,13 +103,16 @@ fn utc_instant(value: &Value) -> Result<String, CalendarError> {
     let text = value
         .get("dateTime")
         .and_then(Value::as_str)
-        .ok_or_else(|| invalid("orario mancante"))?;
+        .ok_or_else(|| invalid(crate::tr_str!("orario mancante", "missing time")))?;
     let zone = value
         .get("timeZone")
         .and_then(Value::as_str)
         .unwrap_or("UTC");
     if !zone.eq_ignore_ascii_case("UTC") {
-        return Err(invalid("orario non in UTC"));
+        return Err(invalid(crate::tr_str!(
+            "orario non in UTC",
+            "time not in UTC"
+        )));
     }
     super::parse_remote_instant(&format!("{}Z", text.trim_end_matches('Z')))
 }
@@ -115,7 +123,7 @@ fn date_part(value: &Value) -> Result<String, CalendarError> {
         .and_then(Value::as_str)
         .and_then(|text| text.get(..10))
         .map(str::to_owned)
-        .ok_or_else(|| invalid("data mancante"))
+        .ok_or_else(|| invalid(crate::tr_str!("data mancante", "missing date")))
 }
 
 pub(crate) fn parse_event(value: &Value) -> Result<Option<RemoteEvent>, CalendarError> {

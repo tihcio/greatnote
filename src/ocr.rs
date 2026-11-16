@@ -48,7 +48,12 @@ pub struct VisionImage {
 pub fn prepare_for_vision(bytes: &[u8], mime: &str, max_side: u32) -> Result<VisionImage, AiError> {
     use std::io::Cursor;
 
-    let invalid = |error: String| AiError::Ocr(format!("immagine non leggibile: {error}"));
+    let invalid = |error: String| {
+        AiError::Ocr(crate::tr!(
+            "immagine non leggibile: {error}",
+            "unreadable image: {error}"
+        ))
+    };
     let mut reader = image::ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|error| invalid(error.to_string()))?;
@@ -241,7 +246,12 @@ pub fn run_tesseract(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|error| AiError::Ocr(format!("Tesseract non avviato: {error}")))?;
+        .map_err(|error| {
+            AiError::Ocr(crate::tr!(
+                "Tesseract non avviato: {error}",
+                "Tesseract did not start: {error}"
+            ))
+        })?;
     let mut stdin = child.stdin.take();
     let bytes = image.to_vec();
     let writer = thread::spawn(move || {
@@ -333,9 +343,10 @@ impl Database {
         let attachment = get_attachment_row(&connection, attachment_id)?
             .ok_or(StorageError::AttachmentNotFound)?;
         if !attachment.mime_type.starts_with("image/") {
-            return Err(StorageError::InvalidAttachment(
+            return Err(StorageError::InvalidAttachment(crate::tr_str!(
                 "l'allegato non è un'immagine",
-            ));
+                "the attachment is not an image"
+            )));
         }
         let note = get_note(&connection, &attachment.note_id)?.ok_or(StorageError::NoteNotFound)?;
         let (_, bytes) = verified_attachment(

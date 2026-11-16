@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Risorse cercate per nome a runtime (getIdentifier), che la riduzione
+     delle risorse della build di rilascio altrimenti eliminerebbe:
+     l'icona delle notifiche, indicata in src-tauri/src/reminder_alarms.rs. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_notify" />

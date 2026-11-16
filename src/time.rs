@@ -76,27 +76,39 @@ pub fn format_utc(timestamp: Timestamp) -> String {
 pub fn parse_utc(value: &str) -> Result<Timestamp, StorageError> {
     value
         .parse::<Timestamp>()
-        .map_err(|_| invalid("istante non valido"))
+        .map_err(|_| invalid(crate::tr_str!("istante non valido", "invalid timestamp")))
 }
 
 pub fn parse_date(value: &str) -> Result<Date, StorageError> {
     if value.len() != 10 {
-        return Err(invalid("usa una data AAAA-MM-GG"));
+        return Err(invalid(crate::tr_str!(
+            "usa una data AAAA-MM-GG",
+            "use a date in YYYY-MM-DD format"
+        )));
     }
-    value
-        .parse::<Date>()
-        .map_err(|_| invalid("usa una data AAAA-MM-GG"))
+    value.parse::<Date>().map_err(|_| {
+        invalid(crate::tr_str!(
+            "usa una data AAAA-MM-GG",
+            "use a date in YYYY-MM-DD format"
+        ))
+    })
 }
 
 /// Orario locale `AAAA-MM-GGTHH:MM` (il formato di `<input type=datetime-local>`).
 pub fn parse_local(value: &str) -> Result<DateTime, StorageError> {
     let valid_shape = value.len() == 16 && value.as_bytes()[10] == b'T';
     if !valid_shape {
-        return Err(invalid("usa un orario AAAA-MM-GGTHH:MM"));
+        return Err(invalid(crate::tr_str!(
+            "usa un orario AAAA-MM-GGTHH:MM",
+            "use a time in YYYY-MM-DDTHH:MM format"
+        )));
     }
-    value
-        .parse::<DateTime>()
-        .map_err(|_| invalid("usa un orario AAAA-MM-GGTHH:MM"))
+    value.parse::<DateTime>().map_err(|_| {
+        invalid(crate::tr_str!(
+            "usa un orario AAAA-MM-GGTHH:MM",
+            "use a time in YYYY-MM-DDTHH:MM format"
+        ))
+    })
 }
 
 pub fn local_to_zoned(local: DateTime, zone: &Zone) -> Result<Zoned, StorageError> {
@@ -127,12 +139,21 @@ pub fn today(now: Timestamp, zone: &Zone) -> Date {
 pub fn day_start(date: Date, zone: &Zone) -> Result<Timestamp, StorageError> {
     date.to_zoned(zone.tz.clone())
         .map(|zoned| zoned.timestamp())
-        .map_err(|_| invalid("data fuori dall'intervallo supportato"))
+        .map_err(|_| {
+            invalid(crate::tr_str!(
+                "data fuori dall'intervallo supportato",
+                "date out of supported range"
+            ))
+        })
 }
 
 pub fn next_day(date: Date) -> Result<Date, StorageError> {
-    date.tomorrow()
-        .map_err(|_| invalid("data fuori dall'intervallo supportato"))
+    date.tomorrow().map_err(|_| {
+        invalid(crate::tr_str!(
+            "data fuori dall'intervallo supportato",
+            "date out of supported range"
+        ))
+    })
 }
 
 pub fn add_minutes(timestamp: Timestamp, minutes: i64) -> Result<Timestamp, StorageError> {

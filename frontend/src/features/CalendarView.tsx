@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { isMobile } from "../app/platform";
 import { t } from "../i18n";
 import {
   addDays,
@@ -382,13 +383,13 @@ export default function CalendarView({
               {t.dayView}
             </button>
           </div>
-          <button aria-label={t.previousPeriod} className="subtle-action" onClick={() => move(-1)} title={t.previousPeriod} type="button">
+          <button aria-label={t.previousPeriod} className="subtle-action period-arrow" onClick={() => move(-1)} title={t.previousPeriod} type="button">
             ‹
           </button>
           <button className="subtle-action" onClick={() => setAnchor(today)} type="button">
             {t.todayButton}
           </button>
-          <button aria-label={t.nextPeriod} className="subtle-action" onClick={() => move(1)} title={t.nextPeriod} type="button">
+          <button aria-label={t.nextPeriod} className="subtle-action period-arrow" onClick={() => move(1)} title={t.nextPeriod} type="button">
             ›
           </button>
           {(accounts.length > 0 || subscriptions.length > 0) && (
@@ -460,6 +461,7 @@ export default function CalendarView({
                   aria-label={label}
                   className={`calendar-day${outside ? " outside" : ""}${day === today ? " today" : ""}`}
                   key={day}
+                  onClick={isMobile ? () => showDay(day) : undefined}
                   onContextMenu={(pointer) => dayMenu(pointer, day)}
                   role="gridcell"
                 >

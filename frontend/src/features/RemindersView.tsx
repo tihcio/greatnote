@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { isMobile } from "../app/platform";
 import { t } from "../i18n";
 import { formatTime } from "../lib/dates";
 import { errorMessage, formatDateTime } from "../lib/format";
@@ -31,7 +32,8 @@ export function reminderTimeText(reminder: Reminder, short = false): string {
   if (reminder.status !== "fired") return formatDateTime(reminder.remind_at);
   const time = short ? formatTime(reminder.remind_at) : formatDateTime(reminder.remind_at);
   const due = t.reminderDueAt(time);
-  return isMissed(reminder) ? `${due} · ${t.reminderMissed}` : due;
+  // Su mobile la notifica arriva anche ad app chiusa: non è «persa».
+  return isMissed(reminder) && !isMobile ? `${due} · ${t.reminderMissed}` : due;
 }
 
 interface ReminderActionsProps {
@@ -243,15 +245,42 @@ export default function RemindersView({ reminders, onOpen, onChanged, refreshKey
   const fired = reminders.filter((reminder) => reminder.status === "fired");
   const pending = reminders.filter((reminder) => reminder.status === "pending");
 
+  // Su mobile i promemoria sono notifiche di sistema: senza il permesso non
+  // compaiono, e va detto.
+  const [permission, setPermission] = useState<string>("granted");
+  useEffect(() => {
+    if (!isMobile) return;
+    void invoke<string>("get_notification_permission")
+      .then(setPermission)
+      .catch(() => undefined);
+  }, [refreshKey]);
+  const allowNotifications = async () => {
+    try {
+      setPermission(await invoke<string>("request_notification_permission"));
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
   return (
     <section className="workspace-panel" aria-labelledby="reminders-title">
       <header className="workspace-header">
         <div>
           <h1 id="reminders-title">{t.remindersNav}</h1>
-          <p className="workspace-subtitle">{t.remindersIntro}</p>
+          <p className="workspace-subtitle">{isMobile ? t.remindersIntroMobile : t.remindersIntro}</p>
         </div>
       </header>
       <div className="workspace-scroll">
+        {permission !== "granted" && (
+          <div className="inline-error notification-notice" role="status">
+            <span>{permission === "denied" ? t.notificationsBlocked : t.notificationsOff}</span>
+            {permission !== "denied" && (
+              <button className="subtle-action" onClick={() => void allowNotifications()} type="button">
+                {t.notificationsAllow}
+              </button>
+            )}
+          </div>
+        )}
         {error && (
           <div className="inline-error" role="alert">
             {error}

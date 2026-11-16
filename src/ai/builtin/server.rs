@@ -114,14 +114,18 @@ impl ServerSpec {
                 batch,
             ]);
         } else if self.projector_file.is_none() {
-            // Chat con risposte dirette: il ragionamento dei modelli piccoli
-            // su CPU allunga molto i tempi senza migliorare abbastanza i
-            // risultati. Non vale per la visione: senza poter ragionare nel
-            // suo canale Gemma 4 ragiona nel testo della risposta (in
-            // inglese, a volte senza la trascrizione). Con il canale aperto
-            // llama-server separa il ragionamento in `reasoning_content`,
-            // che non viene letto.
-            arguments.extend(["--reasoning-budget", "0"].map(str::to_owned));
+            // Chat: ragionamento breve nel suo canale, che llama-server
+            // separa in `reasoning_content` (non letto). Non va chiuso del
+            // tutto (`--reasoning-budget 0`): Gemma 4 ragionerebbe comunque,
+            // ma in inglese nel testo della risposta, e con risposte lunghe
+            // l'utente vedrebbe solo il ragionamento prima del tempo massimo.
+            // Il limite tiene contenuta l'attesa, più stretto senza GPU.
+            let budget = if gpu {
+                CHAT_REASONING_BUDGET_GPU
+            } else {
+                CHAT_REASONING_BUDGET_CPU
+            };
+            arguments.extend(["--reasoning-budget".to_owned(), budget.to_string()]);
         }
         if !gpu {
             arguments.extend(["--device", "none"].map(str::to_owned));
@@ -155,6 +159,12 @@ fn log_name(alias: &str) -> String {
         .take(120)
         .collect()
 }
+
+/// Token di ragionamento concessi al modello di chat: circa 8 secondi con
+/// GPU, e un limite più stretto su CPU per restare entro il tempo massimo
+/// della risposta.
+const CHAT_REASONING_BUDGET_GPU: u32 = 512;
+const CHAT_REASONING_BUDGET_CPU: u32 = 128;
 
 fn path_argument(path: &Path) -> String {
     path.to_string_lossy().into_owned()
@@ -234,25 +244,32 @@ impl BuiltinRuntime {
 
     /// Server avviato e pronto per la configurazione richiesta.
     pub fn lease(&self, spec: &ServerSpec, cancel: &AtomicBool) -> Result<ServerLease, AiError> {
-        let executable = self.executable.as_deref().ok_or(AiError::NotConfigured(
-            "il motore AI integrato non è incluso in questa installazione",
-        ))?;
+        let executable =
+            self.executable
+                .as_deref()
+                .ok_or(AiError::NotConfigured(crate::tr_str!(
+                    "il motore AI integrato non è incluso in questa installazione",
+                    "the built-in AI engine is not included in this installation"
+                )))?;
         for file in std::iter::once(&spec.model_file)
             .chain(&spec.part_files)
             .chain(spec.projector_file.as_ref())
         {
             if !self.store.directory().join(file).is_file() {
-                return Err(AiError::NotConfigured(
+                return Err(AiError::NotConfigured(crate::tr_str!(
                     "il modello scelto non è scaricato: scaricalo nelle impostazioni AI",
-                ));
+                    "the selected model is not downloaded: download it in AI settings"
+                )));
             }
         }
         // Un avvio alla volta: due richieste contemporanee non devono
         // caricare due volte lo stesso modello.
-        let mut servers = self
-            .servers
-            .lock()
-            .map_err(|_| AiError::Builtin("stato dei server non disponibile".to_owned()))?;
+        let mut servers = self.servers.lock().map_err(|_| {
+            AiError::Builtin(crate::tr!(
+                "stato dei server non disponibile",
+                "server state unavailable"
+            ))
+        })?;
         let reusable = servers
             .get(spec)
             .filter(|server| !server.has_exited())
@@ -270,8 +287,9 @@ impl BuiltinRuntime {
         };
         server.in_use.fetch_add(1, Ordering::SeqCst);
         let endpoint = Endpoint::parse(&format!("http://127.0.0.1:{}/v1", server.port))?;
-        let api_key = ApiKey::new(server.api_key.clone())
-            .ok_or_else(|| AiError::Builtin("chiave del server vuota".to_owned()))?;
+        let api_key = ApiKey::new(server.api_key.clone()).ok_or_else(|| {
+            AiError::Builtin(crate::tr!("chiave del server vuota", "empty server key"))
+        })?;
         Ok(ServerLease {
             server,
             endpoint,
@@ -313,7 +331,10 @@ impl BuiltinRuntime {
             .directory()
             .join(format!("server-{}.log", log_name(&spec.alias)));
         let log = File::create(&log_path).map_err(|error| {
-            AiError::Builtin(format!("registro del server non creato: {error}"))
+            AiError::Builtin(crate::tr!(
+                "registro del server non creato: {error}",
+                "server log not created: {error}"
+            ))
         })?;
         let mut command = Command::new(executable);
         command
@@ -333,7 +354,10 @@ impl BuiltinRuntime {
             command.creation_flags(CREATE_NO_WINDOW);
         }
         let child = command.spawn().map_err(|error| {
-            AiError::Builtin(format!("avvio del motore AI non riuscito: {error}"))
+            AiError::Builtin(crate::tr!(
+                "avvio del motore AI non riuscito: {error}",
+                "AI engine startup failed: {error}"
+            ))
         })?;
         let server = RunningServer {
             child: Mutex::new(child),
@@ -350,7 +374,10 @@ impl BuiltinRuntime {
                     AiError::Builtin(message) => AiError::Builtin(format!(
                         "{message}{}",
                         log_tail(&log_path)
-                            .map(|tail| format!(". Ultime righe del registro: {tail}"))
+                            .map(|tail| crate::tr!(
+                                ". Ultime righe del registro: {tail}",
+                                ". Last log lines: {tail}"
+                            ))
                             .unwrap_or_default()
                     )),
                     other => other,
@@ -402,7 +429,12 @@ fn free_port() -> Result<u16, AiError> {
     TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
         .and_then(|listener| listener.local_addr())
         .map(|address| address.port())
-        .map_err(|error| AiError::Builtin(format!("nessuna porta locale libera: {error}")))
+        .map_err(|error| {
+            AiError::Builtin(crate::tr!(
+                "nessuna porta locale libera: {error}",
+                "no free local port: {error}"
+            ))
+        })
 }
 
 /// Attende che `/health` risponda 200 (modello caricato).
@@ -421,10 +453,10 @@ fn wait_until_ready(server: &RunningServer, cancel: &AtomicBool) -> Result<(), A
             return Err(AiError::Cancelled);
         }
         if server.has_exited() {
-            return Err(AiError::Builtin(
-                "il motore AI si è chiuso durante il caricamento del modello (memoria insufficiente?)"
-                    .to_owned(),
-            ));
+            return Err(AiError::Builtin(crate::tr!(
+                "il motore AI si è chiuso durante il caricamento del modello (memoria insufficiente?)",
+                "the AI engine closed during model loading (insufficient memory?)"
+            )));
         }
         if let Ok(response) = agent.get(&url).call()
             && response.status().as_u16() == 200
@@ -432,9 +464,10 @@ fn wait_until_ready(server: &RunningServer, cancel: &AtomicBool) -> Result<(), A
             return Ok(());
         }
         if started.elapsed() > STARTUP_TIMEOUT {
-            return Err(AiError::Builtin(
-                "il caricamento del modello richiede troppo tempo".to_owned(),
-            ));
+            return Err(AiError::Builtin(crate::tr!(
+                "il caricamento del modello richiede troppo tempo",
+                "model loading is taking too long"
+            )));
         }
         thread::sleep(HEALTH_POLL);
     }
@@ -490,7 +523,10 @@ mod tests {
         assert!(!joined.contains("--embedding"));
         assert!(!joined.contains("--reasoning-budget"));
         let chat_arguments = chat_spec.arguments(&store, 4321, true).join(" ");
-        assert!(chat_arguments.contains("--reasoning-budget 0"));
+        // Mai 0: Gemma 4 ragionerebbe nel testo della risposta.
+        assert!(chat_arguments.contains("--reasoning-budget 512"));
+        let chat_cpu = chat_spec.arguments(&store, 4321, false).join(" ");
+        assert!(chat_cpu.contains("--reasoning-budget 128"));
         // La chiave non compare mai tra gli argomenti.
         assert!(!joined.contains("api-key"));
         let embedding_arguments = embedding_spec.arguments(&store, 4321, true).join(" ");

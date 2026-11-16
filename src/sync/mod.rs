@@ -61,20 +61,27 @@ pub enum SyncTransport {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SyncError {
-    #[error("La sincronizzazione non è attiva")]
+    #[error("{}", crate::tr!("La sincronizzazione non è attiva", "Sync is not active"))]
     NotConfigured,
     #[error("{0}")]
     Folder(#[from] FolderError),
     #[error(transparent)]
     Storage(#[from] StorageError),
     #[error(
-        "Nella cartella ci sono modifiche di questo dispositivo che il database non conosce: è stato ripristinato un backup meno recente oppure lo stesso database è stato copiato su un altro computer. Per sicurezza la sincronizzazione è ferma: disattivala e riattivala per dare a questo computer una nuova identità."
+        "{}", crate::tr!("Nella cartella ci sono modifiche di questo dispositivo che il database non conosce: è stato ripristinato un backup meno recente oppure lo stesso database è stato copiato su un altro computer. Per sicurezza la sincronizzazione è ferma: disattivala e riattivala per dare a questo computer una nuova identità.", "The folder contains changes from this device that the database does not know about: an older backup was restored or the same database was copied to another computer. For safety, sync is paused: disable and re-enable it to give this computer a new identity.")
     )]
     DuplicateDevice,
     #[error(
-        "La cartella contiene un'altra libreria di Greatnote: scegli di nuovo la cartella nelle impostazioni"
+        "{}", crate::tr!("La cartella contiene un'altra libreria di Greatnote: scegli di nuovo la cartella nelle impostazioni", "The folder contains another Greatnote library: choose the folder again in settings")
     )]
     OtherLibrary,
+}
+
+impl SyncError {
+    /// Le credenziali del servizio remoto non valgono più.
+    pub fn is_unauthorized(&self) -> bool {
+        matches!(self, Self::Folder(FolderError::Unauthorized(_)))
+    }
 }
 
 impl From<rusqlite::Error> for SyncError {
@@ -185,6 +192,12 @@ fn set_version(
     Ok(())
 }
 
+/// Chiave di stato con l'ultimo lotto di `device` già presente quando questo
+/// dispositivo è entrato nella libreria.
+fn history_key(device: &str) -> String {
+    format!("history:{device}")
+}
+
 fn now_utc() -> String {
     crate::time::format_utc(crate::time::now())
 }
@@ -235,12 +248,16 @@ impl Database {
         }
         if settings.enabled && settings.transport == SyncTransport::Folder {
             if folder.is_empty() || !Path::new(&folder).is_absolute() {
-                return Err(StorageError::InvalidEvent(
+                return Err(StorageError::InvalidEvent(crate::tr_str!(
                     "scegli la cartella da usare per la sincronizzazione",
-                ));
+                    "choose the folder to use for sync"
+                )));
             }
             if !Path::new(&folder).is_dir() {
-                return Err(StorageError::InvalidEvent("la cartella scelta non esiste"));
+                return Err(StorageError::InvalidEvent(crate::tr_str!(
+                    "la cartella scelta non esiste",
+                    "the chosen folder does not exist"
+                )));
             }
         }
         let settings = SyncSettings {
@@ -454,6 +471,18 @@ fn run(
     }
 
     let mut report = SyncReport::default();
+    // Prima attivazione: si annota fin dove arrivava la storia di ogni altro
+    // dispositivo. Letto dall'archivio prima di prendere il database.
+    let initialized = state(&*database.connection()?, "initialized")?.is_some();
+    let mut existing_history: Vec<(String, u64)> = Vec::new();
+    if !initialized {
+        for remote in folder.devices()? {
+            if remote != device {
+                let last = folder.last_seq(&remote)?;
+                existing_history.push((remote, last));
+            }
+        }
+    }
     let prefetched = prefetch(database, &folder, &library, &device, &mut report)?;
 
     {
@@ -468,6 +497,9 @@ fn run(
                         params![table.name, key],
                     )?;
                 }
+            }
+            for (remote, last) in &existing_history {
+                set_state(&transaction, &history_key(remote), &last.to_string())?;
             }
             set_state(&transaction, "initialized", "1")?;
             transaction.commit()?;
@@ -495,6 +527,11 @@ fn run(
 }
 
 fn default_device_name() -> String {
+    // Android non ha un nome host utile: l'utente può cambiarlo nelle
+    // impostazioni della sincronizzazione.
+    if cfg!(target_os = "android") {
+        return "Android".to_owned();
+    }
     std::env::var("HOSTNAME")
         .ok()
         .or_else(|| fs::read_to_string("/etc/hostname").ok())
@@ -548,9 +585,10 @@ fn prefetch(
                     batches.push(batch)
                 }
                 Ok(Some(_)) => {
-                    report
-                        .warnings
-                        .push(format!("{label}: lotto di un'altra libreria o versione"));
+                    report.warnings.push(crate::tr!(
+                        "{label}: lotto di un'altra libreria o versione",
+                        "{label}: batch from another library or version"
+                    ));
                     break;
                 }
                 Ok(None) => break,
@@ -711,6 +749,9 @@ fn upload_blob(folder: &SyncFolder, data_directory: &Path, row: &Value) -> Resul
             // Errori di rete: il lotto resta in coda e si riprova.
             Err(FolderError::Remote(error)) => Err(SyncError::Folder(FolderError::Remote(error))),
             Err(FolderError::Io(error)) => Err(SyncError::Folder(FolderError::Io(error))),
+            Err(FolderError::Unauthorized(service)) => {
+                Err(SyncError::Folder(FolderError::Unauthorized(service)))
+            }
             Err(error) => {
                 tracing::warn!(%error, "allegato non caricato");
                 Ok(())
@@ -849,6 +890,13 @@ fn apply_batch(
     transaction.execute("UPDATE sync_control SET applying = 1 WHERE id = 1", [])?;
     let mut lamport = state_number(&transaction, "lamport")?;
     let mut orphaned_files: Vec<String> = Vec::new();
+    // Lotto scritto prima che questo dispositivo entrasse nella libreria:
+    // riapplicarlo ripercorre la storia degli altri dispositivi.
+    let replay = Replay {
+        history: u64::try_from(state_number(&transaction, &history_key(&batch.device))?)
+            .is_ok_and(|last| batch.seq <= last),
+        this_device: state(&transaction, "device_id")?.unwrap_or_default(),
+    };
     for op in &batch.ops {
         let Some(table) = tables::table(&op.entity) else {
             report.rejected += 1;
@@ -868,6 +916,7 @@ fn apply_batch(
             table,
             op,
             &batch.device,
+            &replay,
             data_directory,
             report,
             changed_notes,
@@ -898,12 +947,21 @@ fn apply_batch(
     Ok(())
 }
 
+/// Contesto del lotto in corso di applicazione.
+struct Replay {
+    /// Il lotto appartiene alla storia precedente all'ingresso di questo
+    /// dispositivo nella libreria.
+    history: bool,
+    this_device: String,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn apply_op(
     connection: &Connection,
     table: &SyncTable,
     op: &Operation,
     from_device: &str,
+    replay: &Replay,
     data_directory: &Path,
     report: &mut SyncReport,
     changed_notes: &mut HashSet<String>,
@@ -923,7 +981,15 @@ fn apply_op(
             (None, Some(_)) => false,
             _ => local.as_ref().is_none_or(|local| op.version > *local),
         };
-    if !fast_forward && table.keep_conflicts {
+    // Ripercorrendo la storia, due versioni di altri dispositivi che allora
+    // erano contemporanee si incontrano di nuovo. Quel conflitto è già stato
+    // registrato dai dispositivi che c'erano: qui sarebbe un falso allarme,
+    // perché nessuna modifica fatta su questo dispositivo è in gioco.
+    let old_remote_conflict = replay.history
+        && local
+            .as_ref()
+            .is_some_and(|local| local.1 != replay.this_device);
+    if !fast_forward && table.keep_conflicts && !old_remote_conflict {
         let (loser, loser_device) = if remote_wins {
             (current.clone(), String::new())
         } else {

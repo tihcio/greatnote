@@ -96,6 +96,21 @@ un account utente di prova o una macchina virtuale.
 - [ ] Gli installer non sono firmati: SmartScreen mostra un avviso.
       Indicarlo nelle note di rilascio finché non c'è un certificato.
 
+### Android (finché non è distribuito: solo per le build di prova)
+
+- [ ] `npx tauri android build --target aarch64 --apk --aab` con
+      `keystore.properties` o le variabili `GREATNOTE_ANDROID_*`: l'APK
+      non deve chiamarsi `-unsigned`; `apksigner verify --print-certs`
+      mostra la chiave di rilascio.
+- [ ] `versionCode` (in `app/tauri.properties`) maggiore di quello
+      dell'ultima build distribuita.
+- [ ] `aapt2 dump permissions` sull'APK: nessun permesso oltre a quelli
+      elencati in `docs/ANDROID_PORTING.md` (fase G).
+- [ ] Installazione sopra la versione precedente su un telefono reale: le
+      note restano, un promemoria arriva come notifica con l'icona
+      dell'app, un backup creato sul desktop si ripristina.
+- [ ] La chiave di rilascio non è nel repository né nei log della CI.
+
 ## 5. Sicurezza
 
 - [ ] Nessuna nuova capability Tauri o permesso di plugin esposto al

@@ -242,15 +242,17 @@ pub(crate) fn finish(note: ExternalNote, budget: &mut u64) -> Result<ParsedNote,
     let mut hashes = HashSet::new();
     for attachment in attachments {
         if attachment.bytes.len() > MAX_ATTACHMENT_BYTES {
-            warnings.push(format!(
+            warnings.push(crate::tr!(
                 "allegato oltre 25 MiB ignorato: {}",
+                "attachment over 25 MiB ignored: {}",
                 attachment.filename
             ));
             continue;
         }
         if sniff_attachment_type(&attachment.bytes).is_err() {
-            warnings.push(format!(
+            warnings.push(crate::tr!(
                 "allegato di tipo non supportato ignorato: {}",
+                "unsupported attachment type ignored: {}",
                 attachment.filename
             ));
             continue;
@@ -262,8 +264,9 @@ pub(crate) fn finish(note: ExternalNote, budget: &mut u64) -> Result<ParsedNote,
         match budget.checked_sub(attachment.bytes.len() as u64) {
             Some(remaining) => *budget = remaining,
             None => {
-                warnings.push(format!(
+                warnings.push(crate::tr!(
                     "allegato ignorato per limite complessivo dell'importazione: {}",
+                    "attachment ignored due to import size limit: {}",
                     attachment.filename
                 ));
                 continue;

@@ -8,6 +8,8 @@ import { language } from "./i18n";
 import "@fontsource/manrope/latin-600.css";
 import "@fontsource/manrope/latin-700.css";
 import "./styles.css";
+import "./mobile.css";
+import "./app/platform";
 
 document.documentElement.lang = language;
 

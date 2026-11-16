@@ -17,9 +17,6 @@ base64 = "0.22"
 greatnote-core = { path = ".." }
 # Chiave API dei provider AI nel portachiavi di sistema (Secret Service su
 # Linux, Credential Manager su Windows), mai su file.
-# Cartella dati dell'utente per il server MCP avviato senza Tauri (già
-# usata da Tauri per lo stesso scopo).
-dirs = "7"
 keyring = { version = "4.2", default-features = false, features = ["v1"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-clipboard-manager = "2"
@@ -31,15 +28,35 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
-# Aggiornamenti in-app (ADR 0023). Senza la funzionalità `zip`: gli
-# aggiornamenti sono installer .exe/.msi o AppImage non compressi, e
-# l'estrazione di archivi (zip 4.x, RUSTSEC-2026-0367/0368/0369) resta fuori.
-tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 
 [dev-dependencies]
 tempfile = "3"
 
 # Su Linux/BSD le notifiche dei promemoria sono inviate direttamente (stessa
 # libreria usata dal plugin) per poter registrare gli errori di consegna.
-[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+[target.'cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))'.dependencies]
 notify-rust = "4.18"
+
+# Solo desktop: su Android e iOS non esistono né gli aggiornamenti dall'app
+# né il server MCP avviato da riga di comando (docs/ANDROID_PORTING.md).
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# Cartella dati dell'utente per il server MCP avviato senza Tauri (già
+# usata da Tauri per lo stesso scopo).
+dirs = "7"
+# Aggiornamenti in-app (ADR 0023). Senza la funzionalità `zip`: gli
+# aggiornamenti sono installer .exe/.msi o AppImage non compressi, e
+# l'estrazione di archivi (zip 4.x, RUSTSEC-2026-0367/0368/0369) resta fuori.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
+
+# Su Android il selettore di file restituisce content URI: il plugin fs (già
+# dipendenza del plugin dialog) li apre in lettura e scrittura dal lato Rust.
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-fs = "2"
+# Segreti nell'Android Keystore: su Android l'API `v1` di keyring non ha
+# uno store, quindi si usa keyring-core con lo store nativo della stessa
+# famiglia di crate (src/secrets.rs).
+android-native-keyring-store = "1"
+keyring-core = "1"
+# Istante delle notifiche programmate, nel tipo richiesto dal plugin delle
+# notifiche (che dipende già da questa libreria).
+time = "0.3"

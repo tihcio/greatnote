@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { isMobile } from "../app/platform";
 import { t } from "../i18n";
 import { askConfirmation } from "../lib/confirm";
 import { errorMessage, formatDateTime } from "../lib/format";
@@ -84,7 +85,9 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
         setDeviceName(next.settings.device_name);
         // Prima configurazione: Dropbox se disponibile, altrimenti cartella.
         setTransport(
-          next.settings.enabled || next.settings.dropbox_account || next.settings.folder
+          isMobile
+            ? "dropbox"
+            : next.settings.enabled || next.settings.dropbox_account || next.settings.folder
             ? next.settings.transport
             : next.dropbox_available
               ? "dropbox"
@@ -220,7 +223,8 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
         <legend>{t.syncTitle}</legend>
         <p className="data-hint">{t.syncIntro}</p>
         <div className="segmented sync-transport" role="radiogroup" aria-label={t.syncWhere}>
-          {(["dropbox", "folder"] as const).map((value) => (
+          {/* Android non offre un selettore di cartelle: lì resta Dropbox. */}
+          {(isMobile ? (["dropbox"] as const) : (["dropbox", "folder"] as const)).map((value) => (
             <button
               aria-checked={transport === value}
               className={`segment${transport === value ? " selected" : ""}`}

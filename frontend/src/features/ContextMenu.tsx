@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { separator } from "../app/menu";
+import { availableEntries, isMobile } from "../app/platform";
 import type { MenuEntry } from "../app/menu";
 import { t } from "../i18n";
 import { insertIntoField, openContextMenu, subscribeContextMenu, textFieldAt } from "../lib/contextMenu";
@@ -26,13 +27,25 @@ export default function ContextMenu({ menu, onClose }: ContextMenuProps) {
   const container = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Su mobile il menu è un pannello in basso aperto con una pressione
+    // prolungata: il rilascio del dito genera un clic che non deve chiuderlo
+    // subito, e la tastiera che si chiude ridimensiona la finestra.
+    const openedAt = Date.now();
     const onPointerDown = (event: MouseEvent) => {
+      if (isMobile) {
+        if (Date.now() - openedAt < 500) return;
+        // Il tocco sullo sfondo scuro (il contenitore stesso) chiude.
+        if (event.target === container.current) onClose();
+        return;
+      }
       if (!container.current?.contains(event.target as Node)) onClose();
     };
     const onBlur = () => onClose();
     window.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("blur", onBlur);
-    window.addEventListener("resize", onBlur);
+    if (!isMobile) {
+      window.addEventListener("blur", onBlur);
+      window.addEventListener("resize", onBlur);
+    }
     return () => {
       window.removeEventListener("mousedown", onPointerDown);
       window.removeEventListener("blur", onBlur);
@@ -43,7 +56,7 @@ export default function ContextMenu({ menu, onClose }: ContextMenuProps) {
   return (
     <div className="context-menu-layer" ref={container}>
       <MenuList
-        items={menu.items}
+        items={availableEntries(menu.items)}
         label={menu.label}
         onClose={() => {
           onClose();
@@ -57,6 +70,12 @@ export default function ContextMenu({ menu, onClose }: ContextMenuProps) {
       />
     </div>
   );
+}
+
+/** Campo di testo o area modificabile (l'editor della nota). */
+function isTextTarget(target: EventTarget | null): boolean {
+  if (textFieldAt(target)) return true;
+  return target instanceof Element && target.closest("[contenteditable='true'], .tiptap") !== null;
 }
 
 /** Menu standard dei campi di testo, come nelle app desktop. */
@@ -100,6 +119,9 @@ export function ContextMenuHost() {
     const onContextMenu = (event: MouseEvent) => {
       if (event.defaultPrevented) return;
       if (import.meta.env.DEV && event.shiftKey) return;
+      // Su mobile la pressione prolungata sul testo deve avviare la
+      // selezione di sistema (maniglie, copia, incolla): nessun menu dell'app.
+      if (isMobile && isTextTarget(event.target)) return;
       event.preventDefault();
       const field = textFieldAt(event.target);
       if (field) {

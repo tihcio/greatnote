@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icona piccola delle notifiche (promemoria): un foglio con l'angolo
+     piegato e due righe. Android la usa come maschera, quindi è a un solo
+     colore su fondo trasparente. Indicata in src-tauri/src/reminder_alarms.rs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M6,2h8l6,6v12a2,2 0,0 1,-2 2H6a2,2 0,0 1,-2 -2V4a2,2 0,0 1,2 -2zM13,3.5V9h5.5zM7.5,12.5h9v1.6h-9zM7.5,16.5h6.5v1.6H7.5z" />
+</vector>

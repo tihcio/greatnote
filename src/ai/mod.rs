@@ -27,43 +27,48 @@ use crate::storage::StorageError;
 
 #[derive(Debug, Error)]
 pub enum AiError {
-    #[error("Le funzioni AI sono disattivate: attivale in Impostazioni › Intelligenza artificiale")]
+    #[error("{}", crate::tr!("Le funzioni AI sono disattivate: attivale in Impostazioni › Intelligenza artificiale", "AI features are turned off: turn them on in Settings › Artificial intelligence"))]
     Disabled,
-    #[error("Configurazione AI incompleta: {0}")]
+    #[error("{}", crate::tr!("Configurazione AI incompleta: {0}", "Incomplete AI configuration: {0}", .0))]
     NotConfigured(&'static str),
-    #[error("Impostazioni AI non valide: {0}")]
+    #[error("{}", crate::tr!("Impostazioni AI non valide: {0}", "Invalid AI settings: {0}", .0))]
     InvalidSettings(&'static str),
     #[error(
-        "Il server AI {0} non è sul tuo computer: per inviargli dati devi dare il consenso nelle impostazioni"
+        "{}",
+        crate::tr!(
+            "Il server AI {} non è sul tuo computer: per inviargli dati devi dare il consenso nelle impostazioni",
+            "The AI server {} is not on your computer: to send it data you must give your consent in the settings",
+            .0
+        )
     )]
     RemoteConsentRequired(String),
-    #[error("Impossibile contattare il server AI: {0}")]
+    #[error("{}", crate::tr!("Impossibile contattare il server AI: {0}", "Unable to contact the AI server: {0}", .0))]
     Connection(String),
-    #[error("Il server AI non ha risposto entro il tempo massimo")]
+    #[error("{}", crate::tr!("Il server AI non ha risposto entro il tempo massimo", "The AI server did not respond in time"))]
     Timeout,
-    #[error("Il server AI ha rifiutato l'accesso (codice {0}): controlla la chiave API")]
+    #[error("{}", crate::tr!("Il server AI ha rifiutato l'accesso (codice {0}): controlla la chiave API", "The AI server rejected access (code {0}): check the API key", .0))]
     Unauthorized(u16),
-    #[error("Troppe richieste al server AI: riprova {}", retry_hint(*.0))]
+    #[error("{}", crate::tr!("Troppe richieste al server AI: riprova {}", "Too many requests to the AI server: try again {}", retry_hint(*.0)))]
     RateLimited(Option<u64>),
-    #[error("Il server AI ha risposto con un errore (codice {status}): {message}")]
+    #[error("{}", crate::tr!("Il server AI ha risposto con un errore (codice {0}): {1}", "The AI server responded with an error (code {0}): {1}", .status, .message))]
     Http { status: u16, message: String },
-    #[error("Risposta del server AI non valida: {0}")]
+    #[error("{}", crate::tr!("Risposta del server AI non valida: {0}", "Invalid response from the AI server: {0}", .0))]
     InvalidResponse(String),
-    #[error("Richiesta annullata")]
+    #[error("{}", crate::tr!("Richiesta annullata", "Request cancelled"))]
     Cancelled,
-    #[error("Testo troppo lungo per l'AI: massimo {0} caratteri")]
+    #[error("{}", crate::tr!("Testo troppo lungo per l'AI: massimo {0} caratteri", "Text too long for AI: maximum {0} characters", .0))]
     InputTooLarge(usize),
-    #[error("Questa nota è esclusa dalle funzioni AI (taccuino escluso nelle impostazioni)")]
+    #[error("{}", crate::tr!("Questa nota è esclusa dalle funzioni AI (taccuino escluso nelle impostazioni)", "This note is excluded from AI features (its notebook is excluded in the settings)"))]
     ExcludedNote,
-    #[error("Portachiavi di sistema non disponibile: {0}")]
+    #[error("{}", crate::tr!("Portachiavi di sistema non disponibile: {0}", "System keyring not available: {0}", .0))]
     Keyring(String),
-    #[error("Claude Code: {0}")]
+    #[error("{}", crate::tr!("Claude Code: {0}", "Claude Code: {0}", .0))]
     ClaudeCode(String),
-    #[error("Lettura dell'immagine non riuscita: {0}")]
+    #[error("{}", crate::tr!("Lettura dell'immagine non riuscita: {0}", "Could not read the image: {0}", .0))]
     Ocr(String),
-    #[error("Motore AI integrato: {0}")]
+    #[error("{}", crate::tr!("Motore AI integrato: {0}", "Built-in AI engine: {0}", .0))]
     Builtin(String),
-    #[error("Download del modello non riuscito: {0}")]
+    #[error("{}", crate::tr!("Download del modello non riuscito: {0}", "Model download failed: {0}", .0))]
     ModelDownload(String),
     #[error("Hugging Face: {0}")]
     Hub(String),
@@ -73,7 +78,7 @@ pub enum AiError {
 
 fn retry_hint(seconds: Option<u64>) -> String {
     match seconds {
-        Some(seconds) => format!("tra {seconds} secondi"),
-        None => "più tardi".to_owned(),
+        Some(seconds) => crate::tr!("tra {} secondi", "in {} seconds", seconds),
+        None => crate::tr!("più tardi", "later"),
     }
 }
