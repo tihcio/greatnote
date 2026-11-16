@@ -4,6 +4,8 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.6 — 2026-11-16
+
 - **AI integrata: la risposta non resta più nascosta dietro il
   ragionamento.** Con Gemma 4 l'assistente mostrava un lungo ragionamento
   in inglese («Here's a thinking process…») e la risposta arrivava solo
