@@ -325,6 +325,7 @@ completa è mostrata durante l'installazione
 -   [Test](docs/TESTING.md)
 -   [Checklist di rilascio](docs/RELEASE_CHECKLIST.md)
 -   [Aggiornamenti in-app e pubblicazione](docs/UPDATES.md)
+-   [Informativa sulla privacy](docs/PRIVACY.md)
 -   [Microsoft Store (MSIX)](docs/MICROSOFT_STORE.md)
 -   [Firma del codice su Windows](docs/CODE_SIGNING.md)
 -   [Formati di esportazione e backup](docs/ARCHIVE_FORMAT.md)

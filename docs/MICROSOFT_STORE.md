@@ -69,9 +69,13 @@ sono aperte insieme usano lo stesso database.
    La versione del pacchetto è `X.Y.Z.0` e deve crescere a ogni invio.
 5. **Nuovo invio** in Partner Center:
    - *Prezzi e disponibilità*: gratuita, mercati a scelta;
-   - *Proprietà*: categoria Produttività; URL dell'informativa sulla
-     privacy, ad esempio
-     `https://github.com/tihcio/greatnote/blob/main/src-tauri/installer/license-and-privacy.txt`;
+   - *Proprietà*: categoria Produttività; alla domanda sui dati personali
+     rispondi **Sì** (l'app accede alle note e, se configurati, a
+     calendari, Dropbox e provider AI); URL dell'informativa sulla privacy
+     `https://github.com/tihcio/greatnote/blob/main/docs/PRIVACY.md`. Lo
+     Store la richiede comunque per le capability dichiarate;
+   - *Pacchetti › Disponibilità per famiglia di dispositivi*: solo
+     Windows 10/11 Desktop (il manifest dichiara `Windows.Desktop`);
    - *Classificazioni per età*: questionario;
    - *Pacchetti*: carica il file `.msix`;
    - *Elenchi dello Store* (italiano e inglese): descrizione e almeno una
