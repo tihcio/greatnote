@@ -48,6 +48,13 @@ dirs = "7"
 # l'estrazione di archivi (zip 4.x, RUSTSEC-2026-0367/0368/0369) resta fuori.
 tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 
+# Pacchetto MSIX del Microsoft Store (ADR 0029): identità del pacchetto e
+# notifiche con il suo AppUserModelID (notify-rust è già usato dal plugin
+# delle notifiche su Windows).
+[target.'cfg(windows)'.dependencies]
+notify-rust = "4.18"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_Packaging_Appx"] }
+
 # Su Android il selettore di file restituisce content URI: il plugin fs (già
 # dipendenza del plugin dialog) li apre in lettura e scrittura dal lato Rust.
 [target.'cfg(target_os = "android")'.dependencies]

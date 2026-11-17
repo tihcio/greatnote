@@ -326,6 +326,19 @@ fn send_notification(app: &AppHandle, title: &str, body: &str) -> Result<(), Str
     }
     #[cfg(not(all(unix, not(target_os = "macos"), not(target_os = "android"))))]
     {
+        // Pacchetto MSIX (ADR 0029): Windows mostra le notifiche solo con
+        // l'AppUserModelID del pacchetto, mentre il plugin usa
+        // l'identificatore dell'app.
+        #[cfg(windows)]
+        if let Some(app_id) = crate::msix::app_user_model_id() {
+            return notify_rust::Notification::new()
+                .app_id(&app_id)
+                .summary(title)
+                .body(body)
+                .show()
+                .map(|_| ())
+                .map_err(|error| error.to_string());
+        }
         app.notification()
             .builder()
             .title(title)

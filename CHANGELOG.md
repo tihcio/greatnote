@@ -4,6 +4,20 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+- **Windows: pacchetto per il Microsoft Store.** Il workflow crea anche un
+  pacchetto MSIX da pubblicare sullo Store, che lo firma: niente più
+  blocchi di Smart App Control e SmartScreen. Usa la stessa cartella dati
+  degli installer di GitHub e non la cancella disinstallando. Nella versione
+  Store gli aggiornamenti arrivano dallo Store, le notifiche dei promemoria
+  usano l'identità del pacchetto e il server MCP si avvia con l'alias
+  `greatnote.exe` (docs/MICROSOFT_STORE.md, ADR 0029).
+- **Android: icona di Greatnote.** L'app mostrava ancora l'icona
+  predefinita di Tauri. Ora usa il logo, anche come icona adattiva con il
+  logo dentro l'area sicura della maschera.
+- **Firma con SignPath non attiva.** La richiesta a SignPath Foundation è
+  stata respinta (progetto ancora poco conosciuto): il workflow resta
+  pronto, ma README e installer non dichiarano più una firma che non c'è.
+
 ## 0.2.8 — 2026-11-17
 
 - **Windows: modifiche ravvicinate non più ignorate.** L'orologio di

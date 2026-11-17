@@ -1,5 +1,16 @@
 # Firma del codice su Windows (SignPath Foundation)
 
+> **Stato (17 novembre 2026): non attiva.** SignPath Foundation ha
+> respinto la richiesta perché il progetto non ha ancora abbastanza
+> visibilità pubblica (stelle, fork, contributori, citazioni esterne). Si
+> può ripresentare più avanti, oppure usare un abbonamento SignPath a
+> pagamento: il workflow resta pronto e si attiva da solo con le variabili
+> descritte sotto. Prima di una nuova richiesta va rimessa nel README la
+> sezione «Code signing policy» (vedi la cronologia di Git) e la menzione
+> della firma nella pagina di licenza dell'installer. Su Windows la via
+> attuale è il pacchetto MSIX del Microsoft Store
+> ([MICROSOFT_STORE.md](MICROSOFT_STORE.md)).
+
 Windows blocca o segnala gli eseguibili scaricati che non hanno una firma
 Authenticode: SmartScreen mostra «Windows ha protetto il PC» e Smart App
 Control impedisce del tutto l'avvio. La firma minisign degli aggiornamenti
@@ -52,7 +63,7 @@ Ogni release richiede quindi **due approvazioni** su SignPath.
 
 1. **Requisiti del progetto.** Licenza OSI (GPL-3.0-only), repository
    pubblico, release già pubblicate, funzionalità descritte nella pagina di
-   download, sezione «Code signing policy» nel README (presente). Tutti i
+   download, sezione «Code signing policy» nel README (da ripristinare). Tutti i
    membri del team devono usare l'autenticazione a due fattori su GitHub e
    su SignPath.
 2. **Richiesta a SignPath Foundation** dal modulo su

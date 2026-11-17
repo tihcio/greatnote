@@ -4,6 +4,7 @@ mod calendar_commands;
 mod data_commands;
 mod file_access;
 mod mcp_commands;
+mod msix;
 mod planner_commands;
 mod reminder_alarms;
 mod secret_commands;

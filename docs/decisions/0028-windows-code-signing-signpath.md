@@ -1,6 +1,7 @@
 # ADR 0028: firma del codice Windows con SignPath Foundation
 
-- **Stato:** accettata
+- **Stato:** accettata, sospesa (richiesta a SignPath Foundation respinta
+  il 2026-11-17 per scarsa visibilità del progetto; vedi ADR 0029)
 - **Data:** 2026-11-17
 
 ## Contesto

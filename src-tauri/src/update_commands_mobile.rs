@@ -25,6 +25,7 @@ pub enum UpdatePhase {
 pub struct UpdateStatus {
     pub current_version: String,
     pub supported: bool,
+    pub managed_by_store: bool,
     pub auto_update: bool,
     pub installs_on_exit: bool,
     pub last_check_at: Option<String>,
@@ -36,6 +37,7 @@ pub fn get_update_status(app: AppHandle) -> UpdateStatus {
     UpdateStatus {
         current_version: app.package_info().version.to_string(),
         supported: false,
+        managed_by_store: false,
         auto_update: false,
         installs_on_exit: false,
         last_check_at: None,

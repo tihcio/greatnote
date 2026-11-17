@@ -294,35 +294,27 @@ esplicito.
 Per informazioni più dettagliate, consulta
 [docs/SECURITY.md](docs/SECURITY.md).
 
-## Code signing policy
+## Installazione su Windows e firma del codice
 
-Free code signing provided by [SignPath.io](https://about.signpath.io),
-certificate by [SignPath Foundation](https://signpath.org).
+Gli installer `.exe` e `.msi` pubblicati su GitHub non sono firmati con un
+certificato di firma del codice: SmartScreen può mostrare un avviso e
+Smart App Control può bloccarli. La via consigliata su Windows è il
+pacchetto MSIX del **Microsoft Store**, firmato da Microsoft, che usa la
+stessa cartella dati dell'installazione da GitHub
+([docs/MICROSOFT_STORE.md](docs/MICROSOFT_STORE.md), [ADR
+0029](docs/decisions/0029-microsoft-store-msix.md)).
 
-Gli installer Windows (`.exe` NSIS e `.msi`) e l'eseguibile
-`Greatnote.exe` delle release sono firmati con Authenticode tramite
-SignPath, solo se costruiti dal workflow
-[installers.yml](.github/workflows/installers.yml) su runner ospitati da
-GitHub a partire da un tag di questo repository. Ogni richiesta di firma
-viene approvata manualmente. Dettagli in
-[docs/CODE_SIGNING.md](docs/CODE_SIGNING.md) e nell'[ADR
-0028](docs/decisions/0028-windows-code-signing-signpath.md).
-
-Ruoli del team:
-
--   Committer e revisori: [tihcio](https://github.com/tihcio)
--   Approvatori delle firme: [tihcio](https://github.com/tihcio)
-
-I binari di [llama.cpp](https://github.com/ggml-org/llama.cpp) inclusi
-per l'AI integrata provengono dal progetto upstream e non vengono firmati
-con questo certificato.
+Il workflow è predisposto anche per firmare gli installer con SignPath
+([docs/CODE_SIGNING.md](docs/CODE_SIGNING.md)), ma la firma non è attiva.
 
 **Privacy:** questo programma non trasferisce informazioni ad altri
 sistemi in rete, salvo su richiesta esplicita dell'utente o di chi lo
 installa, con un'eccezione: il controllo degli aggiornamenti scarica
 periodicamente `latest.json` da github.com (GitHub riceve l'indirizzo IP e
 la versione installata, nessun dato delle note) e si disattiva in
-**Impostazioni › Aggiornamenti › Aggiornamenti automatici**. L'informativa
+**Impostazioni › Aggiornamenti › Aggiornamenti automatici**. La versione
+del Microsoft Store non fa questo controllo: gli aggiornamenti li gestisce
+lo Store. L'informativa
 completa è mostrata durante l'installazione
 ([testo](src-tauri/installer/license-and-privacy.txt)).
 
@@ -333,6 +325,7 @@ completa è mostrata durante l'installazione
 -   [Test](docs/TESTING.md)
 -   [Checklist di rilascio](docs/RELEASE_CHECKLIST.md)
 -   [Aggiornamenti in-app e pubblicazione](docs/UPDATES.md)
+-   [Microsoft Store (MSIX)](docs/MICROSOFT_STORE.md)
 -   [Firma del codice su Windows](docs/CODE_SIGNING.md)
 -   [Formati di esportazione e backup](docs/ARCHIVE_FORMAT.md)
 -   [Decisioni architetturali](docs/decisions/)

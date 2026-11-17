@@ -59,7 +59,7 @@ export default function UpdatesSection({ status, onStatus, onInstall }: UpdatesS
         <legend>{t.updatesTitle}</legend>
         <p>{t.updateCurrentVersion(status.current_version)}</p>
         {!status.supported ? (
-          <p className="data-hint">{t.updateDevBuild}</p>
+          <p className="data-hint">{status.managed_by_store ? t.updateStore : t.updateDevBuild}</p>
         ) : (
           <>
             <p className={phase.state === "error" ? "dialog-error" : undefined} role="status">

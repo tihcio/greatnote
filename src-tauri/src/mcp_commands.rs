@@ -103,8 +103,22 @@ pub struct McpStatus {
 }
 
 /// Eseguibile da indicare al client: in un AppImage il percorso stabile è
-/// quello del file AppImage, non quello del montaggio temporaneo.
+/// quello del file AppImage, non quello del montaggio temporaneo; nel
+/// pacchetto MSIX è l'alias di esecuzione dichiarato nel manifest, perché
+/// gli altri programmi non possono avviare i file in `WindowsApps`.
 fn executable() -> String {
+    #[cfg(windows)]
+    if crate::msix::is_packaged() {
+        return dirs::data_local_dir()
+            .map(|local| {
+                local
+                    .join("Microsoft")
+                    .join("WindowsApps")
+                    .join("greatnote.exe")
+            })
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "greatnote.exe".to_owned());
+    }
     std::env::var_os("APPIMAGE")
         .map(PathBuf::from)
         .or_else(|| std::env::current_exe().ok())

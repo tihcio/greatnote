@@ -18,6 +18,8 @@ export interface UpdateStatus {
   current_version: string;
   /** Falso nella versione di sviluppo. */
   supported: boolean;
+  /** Installata dal Microsoft Store: aggiorna lo Store. */
+  managed_by_store: boolean;
   auto_update: boolean;
   /** Falso per i pacchetti `.deb`/`.rpm`: si installano solo su richiesta. */
   installs_on_exit: boolean;

@@ -81,8 +81,10 @@ pub enum UpdatePhase {
 #[derive(Debug, Clone, Serialize)]
 pub struct UpdateStatus {
     pub current_version: String,
-    /// Falso nelle build di sviluppo.
+    /// Falso nelle build di sviluppo e nel pacchetto del Microsoft Store.
     pub supported: bool,
+    /// Installata dal Microsoft Store: gli aggiornamenti arrivano dallo Store.
+    pub managed_by_store: bool,
     pub auto_update: bool,
     /// Il pacchetto pronto si installa da solo alla chiusura (falso per
     /// `.deb` e `.rpm`, che chiedono la password).
@@ -121,8 +123,10 @@ impl UpdateState {
 
 /// Gli aggiornamenti funzionano solo nelle build di rilascio: una build di
 /// sviluppo verrebbe sostituita dall'ultima versione pubblicata.
+/// Falso nelle build di sviluppo e nel pacchetto del Microsoft Store, che
+/// riceve gli aggiornamenti dallo Store (ADR 0029).
 fn supported() -> bool {
-    !cfg!(debug_assertions)
+    !cfg!(debug_assertions) && !crate::msix::is_packaged()
 }
 
 /// Installazione alla chiusura senza interazione: ovunque tranne i pacchetti
@@ -277,6 +281,7 @@ fn status(app: &AppHandle) -> UpdateStatus {
     UpdateStatus {
         current_version: app.package_info().version.to_string(),
         supported: supported(),
+        managed_by_store: crate::msix::is_packaged(),
         auto_update: auto_update(app),
         installs_on_exit: installs_on_exit(),
         last_check_at: inner.last_check_at.clone(),

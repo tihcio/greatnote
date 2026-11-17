@@ -63,3 +63,16 @@ jobs:
 
       - name: Audit Rust dependencies
         run: cargo audit
+
+  # Pacchetto MSIX del Microsoft Store (ADR 0029): makeappx valida il
+  # manifest e i loghi. Al posto di Greatnote.exe, che qui non viene
+  # compilato, si usa un eseguibile di sistema: conta solo la struttura.
+  msix-manifest:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Pack a test MSIX
+        shell: pwsh
+        run: ./scripts/build-msix.ps1 -ExePath "$env:WINDIR\System32\notepad.exe" -OutDir "$env:RUNNER_TEMP\msix"

@@ -208,6 +208,21 @@ jobs:
             Write-Host "$($file.Name): firmato da $($signature.SignerCertificate.Subject)"
           }
 
+      # Pacchetto MSIX per il Microsoft Store (ADR 0029), solo come
+      # artefatto: si carica a mano in Partner Center, che lo firma dopo la
+      # certificazione. L'identità del prodotto è in scripts/build-msix.ps1.
+      - name: Build MSIX package for the Microsoft Store
+        shell: pwsh
+        run: ./scripts/build-msix.ps1
+
+      - name: Upload MSIX package
+        uses: actions/upload-artifact@v4
+        with:
+          name: greatnote-windows-msix
+          path: target/release/bundle/msix/*.msix
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:

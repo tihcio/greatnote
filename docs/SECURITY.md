@@ -372,8 +372,15 @@ locali.
   (intestazioni standard); nessun dato delle note.
 - **Pubblicazione:** il workflow crea release in bozza; nulla arriva agli
   utenti finché una persona non la pubblica.
-- **Firma Authenticode (ADR 0028):** gli installer Windows e
-  `Greatnote.exe` sono firmati da SignPath Foundation solo per build del
+- **Pacchetto Microsoft Store (ADR 0029):** il pacchetto MSIX è firmato
+  da Microsoft dopo la certificazione. Dichiara la capability ristretta
+  `unvirtualizedResources` solo per scrivere nelle cartelle dati
+  dell'app (`%APPDATA%\dev.greatnote.notes`, `%APPDATA%\dev.gna.notes`,
+  `%LOCALAPPDATA%\dev.greatnote.notes`), così le note non restano chiuse
+  nel pacchetto e non vengono cancellate disinstallandolo. In questa
+  versione l'updater interno è disattivato.
+- **Firma Authenticode (ADR 0028, non attiva):** se configurata, gli
+  installer Windows e `Greatnote.exe` sono firmati da SignPath solo per build del
   workflow su runner GitHub a partire da un tag, con approvazione manuale
   di ogni richiesta. Il token API di SignPath è un segreto di GitHub
   Actions; la chiave del certificato non lascia mai SignPath. I binari di

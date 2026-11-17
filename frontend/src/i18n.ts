@@ -778,6 +778,7 @@ const messages = {
     updateCurrentVersion: (version: string) => `Versione installata: ${version}`,
     updateDevBuild:
       "Gli aggiornamenti automatici non sono disponibili nella versione di sviluppo: aggiorna dal repository.",
+    updateStore: "Installata dal Microsoft Store: gli aggiornamenti arrivano dallo Store.",
     updateIdle: "Nessun controllo ancora eseguito.",
     updateChecking: "Ricerca di aggiornamenti…",
     updateUpToDate: "Greatnote è aggiornato.",
@@ -2155,6 +2156,7 @@ const messages = {
     updatesTitle: "Updates",
     updateCurrentVersion: (version: string) => `Installed version: ${version}`,
     updateDevBuild: "Automatic updates are not available in the development build: update from the repository.",
+    updateStore: "Installed from the Microsoft Store: updates come from the Store.",
     updateIdle: "No check yet.",
     updateChecking: "Checking for updates…",
     updateUpToDate: "Greatnote is up to date.",

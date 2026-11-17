@@ -101,6 +101,11 @@ un account utente di prova o una macchina virtuale.
       SignPath non è ancora configurato, le note di rilascio dicono che
       gli installer non sono firmati.
 - [ ] Al primo avvio dell'installer compare la pagina di licenza e privacy.
+- [ ] Microsoft Store ([MICROSOFT_STORE.md](MICROSOFT_STORE.md)): artefatto
+      `greatnote-windows-msix` con la versione `X.Y.Z.0`, caricato in
+      Partner Center; dopo la certificazione, installazione dallo Store:
+      stesse note dell'installazione da GitHub, un promemoria arriva come
+      notifica, Impostazioni › Aggiornamenti dice che aggiorna lo Store.
 
 ### Android (finché non è distribuito: solo per le build di prova)
 
