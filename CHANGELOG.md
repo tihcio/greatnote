@@ -4,6 +4,8 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.9 — 2026-11-17
+
 - **Windows: pacchetto per il Microsoft Store.** Il workflow crea anche un
   pacchetto MSIX da pubblicare sullo Store, che lo firma: niente più
   blocchi di Smart App Control e SmartScreen. Usa la stessa cartella dati
