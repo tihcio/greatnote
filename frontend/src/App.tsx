@@ -65,6 +65,8 @@ import { AboutDialog, ShortcutsDialog } from "./features/HelpDialogs";
 import HomeView from "./features/HomeView";
 import MenuBar from "./features/MenuBar";
 import NotebookPickerDialog from "./features/NotebookPickerDialog";
+import { startNoteDrag } from "./features/noteDrag";
+import type { DropTarget } from "./features/noteDrag";
 import NoteHistoryDialog from "./features/NoteHistoryDialog";
 import NoteInfoDialog from "./features/NoteInfoDialog";
 import PromptHost from "./features/PromptHost";
@@ -300,6 +302,12 @@ export default function App() {
   const [isTagEditorOpen, setIsTagEditorOpen] = useState(false);
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [notebookPicker, setNotebookPicker] = useState<"move" | "copy" | null>(null);
+  /** Spazio su cui è stata trascinata la nota: il selettore mostra solo i
+   * suoi taccuini. */
+  const [pickerSpaceId, setPickerSpaceId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notebookPicker) setPickerSpaceId(null);
+  }, [notebookPicker]);
   const [taskCreateRequest, setTaskCreateRequest] = useState(0);
   const [eventCreateRequest, setEventCreateRequest] = useState(0);
   const [sidebarCounts, setSidebarCounts] = useState<SidebarCounts | null>(null);
@@ -2104,6 +2112,76 @@ export default function App() {
     });
   };
 
+  /** «Nuovo taccuino qui» dal selettore di Sposta/Copia: crea il taccuino
+   * nello spazio scelto e ci sposta (o copia) la nota. */
+  const createNotebookForNote = async (mode: "move" | "copy", spaceId: string | null) => {
+    setNotebookPicker(null);
+    const name = (
+      await askText({
+        title: t.createNotebookTitle,
+        label: t.notebookNamePrompt,
+        confirmLabel: t.createTagAction,
+        maxLength: 200,
+      })
+    )?.trim();
+    if (!name) return;
+    try {
+      const notebook = await invoke<Notebook>("create_notebook", { spaceId, name, description: "" });
+      await refreshOrganization();
+      await moveOrCopyNote(mode, notebook.id);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
+  /**
+   * Nota rilasciata su una voce della barra laterale. Come per il menu
+   * contestuale, la nota diventa quella attiva (salvando la precedente) e
+   * si usano le stesse azioni, con le loro conferme.
+   */
+  const dropNote = async (note: Note, target: DropTarget) => {
+    if (activeNoteRef.current?.id !== note.id) await selectNote(note);
+    const current = activeNoteRef.current;
+    // Selezione annullata (per esempio dal recupero di una bozza).
+    if (!current || current.id !== note.id || activeNoteTrashedRef.current) return;
+    if (target.kind === "notebook") {
+      if (current.notebook_id === target.id) return;
+      await moveOrCopyNote("move", target.id);
+      const name = notebooks.find((notebook) => notebook.id === target.id)?.name ?? "";
+      if (activeNoteRef.current?.notebook_id === target.id) setNotice(t.noteMovedTo(name));
+    } else if (target.kind === "unfiled") {
+      if (current.notebook_id === null) return;
+      await moveOrCopyNote("move", null);
+      if (activeNoteRef.current?.notebook_id === null) setNotice(t.noteMovedTo(t.uncategorized));
+    } else if (target.kind === "space") {
+      // Una nota sta sempre in un taccuino: si sceglie (o si crea) quello
+      // dello spazio.
+      setPickerSpaceId(target.id);
+      setNotebookPicker("move");
+    } else if (target.kind === "tag") {
+      const tag = tags.find((item) => item.id === target.id);
+      if (!tag) return;
+      try {
+        const assigned = await invoke<Tag[]>("list_note_tags", { noteId: current.id });
+        if (assigned.some((item) => item.id === tag.id)) {
+          setNotice(t.noteAlreadyTagged(tag.name));
+          return;
+        }
+        await setActiveNoteTags([...assigned, tag]);
+        setNoteListVersion((version) => version + 1);
+        setNotice(t.noteTaggedWith(tag.name));
+      } catch (cause) {
+        setError(errorMessage(cause));
+      }
+    } else if (target.id === "pinned") {
+      if (!current.is_pinned) await toggleActiveNotePin();
+    } else if (target.id === "archived") {
+      if (!current.archived_at) await setActiveNoteArchived(true);
+    } else if (target.id === "trash") {
+      await trashActiveNote();
+    }
+  };
+
   const saveAsTemplate = () =>
     withNote(async (note) => {
       const name = await askText({
@@ -2454,6 +2532,7 @@ export default function App() {
         <button
           aria-current={selected ? "page" : undefined}
           className={`navigation-item organization-select${selected ? " selected" : ""}`}
+          data-drop={isMobile ? undefined : `notebook:${notebook.id}`}
           onClick={() => void changeView({ kind: "notebook", id: notebook.id })}
           onContextMenu={(event) =>
             sidebarMenu(
@@ -2918,6 +2997,11 @@ export default function App() {
                 <button
                   aria-current={selected ? "page" : undefined}
                   className={`navigation-item${selected ? " selected" : ""}`}
+                  data-drop={
+                    !isMobile && (view.kind === "pinned" || view.kind === "archived" || view.kind === "trash")
+                      ? `view:${view.kind}`
+                      : undefined
+                  }
                   key={view.kind}
                   onClick={() => void changeView(view)}
                   onContextMenu={(event) =>
@@ -3073,6 +3157,7 @@ export default function App() {
                 <button
                   aria-current={workspace === "notes" && selectedView.kind === "space" && selectedView.id === space.id ? "page" : undefined}
                   className={`navigation-item organization-select${workspace === "notes" && selectedView.kind === "space" && selectedView.id === space.id ? " selected" : ""}`}
+                  data-drop={isMobile ? undefined : `space:${space.id}`}
                   onClick={() => void changeView({ kind: "space", id: space.id })}
                   onContextMenu={(event) =>
                     sidebarMenu(
@@ -3145,6 +3230,7 @@ export default function App() {
           <button
             aria-current={workspace === "notes" && selectedView.kind === "unfiled" ? "page" : undefined}
             className={`navigation-item organization-select${workspace === "notes" && selectedView.kind === "unfiled" ? " selected" : ""}`}
+            data-drop={isMobile ? undefined : "unfiled:"}
             onClick={() => void changeView({ kind: "unfiled" })}
             onContextMenu={(event) =>
               sidebarMenu(event, noteViewLocation({ kind: "unfiled" }, t.uncategorized), () => void changeView({ kind: "unfiled" }))
@@ -3176,6 +3262,7 @@ export default function App() {
               <button
                 aria-current={workspace === "notes" && selectedView.kind === "tag" && selectedView.id === tag.id ? "page" : undefined}
                 className={`navigation-item organization-select${workspace === "notes" && selectedView.kind === "tag" && selectedView.id === tag.id ? " selected" : ""}`}
+                data-drop={isMobile ? undefined : `tag:${tag.id}`}
                 onClick={() => void changeView({ kind: "tag", id: tag.id })}
                 onContextMenu={(event) =>
                   sidebarMenu(
@@ -3475,6 +3562,13 @@ export default function App() {
                       void selectNote(note);
                     }}
                     onContextMenu={(event) => void openNoteContextMenu(event, note)}
+                    onPointerDown={(event) => {
+                      if (isMobile || isTrashView) return;
+                      startNoteDrag(event, {
+                        label: note.title || t.untitled,
+                        onDrop: (target) => void dropNote(note, target),
+                      });
+                    }}
                     onKeyDown={(event) => {
                       if ((event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) {
                         event.preventDefault();
@@ -4094,8 +4188,16 @@ export default function App() {
           notebooks={notebooks}
           onClose={() => setNotebookPicker(null)}
           onConfirm={(notebookId) => void moveOrCopyNote(notebookPicker, notebookId)}
+          onCreateNotebook={(spaceId) => void createNotebookForNote(notebookPicker, spaceId)}
+          onlySpaceId={pickerSpaceId}
           spaces={spaces}
-          title={notebookPicker === "move" ? t.menuMoveNote : t.menuCopyNoteTo}
+          title={
+            pickerSpaceId
+              ? t.moveNoteToSpace(spaces.find((space) => space.id === pickerSpaceId)?.name ?? "")
+              : notebookPicker === "move"
+                ? t.menuMoveNote
+                : t.menuCopyNoteTo
+          }
         />
       )}
       <PromptHost />

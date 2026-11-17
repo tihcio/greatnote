@@ -78,6 +78,23 @@ const hover = async (selector, text) => {
   }
   throw new Error(`elemento non trovato: ${selector} «${text}»`);
 };
+/** Trascina con il mouse il primo elemento sul secondo, a piccoli passi. */
+const dragTo = async (fromSelector, toSelector) => {
+  const from = await page.$(fromSelector);
+  const to = await page.$(toSelector);
+  if (!from || !to) throw new Error(`elemento non trovato: ${from ? toSelector : fromSelector}`);
+  await to.evaluate((element) => element.scrollIntoView({ block: "center" }));
+  const a = await from.boundingBox();
+  const b = await to.boundingBox();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(a.x + a.width / 2 + 10, a.y + a.height / 2 + 4, { steps: 3 });
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
+  await pause(150);
+  await page.screenshot({ path: `${output}/trascinamento-in-corso.png` });
+  await page.mouse.up();
+  await pause(500);
+};
 const expectVisible = async (selector) => {
   if (!(await page.$(selector))) throw new Error(`atteso ${selector}`);
 };
@@ -536,6 +553,39 @@ try {
     await clickText(".menu-bar-item", "Nota");
     await clickText(".menu-item", "Sposta in");
     await expectVisible(".picker-list");
+  });
+  // Uno spazio senza taccuini: la nota non può stare direttamente nello
+  // spazio, quindi il selettore crea lì un taccuino e ci sposta la nota.
+  await step("sposta-in-spazio-vuoto", async () => {
+    await clickText(".picker-create", "Personale");
+    await pause(300);
+    await page.keyboard.type("Viaggi");
+    await page.keyboard.press("Enter");
+    await pause(500);
+    const breadcrumb = await page.$eval(".breadcrumb-notebook", (element) => element.textContent ?? "");
+    if (!breadcrumb.includes("Viaggi")) throw new Error(`nota non spostata: «${breadcrumb}»`);
+  });
+  // Trascinamento dall'elenco alla barra laterale: su un taccuino sposta
+  // subito, su uno spazio apre la scelta del taccuino di quello spazio.
+  await step("trascina-su-taccuino", async () => {
+    await dragTo(".note-list-item.active", '[data-drop="notebook:nb-1"]');
+    const breadcrumb = await page.$eval(".breadcrumb-notebook", (element) => element.textContent ?? "");
+    if (!breadcrumb.includes("Progetti")) throw new Error(`nota non spostata: «${breadcrumb}»`);
+  });
+  await step("trascina-su-spazio", async () => {
+    await dragTo(".note-list-item.active", '[data-drop="space:sp-2"]');
+    await expectVisible(".picker-list");
+    const groups = await page.$$eval(".picker-group-heading", (items) => items.map((item) => item.textContent));
+    if (groups.length !== 1 || groups[0] !== "Personale") throw new Error(`gruppi: ${groups.join(", ")}`);
+    await page.screenshot({ path: `${output}/trascina-su-spazio-dialog.png` });
+    await page.keyboard.press("Escape");
+  });
+  await step("trascina-su-senza-taccuino", async () => {
+    await dragTo(".note-list-item.active", '[data-drop="unfiled:"]');
+    const breadcrumb = await page.$eval(".breadcrumb-notebook", (element) => element.textContent ?? "");
+    if (!breadcrumb.includes("Senza taccuino") && !breadcrumb.includes("Nessun taccuino")) {
+      throw new Error(`nota ancora in un taccuino: «${breadcrumb}»`);
+    }
   });
   await step("vai-a", async () => {
     await page.keyboard.press("Escape");

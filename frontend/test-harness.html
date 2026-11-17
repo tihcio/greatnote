@@ -115,9 +115,31 @@
       // Invia frammenti a un Channel di Tauri come farebbe il backend.
       const stream = (channel, parts) => parts.forEach((message, index) => callbacks.get(channel.id)?.({ index, message }));
       let nextCallback = 1;
+      // «Personale» è uno spazio senza taccuini, come uno appena creato.
+      const spaces = [
+        { id: "sp-1", name: "Lavoro", description: "", sort_order: 0, created_at: now, updated_at: now },
+        { id: "sp-2", name: "Personale", description: "", sort_order: 1, created_at: now, updated_at: now },
+      ];
+      const notebooks = [
+        { id: "nb-1", space_id: "sp-1", name: "Progetti", description: "", sort_order: 0, created_at: now, updated_at: now },
+      ];
       const responses = {
-        list_spaces: () => [{ id: "sp-1", name: "Lavoro", description: "", sort_order: 0, created_at: now, updated_at: now }],
-        list_notebooks: () => [{ id: "nb-1", space_id: "sp-1", name: "Progetti", description: "", sort_order: 0, created_at: now, updated_at: now }],
+        list_spaces: () => spaces,
+        list_notebooks: () => notebooks,
+        // «Nuovo taccuino in …» dal selettore di Sposta in…
+        create_notebook: (args) => {
+          const notebook = {
+            id: `nb-${notebooks.length + 1}`, space_id: args.spaceId ?? null, name: args.name,
+            description: args.description ?? "", sort_order: notebooks.length, created_at: now, updated_at: now,
+          };
+          notebooks.push(notebook);
+          return notebook;
+        },
+        move_note: (args) => {
+          const note = notes.find((item) => item.id === args.noteId) ?? notes[0];
+          note.notebook_id = args.notebookId;
+          return { ...note };
+        },
         list_tags: () => [{ id: "tag-1", name: "importante", color: null, created_at: now, updated_at: now }],
         list_note_drafts: () => [],
         // "recent" segue l'ordine delle ultime visite, come il backend reale.

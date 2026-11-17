@@ -3843,6 +3843,50 @@ button.time-grid-day-name:hover {
   font-size: 12px;
 }
 
+/* Selettore del taccuino: un gruppo per spazio, con «Nuovo taccuino qui». */
+.picker-group {
+  display: grid;
+  gap: 2px;
+}
+
+.picker-group + .picker-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.picker-group-heading {
+  padding: 4px 8px 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.picker-group-empty {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.picker-create {
+  justify-self: start;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.picker-create:hover {
+  background: var(--selection);
+}
+
 .info-grid {
   display: grid;
   gap: 6px;
@@ -6850,4 +6894,37 @@ button.time-grid-day-name:hover {
 .task-form .repeat-days small,
 .task-form .repeat-options .dialog-field small {
   color: var(--muted);
+}
+
+/* Trascinamento di una nota verso la barra laterale (features/noteDrag.ts). */
+.note-drag-ghost {
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  left: 0;
+  max-width: 260px;
+  overflow: hidden;
+  padding: 6px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 8px 24px rgb(14 20 13 / 22%);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-dragging="note"],
+:root[data-dragging="note"] * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+[data-drop][data-drop-active] {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 2px var(--accent);
+  color: var(--ink);
 }

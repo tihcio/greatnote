@@ -148,6 +148,21 @@ bordo, poi frecce sinistra/destra (con Maiusc a passi più grandi).
   accanto a uno spazio per associarlo subito. Dal menu `⋯` puoi rinominarlo o
   assegnarlo a uno spazio; `×` lo sposta nel cestino: le note restano in
   **Senza taccuino** e tornano nel taccuino se lo ripristini.
+- **Spostare una nota in uno spazio:** una nota sta sempre in un taccuino,
+  e il taccuino appartiene a uno spazio. **Sposta in…** (o **Copia in…**)
+  elenca i taccuini raggruppati per spazio; per uno spazio senza taccuini,
+  o per metterla in un taccuino nuovo, usa **＋ Nuovo taccuino in «…»**:
+  scrivi il nome e la nota viene spostata subito nel taccuino creato.
+- **Trascinare una nota (Windows e Linux):** trascina una nota dall'elenco
+  su una voce della barra laterale. Su un taccuino o su **Senza taccuino**
+  la nota viene spostata subito; su uno spazio si apre la scelta tra i
+  taccuini di quello spazio, con **＋ Nuovo taccuino in «…»**; su un tag il
+  tag viene aggiunto; su **Scorciatoie**, **Archivio** o **Cestino** la nota
+  viene aggiunta alle scorciatoie, archiviata o spostata nel cestino (con
+  la solita conferma). `Esc` annulla il trascinamento. Da tastiera restano
+  **Sposta in…** e **Modifica tag…** nel menu della nota. Su Android il
+  trascinamento non c'è: la pressione prolungata serve a selezionare il
+  testo.
 - **Tag:** crea tag dalla relativa sezione, rinominali o spostali nel
   cestino. I tag della nota sono nella barra in fondo all'editor: scrivi in
   **Aggiungi tag** per scegliere fra i suggerimenti o premi Invio per crearne

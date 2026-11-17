@@ -148,6 +148,10 @@ try {
   await check("elenco");
   await page.click(".note-list-item");
   await check("nota");
+  await page.click(".breadcrumb-notebook");
+  await check("nota: sposta in");
+  if (process.env.SHOTS) await page.screenshot({ path: resolve(root, "target/mobile-sposta-in.png") });
+  await escape();
   await page.click("[aria-label='Azioni sulla nota']");
   await check("nota: menu");
   await escape();

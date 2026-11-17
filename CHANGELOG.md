@@ -4,6 +4,22 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.7 — 2026-11-17
+
+- **Spostare una nota in uno spazio nuovo.** Una nota sta sempre in un
+  taccuino, quindi uno spazio appena creato, senza taccuini, non compariva
+  in **Sposta in…**. Ora il selettore raggruppa i taccuini per spazio,
+  mostra anche gli spazi vuoti e per ognuno offre **Nuovo taccuino in
+  «…»**, che crea il taccuino e ci sposta (o copia) la nota.
+
+- **Trascinare le note sulla barra laterale (Windows e Linux).** Una nota
+  dell'elenco si può trascinare su un taccuino (o su Senza taccuino) per
+  spostarla, su uno spazio per scegliere o creare uno dei suoi taccuini, su
+  un tag per aggiungerlo, su Scorciatoie, Archivio o Cestino. Il
+  trascinamento usa gli eventi del puntatore, così funziona allo stesso
+  modo su Windows (dove il drag and drop HTML5 è bloccato dalla gestione
+  dei file trascinati) e su Linux.
+
 ## 0.2.6 — 2026-11-16
 
 - **AI integrata: la risposta non resta più nascosta dietro il
