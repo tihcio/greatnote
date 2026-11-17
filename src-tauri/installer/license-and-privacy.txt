@@ -1,0 +1,33 @@
+Greatnote - Licenza e privacy / License and privacy
+
+ITALIANO
+
+Licenza
+Greatnote è software libero distribuito secondo i termini della GNU General Public License v3.0 (GPL-3.0-only). Il testo completo è disponibile su https://www.gnu.org/licenses/gpl-3.0.html e nel repository https://github.com/tihcio/greatnote. Il programma è fornito SENZA ALCUNA GARANZIA.
+
+Privacy
+Note, allegati, impostazioni e backup restano sul tuo computer. Greatnote non ha account, non raccoglie telemetria e non invia il contenuto delle note a nessun servizio, salvo quelli che scegli tu.
+
+Connessioni di rete che avvengono senza una tua richiesta esplicita:
+- Controllo degli aggiornamenti: alcuni minuti dopo l'avvio e poi periodicamente l'app scarica un piccolo file (latest.json) da github.com per sapere se esiste una nuova versione. GitHub riceve l'indirizzo IP e la versione installata, nessun dato delle note. Puoi disattivarlo in Impostazioni > Aggiornamenti > "Aggiornamenti automatici".
+- Installazione su Windows: se il componente Microsoft WebView2 manca, l'installer lo scarica da Microsoft.
+
+Connessioni che avvengono solo dopo una tua configurazione o richiesta: sincronizzazione Dropbox, calendari Google e Microsoft, provider AI remoti, download di modelli AI da Hugging Face. Ognuna invia ai rispettivi servizi soltanto i dati necessari alla funzione che hai attivato.
+
+Firma del codice: SignPath.io fornisce gratuitamente la firma, con un certificato di SignPath Foundation.
+
+ENGLISH
+
+License
+Greatnote is free software distributed under the terms of the GNU General Public License v3.0 (GPL-3.0-only). The full text is available at https://www.gnu.org/licenses/gpl-3.0.html and in the repository https://github.com/tihcio/greatnote. The program comes WITHOUT ANY WARRANTY.
+
+Privacy
+Notes, attachments, settings and backups stay on your computer. Greatnote has no accounts, collects no telemetry and sends note content to no service other than the ones you choose.
+
+Network connections made without an explicit request from you:
+- Update check: a few minutes after start-up and then periodically the app downloads a small file (latest.json) from github.com to learn whether a new version exists. GitHub receives your IP address and the installed version, no note data. You can turn it off in Settings > Updates > "Automatic updates".
+- Installation on Windows: if the Microsoft WebView2 component is missing, the installer downloads it from Microsoft.
+
+Connections made only after you configure or request them: Dropbox sync, Google and Microsoft calendars, remote AI providers, AI model downloads from Hugging Face. Each one sends to its service only the data needed by the feature you enabled.
+
+Code signing: free code signing provided by SignPath.io, certificate by SignPath Foundation.

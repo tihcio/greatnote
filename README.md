@@ -294,6 +294,38 @@ esplicito.
 Per informazioni più dettagliate, consulta
 [docs/SECURITY.md](docs/SECURITY.md).
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org).
+
+Gli installer Windows (`.exe` NSIS e `.msi`) e l'eseguibile
+`Greatnote.exe` delle release sono firmati con Authenticode tramite
+SignPath, solo se costruiti dal workflow
+[installers.yml](.github/workflows/installers.yml) su runner ospitati da
+GitHub a partire da un tag di questo repository. Ogni richiesta di firma
+viene approvata manualmente. Dettagli in
+[docs/CODE_SIGNING.md](docs/CODE_SIGNING.md) e nell'[ADR
+0028](docs/decisions/0028-windows-code-signing-signpath.md).
+
+Ruoli del team:
+
+-   Committer e revisori: [tihcio](https://github.com/tihcio)
+-   Approvatori delle firme: [tihcio](https://github.com/tihcio)
+
+I binari di [llama.cpp](https://github.com/ggml-org/llama.cpp) inclusi
+per l'AI integrata provengono dal progetto upstream e non vengono firmati
+con questo certificato.
+
+**Privacy:** questo programma non trasferisce informazioni ad altri
+sistemi in rete, salvo su richiesta esplicita dell'utente o di chi lo
+installa, con un'eccezione: il controllo degli aggiornamenti scarica
+periodicamente `latest.json` da github.com (GitHub riceve l'indirizzo IP e
+la versione installata, nessun dato delle note) e si disattiva in
+**Impostazioni › Aggiornamenti › Aggiornamenti automatici**. L'informativa
+completa è mostrata durante l'installazione
+([testo](src-tauri/installer/license-and-privacy.txt)).
+
 ## Documentazione
 
 -   [Guida utente](docs/USER_GUIDE.md)
@@ -301,6 +333,7 @@ Per informazioni più dettagliate, consulta
 -   [Test](docs/TESTING.md)
 -   [Checklist di rilascio](docs/RELEASE_CHECKLIST.md)
 -   [Aggiornamenti in-app e pubblicazione](docs/UPDATES.md)
+-   [Firma del codice su Windows](docs/CODE_SIGNING.md)
 -   [Formati di esportazione e backup](docs/ARCHIVE_FORMAT.md)
 -   [Decisioni architetturali](docs/decisions/)
 

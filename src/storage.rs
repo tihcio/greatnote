@@ -21,6 +21,16 @@ use crate::domain::{
 };
 use crate::search::{SearchQuery, parse_query};
 
+/// Nuovo `updated_at` di una nota in un `UPDATE notes`: l'istante attuale,
+/// ma sempre successivo al valore precedente. L'orologio di SQLite su
+/// Windows avanza a scatti di circa 15 ms, quindi due modifiche ravvicinate
+/// avrebbero lo stesso `updated_at` e la seconda passerebbe inosservata
+/// (indice AI, controllo delle versioni durante la sincronizzazione).
+pub(crate) const NOTE_UPDATED_AT_SQL: &str = "CASE
+    WHEN julianday('now') > julianday(updated_at) THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    ELSE strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+0.001 seconds')
+END";
+
 const MIGRATION_1: &str = include_str!("../migrations/0001_initial.sql");
 const MIGRATION_2: &str = include_str!("../migrations/0002_note_drafts.sql");
 const MIGRATION_3: &str = include_str!("../migrations/0003_search_productivity.sql");
@@ -317,10 +327,12 @@ impl Database {
                 }
                 crate::library::record_revision_if_due(&transaction, id)?;
                 transaction.execute(
-                    "UPDATE notes
-                     SET title = ?1, content_json = ?2,
-                         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-                     WHERE id = ?3",
+                    &format!(
+                        "UPDATE notes
+                         SET title = ?1, content_json = ?2,
+                             updated_at = {NOTE_UPDATED_AT_SQL}
+                         WHERE id = ?3"
+                    ),
                     params![title, content_json, id],
                 )?;
                 sync_search_index(&transaction, id, &title, content)?;
@@ -556,9 +568,11 @@ impl Database {
     pub fn set_note_pinned(&self, note_id: &str, pinned: bool) -> Result<Note, StorageError> {
         let connection = self.connection()?;
         let changed = connection.execute(
-            "UPDATE notes
-             SET is_pinned = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-             WHERE id = ?2 AND deleted_at IS NULL",
+            &format!(
+                "UPDATE notes
+                 SET is_pinned = ?1, updated_at = {NOTE_UPDATED_AT_SQL}
+                 WHERE id = ?2 AND deleted_at IS NULL"
+            ),
             params![pinned, note_id],
         )?;
         if changed == 0 {
@@ -570,13 +584,15 @@ impl Database {
     pub fn set_note_archived(&self, note_id: &str, archived: bool) -> Result<Note, StorageError> {
         let connection = self.connection()?;
         let changed = connection.execute(
-            "UPDATE notes
-             SET archived_at = CASE
-                    WHEN ?1 THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-                    ELSE NULL
-                 END,
-                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-             WHERE id = ?2 AND deleted_at IS NULL",
+            &format!(
+                "UPDATE notes
+                 SET archived_at = CASE
+                        WHEN ?1 THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                        ELSE NULL
+                     END,
+                     updated_at = {NOTE_UPDATED_AT_SQL}
+                 WHERE id = ?2 AND deleted_at IS NULL"
+            ),
             params![archived, note_id],
         )?;
         if changed == 0 {
@@ -854,9 +870,11 @@ impl Database {
             )?;
         }
         let changed = connection.execute(
-            "UPDATE notes
-             SET notebook_id = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-             WHERE id = ?2 AND deleted_at IS NULL",
+            &format!(
+                "UPDATE notes
+                 SET notebook_id = ?1, updated_at = {NOTE_UPDATED_AT_SQL}
+                 WHERE id = ?2 AND deleted_at IS NULL"
+            ),
             params![notebook_id, note_id],
         )?;
         if changed == 0 {
@@ -868,10 +886,12 @@ impl Database {
     pub fn trash_note(&self, note_id: &str) -> Result<(), StorageError> {
         let connection = self.connection()?;
         let changed = connection.execute(
-            "UPDATE notes
-             SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-             WHERE id = ?1 AND deleted_at IS NULL",
+            &format!(
+                "UPDATE notes
+                 SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                     updated_at = {NOTE_UPDATED_AT_SQL}
+                 WHERE id = ?1 AND deleted_at IS NULL"
+            ),
             [note_id],
         )?;
         if changed == 0 {
@@ -884,9 +904,11 @@ impl Database {
         let mut connection = self.connection()?;
         let transaction = connection.transaction()?;
         let changed = transaction.execute(
-            "UPDATE notes
-             SET deleted_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-             WHERE id = ?1 AND deleted_at IS NOT NULL",
+            &format!(
+                "UPDATE notes
+                 SET deleted_at = NULL, updated_at = {NOTE_UPDATED_AT_SQL}
+                 WHERE id = ?1 AND deleted_at IS NOT NULL"
+            ),
             [note_id],
         )?;
         if changed == 0 {
@@ -1182,8 +1204,7 @@ impl Database {
             )?;
         }
         transaction.execute(
-            "UPDATE notes SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-             WHERE id = ?1",
+            &format!("UPDATE notes SET updated_at = {NOTE_UPDATED_AT_SQL} WHERE id = ?1"),
             [note_id],
         )?;
         transaction.commit()?;
@@ -1940,6 +1961,40 @@ fn note_draft_from_row(row: &Row<'_>) -> Result<NoteDraft, rusqlite::Error> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn note_updated_at_always_moves_forward() {
+        let database = Database::in_memory().expect("database");
+        let note = database
+            .create_note("Orologio", &empty_document())
+            .expect("note");
+        // Un `updated_at` nel futuro simula un orologio fermo (o una nota
+        // arrivata da un dispositivo con l'ora avanti): ogni modifica deve
+        // comunque cambiarlo.
+        database
+            .connection()
+            .expect("connection")
+            .execute(
+                "UPDATE notes SET updated_at = '2999-01-01T00:00:00.999Z' WHERE id = ?1",
+                [&note.id],
+            )
+            .expect("future timestamp");
+        let pinned = database.set_note_pinned(&note.id, true).expect("pin");
+        assert_eq!(pinned.updated_at, "2999-01-01T00:00:01.000Z");
+        // Titolo diverso: un salvataggio senza differenze non tocca la data.
+        let edited = database
+            .update_note(&note.id, "Orologio fermo", &empty_document())
+            .expect("update");
+        assert!(edited.updated_at > pinned.updated_at);
+
+        // Con l'orologio reale, due modifiche immediate restano distinte
+        // anche dove SQLite avanza a scatti (Windows).
+        let other = database.create_note("Ora", &empty_document()).expect("note");
+        let first = database.set_note_pinned(&other.id, true).expect("pin");
+        let second = database.set_note_pinned(&other.id, false).expect("unpin");
+        assert!(first.updated_at > other.updated_at);
+        assert!(second.updated_at > first.updated_at);
+    }
+
     use std::fs;
 
     use rusqlite::{Connection, params};

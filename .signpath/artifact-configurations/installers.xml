@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath (ADR 0028), configurazione "installers": firma l'installer NSIS
+  e i pacchetti MSI (uno per lingua), costruiti con Greatnote.exe già
+  firmato. Copiare questo contenuto nella configurazione dell'artefatto con
+  slug "installers" del progetto SignPath.
+  I binari di llama.cpp inclusi negli installer non vengono firmati: le
+  condizioni di SignPath Foundation vietano di firmare binari di progetti
+  upstream, che possono però essere inclusi così come sono.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file-set product-name="Greatnote" product-version="${version}">
+      <include path="*-setup.exe" />
+      <for-each>
+        <authenticode-sign />
+      </for-each>
+    </pe-file-set>
+    <msi-file-set>
+      <include path="*.msi" max-matches="unbounded" />
+      <for-each>
+        <authenticode-sign />
+      </for-each>
+    </msi-file-set>
+  </zip-file>
+</artifact-configuration>

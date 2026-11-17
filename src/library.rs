@@ -12,8 +12,8 @@ use uuid::Uuid;
 use crate::{
     domain::note::{Note, validate_document},
     storage::{
-        Database, StorageError, collect_text, get_note, normalize_organization_name,
-        normalize_title, sync_search_index,
+        Database, NOTE_UPDATED_AT_SQL, StorageError, collect_text, get_note,
+        normalize_organization_name, normalize_title, sync_search_index,
     },
 };
 
@@ -452,7 +452,8 @@ impl Database {
         insert_revision(&transaction, &note_id)?;
         transaction.execute(
             &format!(
-                "UPDATE notes SET title = ?1, content_json = ?2, updated_at = {NOW} WHERE id = ?3"
+                "UPDATE notes SET title = ?1, content_json = ?2,
+                     updated_at = {NOTE_UPDATED_AT_SQL} WHERE id = ?3"
             ),
             params![title, content_json, note_id],
         )?;

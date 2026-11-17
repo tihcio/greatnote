@@ -93,8 +93,14 @@ un account utente di prova o una macchina virtuale.
 - [ ] Cartella dati e nomi file con spazi e caratteri accentati.
 - [ ] Aggiornamento sopra la versione precedente e disinstallazione senza
       perdita della cartella dati.
-- [ ] Gli installer non sono firmati: SmartScreen mostra un avviso.
-      Indicarlo nelle note di rilascio finché non c'è un certificato.
+- [ ] Firma del codice ([CODE_SIGNING.md](CODE_SIGNING.md)): approvate le
+      due richieste su SignPath (`app` e `installers`);
+      `Get-AuthenticodeSignature` dà `Valid` per `.exe`, `.msi` e per
+      `Greatnote.exe` installato; l'aggiornamento in-app dalla versione
+      precedente installa la nuova (firme minisign rigenerate). Se
+      SignPath non è ancora configurato, le note di rilascio dicono che
+      gli installer non sono firmati.
+- [ ] Al primo avvio dell'installer compare la pagina di licenza e privacy.
 
 ### Android (finché non è distribuito: solo per le build di prova)
 

@@ -4,6 +4,25 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.8 — 2026-11-17
+
+- **Windows: modifiche ravvicinate non più ignorate.** L'orologio di
+  SQLite su Windows avanza a scatti di circa 15 ms: due modifiche alla
+  stessa nota entro lo stesso scatto ricevevano la stessa data di modifica,
+  quindi l'indice AI non reindicizzava la nota e il controllo delle
+  versioni della sincronizzazione non vedeva il cambiamento. Ora la data
+  di modifica di una nota avanza sempre, almeno di 1 ms.
+
+- **Windows: firma del codice con SignPath Foundation.** Le release
+  possono firmare con Authenticode `Greatnote.exe`, l'installer NSIS e i
+  pacchetti MSI, così SmartScreen e Smart App Control non bloccano più
+  l'avvio. La firma si attiva quando il progetto SignPath è configurato
+  (docs/CODE_SIGNING.md, ADR 0028); le firme degli aggiornamenti in-app
+  vengono rigenerate sui file firmati.
+- **Installer: pagina di licenza e privacy.** NSIS e MSI mostrano la
+  licenza GPL-3.0 e quali connessioni di rete fa l'app senza una richiesta
+  esplicita (il controllo degli aggiornamenti, disattivabile).
+
 ## 0.2.7 — 2026-11-17
 
 - **Spostare una nota in uno spazio nuovo.** Una nota sta sempre in un

@@ -372,6 +372,13 @@ locali.
   (intestazioni standard); nessun dato delle note.
 - **Pubblicazione:** il workflow crea release in bozza; nulla arriva agli
   utenti finché una persona non la pubblica.
+- **Firma Authenticode (ADR 0028):** gli installer Windows e
+  `Greatnote.exe` sono firmati da SignPath Foundation solo per build del
+  workflow su runner GitHub a partire da un tag, con approvazione manuale
+  di ogni richiesta. Il token API di SignPath è un segreto di GitHub
+  Actions; la chiave del certificato non lascia mai SignPath. I binari di
+  llama.cpp restano non firmati (binari upstream). Dettagli in
+  [CODE_SIGNING.md](./CODE_SIGNING.md).
 - **`.rpm` senza firma OpenPGP:** l'aggiornamento esegue
   `pkexec rpm -U --nosignature` su un file scritto dai byte già verificati
   con la firma minisign, leggibile solo dall'utente e rimosso subito dopo.

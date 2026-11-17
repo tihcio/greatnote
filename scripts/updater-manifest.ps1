@@ -18,7 +18,11 @@ param(
     [string]$BundleDir = "target/release/bundle/nsis",
     [string]$MsiDir = "target/release/bundle/msi",
     [string]$Output = "target/release/bundle/latest.json",
-    [string]$NotesFile = ""
+    [string]$NotesFile = "",
+    # Dopo la firma Authenticode (SignPath, ADR 0028) i byte degli installer
+    # sono cambiati e le firme minisign create dal bundle non valgono più:
+    # vanno sempre rigenerate.
+    [switch]$Resign
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,8 +60,12 @@ function Get-PlatformEntry($installer) {
         throw "Firma mancante ($signaturePath): la build deve usare src-tauri/tauri.updater.conf.json."
     }
     $signed = Get-SignedVersion $signaturePath
-    if ($signed -ne $version) {
-        Write-Host "La firma di $($installer.Name) non indica la versione ($signed): rifirmo per $version."
+    if ($Resign -or $signed -ne $version) {
+        if ($Resign) {
+            Write-Host "Rifirmo $($installer.Name) dopo la firma del codice."
+        } else {
+            Write-Host "La firma di $($installer.Name) non indica la versione ($signed): rifirmo per $version."
+        }
         npx tauri signer sign --app-version $version $installer.FullName
         if ($LASTEXITCODE -ne 0) { throw "Firma non riuscita." }
         $signed = Get-SignedVersion $signaturePath

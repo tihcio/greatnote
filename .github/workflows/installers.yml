@@ -22,6 +22,14 @@ jobs:
     permissions:
       # Necessario solo per creare la release in bozza.
       contents: write
+      # L'action di SignPath legge i dettagli del job e scarica gli artefatti.
+      actions: read
+    env:
+      # Firma del codice con SignPath Foundation (ADR 0028): solo per i tag
+      # di versione e solo se il progetto SignPath è configurato (variabile
+      # del repository SIGNPATH_ORGANIZATION_ID). Senza, la release esce
+      # come prima, con installer non firmati.
+      SIGN_WINDOWS: ${{ startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != '' }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -59,10 +67,11 @@ jobs:
           GREATNOTE_MICROSOFT_CLIENT_ID: ${{ secrets.GREATNOTE_MICROSOFT_CLIENT_ID }}
           GREATNOTE_DROPBOX_APP_KEY: ${{ secrets.GREATNOTE_DROPBOX_APP_KEY }}
 
-      # Release: installer firmati per gli aggiornamenti in-app. La chiave
-      # privata e la sua password sono segreti del repository, mai nel codice.
+      # Release senza SignPath: installer firmati solo per gli aggiornamenti
+      # in-app. La chiave privata e la sua password sono segreti del
+      # repository, mai nel codice.
       - name: Build signed installers for release
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && env.SIGN_WINDOWS != 'true' }}
         run: npx tauri build --config src-tauri/tauri.updater.conf.json
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -71,6 +80,133 @@ jobs:
           GREATNOTE_GOOGLE_CLIENT_SECRET: ${{ secrets.GREATNOTE_GOOGLE_CLIENT_SECRET }}
           GREATNOTE_MICROSOFT_CLIENT_ID: ${{ secrets.GREATNOTE_MICROSOFT_CLIENT_ID }}
           GREATNOTE_DROPBOX_APP_KEY: ${{ secrets.GREATNOTE_DROPBOX_APP_KEY }}
+
+      # --- Release con firma del codice SignPath (ADR 0028) ---------------
+      # Due richieste di firma, ognuna da approvare su SignPath: prima
+      # Greatnote.exe (così l'app installata è firmata), poi gli installer
+      # costruiti con l'eseguibile firmato. Le firme minisign degli
+      # aggiornamenti vengono rigenerate dopo, sui file definitivi.
+      - name: Check release version
+        id: version
+        if: ${{ env.SIGN_WINDOWS == 'true' }}
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ("${{ github.ref_name }}" -ne "v$version") {
+            throw "Il tag ${{ github.ref_name }} non corrisponde alla versione dell'app ($version)."
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Compile app for code signing
+        if: ${{ env.SIGN_WINDOWS == 'true' }}
+        run: npx tauri build --no-bundle
+        env:
+          GREATNOTE_GOOGLE_CLIENT_ID: ${{ secrets.GREATNOTE_GOOGLE_CLIENT_ID }}
+          GREATNOTE_GOOGLE_CLIENT_SECRET: ${{ secrets.GREATNOTE_GOOGLE_CLIENT_SECRET }}
+          GREATNOTE_MICROSOFT_CLIENT_ID: ${{ secrets.GREATNOTE_MICROSOFT_CLIENT_ID }}
+          GREATNOTE_DROPBOX_APP_KEY: ${{ secrets.GREATNOTE_DROPBOX_APP_KEY }}
+
+      - name: Stage app binary for signing
+        if: ${{ env.SIGN_WINDOWS == 'true' }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force signpath/app | Out-Null
+          Copy-Item target/release/Greatnote.exe signpath/app/ -ErrorAction Stop
+
+      - name: Upload unsigned app binary
+        id: upload-app
+        if: ${{ env.SIGN_WINDOWS == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: signpath-app-unsigned
+          path: signpath/app/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign app binary with SignPath
+        if: ${{ env.SIGN_WINDOWS == 'true' }}
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.upload-app.outputs.artifact-id }}
+          parameters: |
+            version: "${{ steps.version.outputs.version }}"
+          wait-for-completion: true
+          # Lascia il tempo di approvare la richiesta su SignPath.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signpath/app-signed
+
+      - name: Use signed app binary
+        if: ${{ env.SIGN_WINDOWS == 'true' }}
+        shell: pwsh
+        run: |
+          $signed = "signpath/app-signed/Greatnote.exe"
+          $signature = Get-AuthenticodeSignature $signed
+          if ($signature.Status -ne "Valid") {
+            throw "Greatnote.exe firmato non valido: $($signature.Status) $($signature.StatusMessage)"
+          }
+          Write-Host "Firmato da: $($signature.SignerCertificate.Subject)"
+          Copy-Item $signed target/release/Greatnote.exe -Force
+
+      - name: Bundle installers with the signed app
+        if: ${{ env.SIGN_WINDOWS == 'true' }}
+        run: npx tauri bundle --config src-tauri/tauri.updater.conf.json
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Stage installers for signing
+        if: ${{ env.SIGN_WINDOWS == 'true' }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force signpath/installers | Out-Null
+          Copy-Item target/release/bundle/nsis/*-setup.exe, target/release/bundle/msi/*.msi signpath/installers/ -ErrorAction Stop
+
+      - name: Upload unsigned installers
+        id: upload-installers
+        if: ${{ env.SIGN_WINDOWS == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: signpath-installers-unsigned
+          path: signpath/installers/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign installers with SignPath
+        if: ${{ env.SIGN_WINDOWS == 'true' }}
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: installers
+          github-artifact-id: ${{ steps.upload-installers.outputs.artifact-id }}
+          parameters: |
+            version: "${{ steps.version.outputs.version }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signpath/installers-signed
+
+      - name: Use signed installers
+        if: ${{ env.SIGN_WINDOWS == 'true' }}
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem signpath/installers-signed -File)
+          if ($files.Count -eq 0) { throw "Nessun installer firmato ricevuto da SignPath." }
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            if ($signature.Status -ne "Valid") {
+              throw "$($file.Name) firmato non valido: $($signature.Status) $($signature.StatusMessage)"
+            }
+            $folder = if ($file.Extension -eq ".msi") { "msi" } else { "nsis" }
+            Copy-Item $file.FullName "target/release/bundle/$folder/$($file.Name)" -Force
+            Write-Host "$($file.Name): firmato da $($signature.SignerCertificate.Subject)"
+          }
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
@@ -85,7 +221,7 @@ jobs:
       - name: Prepare update manifest
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: pwsh
-        run: ./scripts/updater-manifest.ps1 -Tag "${{ github.ref_name }}" -Repository "${{ github.repository }}"
+        run: ./scripts/updater-manifest.ps1 -Tag "${{ github.ref_name }}" -Repository "${{ github.repository }}" -Resign:$${{ env.SIGN_WINDOWS }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -96,7 +232,12 @@ jobs:
         shell: pwsh
         run: |
           $files = @(Get-ChildItem target/release/bundle/nsis/*-setup.exe, target/release/bundle/nsis/*-setup.exe.sig, target/release/bundle/msi/*.msi, target/release/bundle/latest.json | ForEach-Object { $_.FullName })
-          gh release create "${{ github.ref_name }}" --draft --verify-tag --title "Greatnote ${{ github.ref_name }}" --notes "Vedi CHANGELOG.md. Gli installer non sono firmati con un certificato di firma del codice." @files
+          $notes = if ("${{ env.SIGN_WINDOWS }}" -eq "true") {
+            "Vedi CHANGELOG.md. Installer Windows firmati: free code signing provided by SignPath.io, certificate by SignPath Foundation. Code signing policy: https://github.com/${{ github.repository }}#code-signing-policy"
+          } else {
+            "Vedi CHANGELOG.md. Gli installer non sono firmati con un certificato di firma del codice."
+          }
+          gh release create "${{ github.ref_name }}" --draft --verify-tag --title "Greatnote ${{ github.ref_name }}" --notes $notes @files
         env:
           GH_TOKEN: ${{ github.token }}
 
