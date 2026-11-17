@@ -30,7 +30,7 @@ Le modifiche rilevanti sono registrate per rilascio.
   di modifica di una nota avanza sempre, almeno di 1 ms.
 
 - **Windows: firma del codice con SignPath Foundation.** Le release
-  possono firmare con Authenticode `Greatnote.exe`, l'installer NSIS e i
+  possono firmare con Authenticode `greatnote-desktop.exe`, l'installer NSIS e i
   pacchetti MSI, così SmartScreen e Smart App Control non bloccano più
   l'avvio. La firma si attiva quando il progetto SignPath è configurato
   (docs/CODE_SIGNING.md, ADR 0028); le firme degli aggiornamenti in-app

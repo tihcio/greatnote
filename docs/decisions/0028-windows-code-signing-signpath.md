@@ -7,7 +7,7 @@
 ## Contesto
 
 Su Windows 11 l'app installata dalle release non si avviava: gli installer
-e `Greatnote.exe` non hanno una firma Authenticode, quindi SmartScreen li
+e `greatnote-desktop.exe` non hanno una firma Authenticode, quindi SmartScreen li
 segnala e Smart App Control li blocca senza possibilità di proseguire. La
 firma minisign degli aggiornamenti (ADR 0023) vale solo per il plugin di
 aggiornamento e Windows non la conosce.
@@ -30,7 +30,7 @@ Opzione 4. Il job Windows di `installers.yml`, per i tag `v*` e solo se la
 variabile `SIGNPATH_ORGANIZATION_ID` è impostata:
 
 1. compila l'app con `tauri build --no-bundle`;
-2. invia `Greatnote.exe` a SignPath (configurazione `app`);
+2. invia `greatnote-desktop.exe` a SignPath (configurazione `app`);
 3. crea gli installer con `tauri bundle` usando l'eseguibile firmato;
 4. invia NSIS e MSI a SignPath (configurazione `installers`);
 5. verifica ogni firma con `Get-AuthenticodeSignature`;

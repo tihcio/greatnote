@@ -83,7 +83,7 @@ jobs:
 
       # --- Release con firma del codice SignPath (ADR 0028) ---------------
       # Due richieste di firma, ognuna da approvare su SignPath: prima
-      # Greatnote.exe (così l'app installata è firmata), poi gli installer
+      # greatnote-desktop.exe (così l'app installata è firmata), poi gli installer
       # costruiti con l'eseguibile firmato. Le firme minisign degli
       # aggiornamenti vengono rigenerate dopo, sui file definitivi.
       - name: Check release version
@@ -111,7 +111,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force signpath/app | Out-Null
-          Copy-Item target/release/Greatnote.exe signpath/app/ -ErrorAction Stop
+          Copy-Item target/release/greatnote-desktop.exe signpath/app/ -ErrorAction Stop
 
       - name: Upload unsigned app binary
         id: upload-app
@@ -144,13 +144,13 @@ jobs:
         if: ${{ env.SIGN_WINDOWS == 'true' }}
         shell: pwsh
         run: |
-          $signed = "signpath/app-signed/Greatnote.exe"
+          $signed = "signpath/app-signed/greatnote-desktop.exe"
           $signature = Get-AuthenticodeSignature $signed
           if ($signature.Status -ne "Valid") {
-            throw "Greatnote.exe firmato non valido: $($signature.Status) $($signature.StatusMessage)"
+            throw "greatnote-desktop.exe firmato non valido: $($signature.Status) $($signature.StatusMessage)"
           }
           Write-Host "Firmato da: $($signature.SignerCertificate.Subject)"
-          Copy-Item $signed target/release/Greatnote.exe -Force
+          Copy-Item $signed target/release/greatnote-desktop.exe -Force
 
       - name: Bundle installers with the signed app
         if: ${{ env.SIGN_WINDOWS == 'true' }}
@@ -210,10 +210,15 @@ jobs:
 
       # Pacchetto MSIX per il Microsoft Store (ADR 0029), solo come
       # artefatto: si carica a mano in Partner Center, che lo firma dopo la
-      # certificazione. L'identità del prodotto è in scripts/build-msix.ps1.
+      # certificazione. L'identità del prodotto è in scripts/build-msix.ps1;
+      # le variabili del repository, se presenti, la sovrascrivono.
       - name: Build MSIX package for the Microsoft Store
         shell: pwsh
         run: ./scripts/build-msix.ps1
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
 
       - name: Upload MSIX package
         uses: actions/upload-artifact@v4

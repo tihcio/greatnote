@@ -96,7 +96,7 @@ un account utente di prova o una macchina virtuale.
 - [ ] Firma del codice ([CODE_SIGNING.md](CODE_SIGNING.md)): approvate le
       due richieste su SignPath (`app` e `installers`);
       `Get-AuthenticodeSignature` dà `Valid` per `.exe`, `.msi` e per
-      `Greatnote.exe` installato; l'aggiornamento in-app dalla versione
+      `greatnote-desktop.exe` installato; l'aggiornamento in-app dalla versione
       precedente installa la nuova (firme minisign rigenerate). Se
       SignPath non è ancora configurato, le note di rilascio dicono che
       gli installer non sono firmati.

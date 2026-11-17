@@ -98,7 +98,7 @@ che quella versione va installata a mano.
 
 3. Il workflow **Installers** (`installers.yml`):
    - compila e firma gli installer (`--config src-tauri/tauri.updater.conf.json`);
-     se SignPath è configurato, prima firma con Authenticode `Greatnote.exe`
+     se SignPath è configurato, prima firma con Authenticode `greatnote-desktop.exe`
      e gli installer, poi rigenera le firme minisign
      ([CODE_SIGNING.md](CODE_SIGNING.md));
    - controlla che il tag corrisponda alla versione e che la firma contenga
@@ -137,7 +137,7 @@ prima di pubblicarla, senza toccare `version`, `url` e `signature`.
 - **Pacchetti `.rpm` senza firma OpenPGP:** anche l'installazione manuale
   con `rpm` richiede `--nosignature` su RPM 6.
 - **Firma del codice Windows:** con SignPath configurato gli installer e
-  `Greatnote.exe` sono firmati con Authenticode e le firme minisign sono
+  `greatnote-desktop.exe` sono firmati con Authenticode e le firme minisign sono
   rigenerate dopo ([CODE_SIGNING.md](CODE_SIGNING.md)). Le release
   precedenti, e quelle senza SignPath, non sono firmate e SmartScreen o
   Smart App Control possono bloccarle.

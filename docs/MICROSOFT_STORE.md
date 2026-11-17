@@ -8,7 +8,7 @@ Microsoft dopo la certificazione e si installa senza avvisi. La decisione
 
 ## Cosa contiene il pacchetto
 
-- lo stesso `Greatnote.exe` degli installer, con la cartella `llama`
+- lo stesso `greatnote-desktop.exe` degli installer, con la cartella `llama`
   del motore AI integrato;
 - i loghi in `src-tauri/msix/Assets` (generati da `src-tauri/icons/icon.png`);
 - il manifest `src-tauri/msix/AppxManifest.xml`.
@@ -27,7 +27,7 @@ prova a ogni push, così un manifest non valido viene scoperto subito.
 | Cartella dati | `%APPDATA%\dev.greatnote.notes` | la stessa |
 | Modelli AI e cache | `%LOCALAPPDATA%\dev.greatnote.notes` | la stessa |
 | Disinstallazione | i dati restano | i dati restano |
-| Server MCP | percorso di `Greatnote.exe` | alias `%LOCALAPPDATA%\Microsoft\WindowsApps\greatnote.exe` |
+| Server MCP | percorso di `greatnote-desktop.exe` | alias `%LOCALAPPDATA%\Microsoft\WindowsApps\greatnote.exe` |
 | Notifiche | ID `dev.greatnote.notes` | ID dell'app del pacchetto |
 
 L'app riconosce da sola se gira dentro il pacchetto (`src-tauri/src/msix.rs`).

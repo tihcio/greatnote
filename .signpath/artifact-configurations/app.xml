@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  SignPath (ADR 0028), configurazione "app": firma l'eseguibile Greatnote.exe
+  SignPath (ADR 0028), configurazione "app": firma l'eseguibile greatnote-desktop.exe
   prima che venga incluso negli installer. Copiare questo contenuto nella
   configurazione dell'artefatto con slug "app" del progetto SignPath.
   Il nome e la versione del prodotto sono vincolati, come richiesto dalle
@@ -13,7 +13,7 @@
   </parameters>
   <zip-file>
     <pe-file-set product-name="Greatnote" product-version="${version}">
-      <include path="Greatnote.exe" />
+      <include path="greatnote-desktop.exe" />
       <for-each>
         <authenticode-sign />
       </for-each>

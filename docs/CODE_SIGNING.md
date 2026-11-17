@@ -24,7 +24,7 @@ nell'[ADR 0028](decisions/0028-windows-code-signing-signpath.md).
 
 | File | Firmato | Note |
 |---|---|---|
-| `Greatnote.exe` (l'app installata) | sì | prima richiesta di firma, configurazione `app` |
+| `greatnote-desktop.exe` (l'app installata) | sì | prima richiesta di firma, configurazione `app` |
 | `Greatnote_<versione>_x64-setup.exe` (NSIS) | sì | seconda richiesta, configurazione `installers` |
 | `Greatnote_<versione>_x64_<lingua>.msi` | sì | seconda richiesta, configurazione `installers` |
 | `uninstall.exe` creato da NSIS durante l'installazione | no | generato sul computer dell'utente, non passa da SignPath |
@@ -45,7 +45,7 @@ Solo per i tag `v*` e solo se la variabile del repository
 `SIGNPATH_ORGANIZATION_ID` è impostata (altrimenti la release esce non
 firmata, come prima):
 
-1. `npx tauri build --no-bundle` compila `target/release/Greatnote.exe`.
+1. `npx tauri build --no-bundle` compila `target/release/greatnote-desktop.exe`.
 2. L'eseguibile viene caricato come artefatto e inviato a SignPath
    (configurazione `app`). Il workflow attende l'approvazione fino a un'ora,
    poi verifica la firma (`Get-AuthenticodeSignature`).

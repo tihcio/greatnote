@@ -51,7 +51,7 @@
   </Resources>
 
   <Applications>
-    <Application Id="App" Executable="Greatnote.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="App" Executable="greatnote-desktop.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="Greatnote"
         Description="Note, attività e calendario sul tuo computer"
@@ -65,7 +65,7 @@
              in WindowsApps non si possono avviare direttamente. -->
         <uap3:Extension
           Category="windows.appExecutionAlias"
-          Executable="Greatnote.exe"
+          Executable="greatnote-desktop.exe"
           EntryPoint="Windows.FullTrustApplication">
           <uap3:AppExecutionAlias>
             <desktop:ExecutionAlias Alias="greatnote.exe" />

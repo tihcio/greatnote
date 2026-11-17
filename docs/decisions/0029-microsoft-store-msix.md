@@ -20,7 +20,7 @@ Distribuire su Windows anche un pacchetto MSIX tramite il Microsoft Store,
 accanto agli installer di GitHub.
 
 - Tauri genera solo NSIS e MSI: `scripts/build-msix.ps1` impacchetta lo
-  stesso `Greatnote.exe` con `makepri`/`makeappx` del Windows SDK. Un solo
+  stesso `greatnote-desktop.exe` con `makepri`/`makeappx` del Windows SDK. Un solo
   eseguibile per entrambe le distribuzioni.
 - L'app riconosce l'identità del pacchetto (`GetCurrentPackageFamilyName`,
   `src-tauri/src/msix.rs`) e in quel caso:

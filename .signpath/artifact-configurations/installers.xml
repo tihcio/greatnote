@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   SignPath (ADR 0028), configurazione "installers": firma l'installer NSIS
-  e i pacchetti MSI (uno per lingua), costruiti con Greatnote.exe già
+  e i pacchetti MSI (uno per lingua), costruiti con greatnote-desktop.exe già
   firmato. Copiare questo contenuto nella configurazione dell'artefatto con
   slug "installers" del progetto SignPath.
   I binari di llama.cpp inclusi negli installer non vengono firmati: le

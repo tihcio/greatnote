@@ -380,7 +380,7 @@ locali.
   nel pacchetto e non vengono cancellate disinstallandolo. In questa
   versione l'updater interno è disattivato.
 - **Firma Authenticode (ADR 0028, non attiva):** se configurata, gli
-  installer Windows e `Greatnote.exe` sono firmati da SignPath solo per build del
+  installer Windows e `greatnote-desktop.exe` sono firmati da SignPath solo per build del
   workflow su runner GitHub a partire da un tag, con approvazione manuale
   di ogni richiesta. Il token API di SignPath è un segreto di GitHub
   Actions; la chiave del certificato non lascia mai SignPath. I binari di

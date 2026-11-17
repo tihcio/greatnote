@@ -1,7 +1,7 @@
 # Crea il pacchetto MSIX di Greatnote per il Microsoft Store (ADR 0029).
 #
 # Tauri genera solo NSIS e MSI: questo script impacchetta l'eseguibile già
-# compilato (target/release/Greatnote.exe), il motore llama.cpp e i loghi
+# compilato (target/release/greatnote-desktop.exe), il motore llama.cpp e i loghi
 # con gli strumenti del Windows SDK (makepri, makeappx).
 #
 # Il pacchetto per lo Store non va firmato: lo firma Microsoft dopo la
@@ -12,7 +12,7 @@
 #   ./scripts/build-msix.ps1
 # L'identità del prodotto nello Store è indicata più sotto.
 param(
-    [string]$ExePath = "target/release/Greatnote.exe",
+    [string]$ExePath = "target/release/greatnote-desktop.exe",
     [string]$LlamaDir = "src-tauri/resources/llama",
     [string]$OutDir = "target/release/bundle/msix",
     [string]$IdentityName = $env:MSIX_IDENTITY_NAME,
@@ -66,7 +66,7 @@ function Invoke-Tool([string]$tool, [string[]]$arguments) {
 $stage = Join-Path ([IO.Path]::GetTempPath()) ("greatnote-msix-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $stage | Out-Null
 try {
-    Copy-Item $ExePath (Join-Path $stage "Greatnote.exe")
+    Copy-Item $ExePath (Join-Path $stage "greatnote-desktop.exe")
     if (Test-Path (Join-Path $LlamaDir "llama-server.exe")) {
         # Stessa posizione dell'installazione NSIS: cartella llama accanto all'app.
         Copy-Item -Recurse $LlamaDir (Join-Path $stage "llama")
