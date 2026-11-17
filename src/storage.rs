@@ -1988,7 +1988,9 @@ mod tests {
 
         // Con l'orologio reale, due modifiche immediate restano distinte
         // anche dove SQLite avanza a scatti (Windows).
-        let other = database.create_note("Ora", &empty_document()).expect("note");
+        let other = database
+            .create_note("Ora", &empty_document())
+            .expect("note");
         let first = database.set_note_pinned(&other.id, true).expect("pin");
         let second = database.set_note_pinned(&other.id, false).expect("unpin");
         assert!(first.updated_at > other.updated_at);
