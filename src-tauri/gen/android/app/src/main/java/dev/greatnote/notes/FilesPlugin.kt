@@ -4,7 +4,9 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.DocumentsContract
+import android.provider.Settings
 import androidx.core.content.FileProvider
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
@@ -17,6 +19,11 @@ import java.io.File
 class OpenFileArgs {
   lateinit var path: String
   var mimeType: String? = null
+}
+
+@InvokeArg
+class InstallPackageArgs {
+  lateinit var path: String
 }
 
 @InvokeArg
@@ -94,6 +101,45 @@ class FilesPlugin(private val activity: Activity) : Plugin(activity) {
         return
       }
       DocumentsContract.deleteDocument(activity.contentResolver, uri)
+      invoke.resolve()
+    } catch (ex: Exception) {
+      invoke.reject(ex.message)
+    }
+  }
+
+  /**
+   * Aggiornamento dell'app: apre l'installatore di Android con l'APK
+   * scaricato dal lato Rust in `cache/update/` (update_commands_mobile.rs).
+   * Android lo installa solo se è firmato con la stessa chiave dell'app.
+   * Senza il permesso «Installa app sconosciute» apre l'impostazione e
+   * risponde `install-permission`: l'utente riprova dopo averlo concesso.
+   */
+  @Command
+  fun installPackage(invoke: Invoke) {
+    try {
+      val args = invoke.parseArgs(InstallPackageArgs::class.java)
+      val updates = File(activity.cacheDir, "update").canonicalFile
+      val file = File(args.path).canonicalFile
+      if (file.parentFile != updates || !file.isFile || !file.name.endsWith(".apk")) {
+        invoke.reject("File non consentito")
+        return
+      }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+        !activity.packageManager.canRequestPackageInstalls()
+      ) {
+        val settings = Intent(
+          Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+          Uri.parse("package:${activity.packageName}"),
+        )
+        activity.startActivity(settings)
+        invoke.reject("install-permission")
+        return
+      }
+      val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file)
+      val intent = Intent(Intent.ACTION_VIEW)
+        .setDataAndType(uri, "application/vnd.android.package-archive")
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+      activity.startActivity(intent)
       invoke.resolve()
     } catch (ex: Exception) {
       invoke.reject(ex.message)

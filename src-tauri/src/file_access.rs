@@ -149,6 +149,16 @@ mod platform {
         ))
     }
 
+    /// Installazione di un aggiornamento scaricato: solo Android (sul
+    /// desktop gli aggiornamenti passano dal plugin updater).
+    #[cfg(mobile)]
+    pub fn install_package(_app: &AppHandle, _path: &Path) -> CommandResult<()> {
+        Err(greatnote_core::tr!(
+            "Gli aggiornamenti dall'app non sono disponibili su questo dispositivo",
+            "In-app updates are not available on this device"
+        ))
+    }
+
     /// Apre un file con l'applicazione predefinita del sistema.
     pub fn open_file(app: &AppHandle, path: &Path, _name: &str, _mime: &str) -> CommandResult<()> {
         use tauri_plugin_opener::OpenerExt;
@@ -217,6 +227,33 @@ mod platform {
                     "Nessuna app installata può aprire questo tipo di file".to_owned()
                 } else {
                     format!("Impossibile aprire il file: {error}")
+                }
+            })
+    }
+
+    /// Apre l'installatore di Android con l'APK scaricato in
+    /// `<cache>/update/`. Se l'utente non ha ancora permesso a Greatnote di
+    /// installare app, `FilesPlugin.kt` apre l'impostazione di sistema e
+    /// restituisce `install-permission`.
+    pub fn install_package(app: &AppHandle, path: &Path) -> CommandResult<()> {
+        app.state::<FilesPlugin>()
+            .0
+            .run_mobile_plugin::<serde_json::Value>(
+                "installPackage",
+                serde_json::json!({ "path": path }),
+            )
+            .map(|_| ())
+            .map_err(|error| {
+                if error.to_string().contains("install-permission") {
+                    greatnote_core::tr!(
+                        "Consenti a Greatnote di installare app nella schermata che si è aperta, poi torna qui e premi di nuovo «Aggiorna»",
+                        "Allow Greatnote to install apps on the screen that just opened, then come back and tap “Update” again"
+                    )
+                } else {
+                    greatnote_core::tr!(
+                        "Impossibile aprire l'installatore: {error}",
+                        "Unable to open the installer: {error}"
+                    )
                 }
             })
     }
@@ -425,4 +462,6 @@ mod platform {
 
 #[cfg(target_os = "android")]
 pub use platform::init;
+#[cfg(mobile)]
+pub use platform::install_package;
 pub use platform::{clear, clear_all, open_file, pick_input, pick_inputs, pick_output, share_text};

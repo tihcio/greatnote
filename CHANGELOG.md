@@ -4,6 +4,14 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+- **Aggiornamenti dall'app anche su Android.** Se su GitHub è pubblicata
+  una versione più recente, l'app scarica l'APK firmato della release e
+  chiede se installarlo; «Aggiorna» salva le note aperte e apre
+  l'installatore di Android. Android accetta l'aggiornamento solo se è
+  firmato con la stessa chiave dell'app installata. Impostazioni ›
+  Aggiornamenti è disponibile anche sul telefono. Le release includono ora
+  `Greatnote.arm64.apk`.
+
 ## 0.2.9 — 2026-11-17
 
 - **Windows: pacchetto per il Microsoft Store.** Il workflow crea anche un

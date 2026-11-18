@@ -345,12 +345,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   # Android (docs/ANDROID_PORTING.md, fase G): APK e AAB di rilascio per
-  # telefoni arm64, solo come artefatti. Non vengono aggiunti alla release:
-  # la versione Android non è ancora distribuita. Senza i segreti della
-  # chiave di firma i pacchetti escono non firmati (l'APK non si installa
-  # finché non viene firmato).
+  # telefoni arm64 come artefatti. Con un tag l'APK firmato viene allegato
+  # alla release in bozza come Greatnote.arm64.apk: l'app Android lo trova
+  # da lì per aggiornarsi (update_commands_mobile.rs). Senza i segreti della
+  # chiave di firma i pacchetti escono non firmati e non vanno nella release.
   android:
     runs-on: ubuntu-latest
+    permissions:
+      # Necessario solo per allegare l'APK alla release in bozza.
+      contents: write
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -409,6 +412,30 @@ jobs:
           cp src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab android-packages/
           rm -f "$RUNNER_TEMP/greatnote-release.jks"
           ls -l android-packages
+
+      # La bozza viene creata dal job Windows: si attende che esista (al più
+      # 60 minuti) e si allega l'APK firmato con il nome che l'app cerca.
+      - name: Add signed APK to draft release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          signed=src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
+          if [ ! -f "$signed" ]; then
+            echo "::error::APK non firmato: configurare i segreti GREATNOTE_ANDROID_* per pubblicarlo nella release."
+            exit 1
+          fi
+          cp "$signed" Greatnote.arm64.apk
+          for attempt in $(seq 1 60); do
+            if gh release view "${{ github.ref_name }}" > /dev/null 2>&1; then
+              gh release upload "${{ github.ref_name }}" Greatnote.arm64.apk --clobber
+              exit 0
+            fi
+            echo "Release ${{ github.ref_name }} non ancora creata, attendo ($attempt/60)"
+            sleep 60
+          done
+          echo "::error::La release ${{ github.ref_name }} non è stata creata (job Windows fallito?)."
+          exit 1
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Upload packages
         uses: actions/upload-artifact@v4

@@ -573,11 +573,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             ai_commands::spawn_auto_indexer(app.handle());
             calendar_commands::spawn_calendar_sync(app.handle());
             sync_commands::spawn_sync_loop(app.handle());
-            #[cfg(desktop)]
-            {
-                app.manage(update_commands::UpdateState::default());
-                update_commands::spawn_update_checker(app.handle());
-            }
+            // Desktop: plugin updater (ADR 0023). Android: APK della release
+            // (update_commands_mobile.rs).
+            app.manage(update_commands::UpdateState::default());
+            update_commands::spawn_update_checker(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

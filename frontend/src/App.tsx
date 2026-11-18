@@ -1069,6 +1069,32 @@ export default function App() {
     await updatesApi.installNow();
   };
 
+  // Su Android non c'è installazione alla chiusura: quando un aggiornamento
+  // è pronto l'app chiede se installarlo, una volta per versione a ogni
+  // avvio. «Più tardi» lo lascia in Impostazioni › Aggiornamenti.
+  const askedUpdateRef = useRef<string | null>(null);
+  const readyVersion = updateStatus?.phase.state === "ready" ? updateStatus.phase.version : null;
+  useEffect(() => {
+    if (!isMobile || !readyVersion || askedUpdateRef.current === readyVersion) return;
+    askedUpdateRef.current = readyVersion;
+    void (async () => {
+      const confirmed = await askConfirmation({
+        title: t.updateAvailableTitle,
+        message: t.updateAvailablePrompt(readyVersion),
+        confirmLabel: t.updateInstallNowMobile,
+        cancelLabel: t.updateLater,
+      });
+      if (!confirmed) return;
+      try {
+        await installUpdate();
+      } catch (cause) {
+        setError(errorMessage(cause));
+      }
+    })();
+    // installUpdate cambia a ogni disegno; conta solo la versione pronta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readyVersion]);
+
   const firedReminders = reminders.filter((reminder) => reminder.status === "fired");
   const urgentTaskCount = (taskCounts?.today ?? 0) + (taskCounts?.overdue ?? 0);
 

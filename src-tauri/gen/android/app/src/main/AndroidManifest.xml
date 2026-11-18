@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Unico permesso dichiarato dall'app: sincronizzazione Dropbox,
-         calendari iCal e provider AI. Le notifiche dei promemoria aggiungono
+    <!-- INTERNET: sincronizzazione Dropbox, calendari iCal, provider AI e
+         controllo degli aggiornamenti. Le notifiche dei promemoria aggiungono
          i permessi del plugin (POST_NOTIFICATIONS e riavvio), elencati in
          docs/ANDROID_PORTING.md. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Aggiornamenti dall'app (update_commands_mobile.rs): apre
+         l'installatore di sistema con l'APK della release. Android chiede
+         all'utente di consentirlo la prima volta. Google Play non ammette
+         questo permesso per l'aggiornamento automatico: in una build per
+         lo store va tolto insieme alla funzione. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- allowBackup="false": le note non vengono copiate nell'account Google
          dal backup automatico di Android. Il backup resta quello dell'app,

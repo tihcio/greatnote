@@ -792,6 +792,15 @@ const messages = {
       "Premi «Riavvia e aggiorna» per installarla: le note aperte vengono salvate, il sistema chiede la password di amministratore e l'app si riavvia.",
     updateInstalling: "Installazione in corso: Greatnote si riavvierà…",
     updateInstallNow: "Riavvia e aggiorna",
+    updateInstallNowMobile: "Aggiorna",
+    updateReadyHintMobile:
+      "Premi «Aggiorna»: le note aperte vengono salvate e si apre l'installatore di Android, che chiede conferma. La prima volta Android chiede anche di consentire a Greatnote di installare app.",
+    updateAutomaticHintMobile:
+      "Controlla all'avvio e ogni 6 ore e scarica il pacchetto dalla pagina delle release del progetto. Android lo installa solo se è firmato con la stessa chiave dell'app già installata, e sempre dopo la tua conferma.",
+    updateAvailableTitle: "Aggiornamento disponibile",
+    updateAvailablePrompt: (version: string) =>
+      `È disponibile Greatnote ${version}. Vuoi installarlo adesso? Le note aperte vengono salvate.`,
+    updateLater: "Più tardi",
     updateCheckNow: "Cerca aggiornamenti",
     updateLastCheck: (date: string) => `Ultimo controllo: ${date}`,
     updateAutomatic: "Aggiornamenti automatici",
@@ -2170,6 +2179,15 @@ const messages = {
       "Press “Restart and update” to install it: open notes are saved, the system asks for the administrator password and the app restarts.",
     updateInstalling: "Installing: Greatnote will restart…",
     updateInstallNow: "Restart and update",
+    updateInstallNowMobile: "Update",
+    updateReadyHintMobile:
+      "Tap “Update”: open notes are saved and the Android installer opens and asks for confirmation. The first time Android also asks you to allow Greatnote to install apps.",
+    updateAutomaticHintMobile:
+      "Checks at startup and every 6 hours and downloads the package from the project's release page. Android installs it only if it is signed with the same key as the installed app, and always after your confirmation.",
+    updateAvailableTitle: "Update available",
+    updateAvailablePrompt: (version: string) =>
+      `Greatnote ${version} is available. Install it now? Open notes are saved.`,
+    updateLater: "Later",
     updateCheckNow: "Check for updates",
     updateLastCheck: (date: string) => `Last check: ${date}`,
     updateAutomatic: "Automatic updates",

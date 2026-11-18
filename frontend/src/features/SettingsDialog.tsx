@@ -64,7 +64,7 @@ export default function SettingsDialog({
 }: SettingsDialogProps) {
   // Su Android e iOS gli aggiornamenti arrivano dallo store o da un nuovo
   // pacchetto, non dall'app (docs/ANDROID_PORTING.md).
-  const hidden: SettingsSection[] = isMobile ? ["updates"] : [];
+  const hidden: SettingsSection[] = [];
   const [section, setSection] = useState<SettingsSection>(
     hidden.includes(initialSection) ? "general" : initialSection,
   );

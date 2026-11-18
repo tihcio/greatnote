@@ -133,7 +133,7 @@ Stati: **C** condivisibile, **A** adattabile, **D** solo desktop,
 | Provider Claude Code | N | CLI desktop |
 | Ricerca semantica | V | L'indice è nel core; dipende da un provider di embedding raggiungibile |
 | Server MCP locale | D | |
-| Aggiornamenti dall'app | D | Su Android via store o nuovo APK |
+| Aggiornamenti dall'app | A | APK firmato allegato alla release e installatore di sistema (fase G) |
 | Impostazioni, temi chiaro/scuro, lingua | C | |
 | Credenziali nel portachiavi | V | Vedi `keyring` |
 
@@ -525,6 +525,23 @@ Per provare il rilascio senza la chiave definitiva: firmare l'APK con la
 chiave di debug locale (`zipalign` + `apksigner` dei Build-Tools con
 `~/.android/debug.keystore`). Si installa sopra una build di debug
 conservando i dati, perché la chiave è la stessa.
+
+Aggiornamenti dall'app (2026-11-18):
+
+- Con un tag, il job `android` allega l'APK firmato alla release in bozza
+  come `Greatnote.arm64.apk` (attende che il job Windows crei la bozza).
+- L'app (`update_commands_mobile.rs`, `greatnote_core::updates::package`)
+  legge `latest.json` all'avvio dopo 15 secondi e ogni 6 ore, se gli
+  aggiornamenti automatici sono attivi; se la versione è più recente scarica
+  l'APK in `<cache>/update/` e chiede se installarlo (una volta per versione
+  a ogni avvio). Impostazioni › Aggiornamenti è visibile anche su mobile.
+- «Aggiorna» salva le bozze e apre l'installatore di Android
+  (`FilesPlugin.installPackage`). La prima volta Android porta
+  all'impostazione «Installa app sconosciute» per Greatnote.
+- Le build di debug non si aggiornano.
+- **Non provato su un telefono**: serve una release pubblicata con l'APK.
+- Con Google Play questa funzione va tolta: Play non ammette
+  `REQUEST_INSTALL_PACKAGES` per aggiornare l'app fuori dallo store.
 
 Non fatto:
 

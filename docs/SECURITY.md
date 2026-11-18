@@ -396,6 +396,16 @@ locali.
 - **Limite:** gli installer non hanno un certificato di firma del codice;
   la firma minisign protegge il canale di aggiornamento, non la prima
   installazione scaricata a mano.
+- **Android:** il plugin updater non esiste per Android. L'app legge lo
+  stesso `latest.json` (solo `https`, reindirizzamenti consentiti solo verso
+  `https`), accetta solo una versione strettamente più recente e scarica
+  `Greatnote.arm64.apk` dalla stessa release (al più 300 MB) nella propria
+  cache. L'autenticità la garantisce Android: un APK è installato come
+  aggiornamento solo se è firmato con la stessa chiave dell'app installata,
+  e sempre dopo la conferma dell'utente nell'installatore di sistema. La
+  chiave di firma Android sta nei segreti di GitHub Actions e in un backup
+  dell'editore. Il permesso `REQUEST_INSTALL_PACKAGES` serve solo a questo;
+  Android chiede all'utente di concederlo la prima volta.
 
 ## Android (in sviluppo)
 

@@ -2,6 +2,8 @@
 //! download e l'installazione sono nella shell desktop (plugin updater di
 //! Tauri); qui resta solo ciò che va salvato nel database.
 
+pub mod package;
+
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 

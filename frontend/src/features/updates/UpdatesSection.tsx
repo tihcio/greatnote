@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { isMobile } from "../../app/platform";
 import { t } from "../../i18n";
 import { errorMessage, formatDateTime, formatFileSize } from "../../lib/format";
 import { updatesApi } from "./updatesApi";
@@ -71,7 +72,13 @@ export default function UpdatesSection({ status, onStatus, onInstall }: UpdatesS
             {phase.state === "ready" && (
               <>
                 {phase.notes && <p className="update-notes">{phase.notes}</p>}
-                <p className="data-hint">{status.installs_on_exit ? t.updateReadyHint : t.updateReadyHintPackage}</p>
+                <p className="data-hint">
+                  {isMobile
+                    ? t.updateReadyHintMobile
+                    : status.installs_on_exit
+                      ? t.updateReadyHint
+                      : t.updateReadyHintPackage}
+                </p>
               </>
             )}
             <div className="ai-inline-actions">
@@ -82,7 +89,7 @@ export default function UpdatesSection({ status, onStatus, onInstall }: UpdatesS
                   onClick={() => void run(onInstall)}
                   type="button"
                 >
-                  {t.updateInstallNow}
+                  {isMobile ? t.updateInstallNowMobile : t.updateInstallNow}
                 </button>
               ) : (
                 <button
@@ -118,7 +125,7 @@ export default function UpdatesSection({ status, onStatus, onInstall }: UpdatesS
             />
             <span>{t.updateAutomaticLabel}</span>
           </label>
-          <p className="data-hint">{t.updateAutomaticHint}</p>
+          <p className="data-hint">{isMobile ? t.updateAutomaticHintMobile : t.updateAutomaticHint}</p>
         </fieldset>
       )}
     </>

@@ -25,3 +25,4 @@
 -keep class dev.greatnote.notes.OpenFileArgs { *; }
 -keep class dev.greatnote.notes.ShareTextArgs { *; }
 -keep class dev.greatnote.notes.DeleteDocumentArgs { *; }
+-keep class dev.greatnote.notes.InstallPackageArgs { *; }
