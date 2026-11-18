@@ -34,7 +34,8 @@ step "Build frontend"
 npm run build
 
 step "Audit dipendenze npm"
-npm audit
+# Avvisi accettati e motivati in scripts/npm-audit.mjs.
+node scripts/npm-audit.mjs
 
 if [[ "${1:-}" == "--ui" ]]; then
     step "Test interfaccia"

@@ -4,6 +4,12 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+- **CI: avviso su `picomatch` accettato.** `npm audit` bloccava la CI per
+  un ReDoS in `picomatch` (GHSA-fc5q-39xc-vjpf), senza versione corretta.
+  Lo usano solo Vite e i suoi strumenti durante la compilazione: non entra
+  nell'app. `scripts/npm-audit.mjs` lo elenca con la motivazione e fa
+  fallire la CI per ogni altro avviso.
+
 ## 0.2.10 — 2026-11-18
 
 - **Aggiornamenti dall'app anche su Android.** Se su GitHub è pubblicata

@@ -17,7 +17,7 @@ Lo script si ferma al primo errore ed esegue:
 - `cargo test --workspace` (include i test di backup, ripristino,
   migrazioni da schemi precedenti e sincronizzazione);
 - `cargo audit` (RustSec, richiede `cargo install cargo-audit --locked`);
-- `npm ci`, `npm run build`, `npm audit`;
+- `npm ci`, `npm run build`, `npm audit` tramite `scripts/npm-audit.mjs`;
 - ricerca di chiavi API o segreti OAuth nei file versionati.
 
 La CI (`.github/workflows/ci.yml`) ripete gli stessi controlli su Linux e
@@ -31,6 +31,14 @@ da Tauri su Linux), `zbus_names`, `zvariant`, `zvariant_derive`
 compilazione). Ricontrollarli a ogni rilascio: se compare una
 **vulnerabilità**, `cargo audit` fallisce e il rilascio si blocca finché
 la dipendenza non è aggiornata (`cargo update -p <crate>`).
+
+**Avvisi npm accettati** (elencati con la motivazione in
+`scripts/npm-audit.mjs`): `GHSA-fc5q-39xc-vjpf` (`picomatch`, ReDoS con
+extglob ripetuti; usato solo da Vite e dai suoi strumenti durante la
+compilazione, sui pattern del progetto, senza versione corretta al
+2026-11-18). A ogni rilascio controlla se esiste una versione corretta: in
+quel caso aggiorna la dipendenza e togli la voce. Qualunque altro avviso
+moderato o più grave blocca la CI.
 
 ## 2. Versione e documenti
 

@@ -44,8 +44,9 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      # npm audit con gli avvisi accettati e motivati in scripts/npm-audit.mjs.
       - name: Audit npm dependencies
-        run: npm audit
+        run: node scripts/npm-audit.mjs
 
   # Avvisi di sicurezza RustSec sull'intero Cargo.lock (desktop incluso).
   # Fallisce solo per vulnerabilità; gli avvisi "unmaintained"/"unsound"
