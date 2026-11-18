@@ -920,3 +920,98 @@ fn network_calls_never_hold_the_database_lock() {
         );
     }
 }
+
+fn device_names(device: &Device) -> Vec<String> {
+    let mut names: Vec<String> = device
+        .database
+        .sync_status()
+        .expect("status")
+        .devices
+        .into_iter()
+        .map(|device| device.name)
+        .collect();
+    names.sort();
+    names
+}
+
+fn device_id_named(device: &Device, name: &str) -> String {
+    device
+        .database
+        .sync_status()
+        .expect("status")
+        .devices
+        .into_iter()
+        .find(|device| device.name == name)
+        .map(|device| device.device_id)
+        .expect("device")
+}
+
+#[test]
+fn removing_a_device_from_the_list_hides_it_everywhere_and_keeps_its_data() {
+    let shared = tempfile::tempdir().expect("shared");
+    let a = device(shared.path(), "A");
+    let b = device(shared.path(), "B");
+    let c = device(shared.path(), "C");
+    // Un dispositivo compare nell'elenco degli altri dopo il primo invio.
+    a.database
+        .create_note("Da A", &doc("scritta su A"))
+        .expect("note");
+    b.database
+        .create_note("Da B", &doc("scritta su B"))
+        .expect("note");
+    c.database
+        .create_note("Da C", &doc("scritta su C"))
+        .expect("note");
+    sync(&b);
+    sync(&a);
+    sync(&c);
+    sync(&a);
+    assert_eq!(device_names(&a), ["A", "B", "C"]);
+
+    let b_id = device_id_named(&a, "B");
+    a.database.retire_sync_device(&b_id).expect("retire");
+    assert_eq!(device_names(&a), ["A", "C"], "subito nascosto su A");
+    sync(&a);
+    sync(&c);
+    assert_eq!(device_names(&c), ["A", "C"], "nascosto anche su C");
+
+    // Chi entra dopo riceve comunque le note di B, senza vederlo in elenco.
+    let d = device(shared.path(), "D");
+    sync(&d);
+    assert_eq!(titles(&d), ["Da A", "Da B", "Da C"]);
+    assert_eq!(device_names(&d), ["A", "C", "D"]);
+
+    // B torna a sincronizzare, anche nello stesso secondo: ricompare per
+    // tutti. (D non è nell'elenco di A finché non invia una modifica.)
+    sync(&b);
+    sync(&a);
+    assert_eq!(device_names(&a), ["A", "B", "C"]);
+    sync(&c);
+    assert!(device_names(&c).contains(&"B".to_owned()));
+}
+
+#[test]
+fn this_device_cannot_be_removed_from_the_list() {
+    let shared = tempfile::tempdir().expect("shared");
+    let a = device(shared.path(), "A");
+    sync(&a);
+    let own = a
+        .database
+        .sync_status()
+        .expect("status")
+        .device_id
+        .expect("id");
+    assert!(a.database.retire_sync_device(&own).is_err());
+    assert!(
+        a.database
+            .retire_sync_device(&Uuid::new_v4().to_string())
+            .is_err()
+    );
+}
+
+#[test]
+fn default_device_name_is_never_empty() {
+    let name = default_device_name();
+    assert!(!name.trim().is_empty());
+    assert!(name.chars().count() <= 100);
+}

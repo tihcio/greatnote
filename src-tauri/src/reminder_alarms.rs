@@ -39,6 +39,15 @@ mod platform {
     pub fn request_permission(_app: &AppHandle) -> Permission {
         "granted"
     }
+
+    /// Sul desktop nessuna ottimizzazione della batteria blocca lo scheduler.
+    pub fn background_allowed(_app: &AppHandle) -> bool {
+        true
+    }
+
+    pub fn request_background(_app: &AppHandle) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[cfg(target_os = "android")]
@@ -236,6 +245,21 @@ mod platform {
     pub fn request_permission(app: &AppHandle) -> Permission {
         describe(app.notification().request_permission())
     }
+
+    /// Esenzione dall'ottimizzazione della batteria. Senza, su alcuni
+    /// telefoni (verificato su un vivo con Android 16) l'app chiusa dalle
+    /// app recenti viene congelata e il sistema rimuove le sue notifiche
+    /// programmate (motivo `frozen` nel registro degli allarmi).
+    pub fn background_allowed(app: &AppHandle) -> bool {
+        crate::file_access::background_allowed(app)
+    }
+
+    pub fn request_background(app: &AppHandle) -> Result<(), String> {
+        crate::file_access::request_background(app)
+    }
 }
 
-pub use platform::{DELIVERED_BY_SYSTEM, permission, request_permission, setup, sync, sync_soon};
+pub use platform::{
+    DELIVERED_BY_SYSTEM, background_allowed, permission, request_background, request_permission,
+    setup, sync, sync_soon,
+};

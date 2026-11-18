@@ -944,9 +944,12 @@ try {
     await pause(200);
     await clickText(".sync-settings .data-action", "Scegli");
     await pause(200);
-    const folder = await page.$eval(".sync-folder-row input", (element) => element.value);
+    const folder = await page.$eval(".sync-folder-row:not(.sync-name-row) input", (element) => element.value);
     if (folder !== "/home/test/Nextcloud") throw new Error(`cartella: ${folder}`);
-    const name = await page.$('.sync-settings input[placeholder^="Es. Portatile"]');
+    // Senza nome si usa il nome host, mostrato come suggerimento.
+    const hint = await page.$eval(".sync-settings", (element) => element.textContent ?? "");
+    if (!hint.includes("«postazione-prova»")) throw new Error(`nome automatico non indicato: ${hint}`);
+    const name = await page.$('.sync-settings input[placeholder="postazione-prova"]');
     await name.type("Fisso");
     await clickText(".sync-settings .data-action.primary", "Attiva");
     await pause(200);
@@ -960,6 +963,13 @@ try {
     await clickText(".sync-conflicts .text-button", "Ho controllato");
     await pause(300);
     if (await page.$(".sync-conflicts")) throw new Error("conflitto non chiuso");
+    // Un dispositivo non più usato si toglie dall'elenco.
+    await clickText(".sync-devices .text-button", "Rimuovi dall'elenco");
+    await pause(200);
+    await clickText(".confirm-dialog .dialog-submit-button", "Rimuovi dall'elenco");
+    await pause(300);
+    const devices = await page.$eval(".sync-devices", (element) => element.textContent ?? "");
+    if (devices.includes("Portatile") || !devices.includes("Questo dispositivo")) throw new Error(`elenco: ${devices}`);
     await page.click('.planner-dialog button[aria-label="Chiudi"]');
     await pause(300);
     await openNote();
@@ -978,6 +988,15 @@ try {
     await pause(400);
     const text = await page.$eval(".sync-settings", (element) => element.textContent ?? "");
     if (!text.includes("Collegato a Dropbox come anna@example.com")) throw new Error(`non collegato: ${text}`);
+    // Dopo il collegamento il nome resta modificabile.
+    const field = await page.$(".sync-settings .sync-name-row input");
+    await field.click();
+    await keys("Control", "KeyA");
+    await field.type("Studio");
+    await clickText(".sync-settings .data-action", "Salva il nome");
+    await pause(300);
+    const saved = await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("get_sync_status"));
+    if (saved.settings.device_name !== "Studio") throw new Error(`nome: ${saved.settings.device_name}`);
     await clickText(".sync-settings .data-action.destructive", "Scollega Dropbox");
     await pause(200);
     await clickText(".confirm-dialog .dialog-submit-button", "Scollega Dropbox");

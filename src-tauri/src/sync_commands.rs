@@ -260,6 +260,22 @@ pub fn dismiss_sync_conflict(database: State<'_, Database>, id: String) -> Comma
     database.dismiss_sync_conflict(&id).map_err(message)
 }
 
+/// Toglie un altro dispositivo dall'elenco (su tutti i dispositivi, alla
+/// prossima sincronizzazione). Le sue modifiche restano nella libreria.
+#[tauri::command]
+pub fn retire_sync_device(app: AppHandle, device_id: String) -> CommandResult<SyncView> {
+    if uuid::Uuid::parse_str(&device_id).is_err() {
+        return Err(greatnote_core::tr!(
+            "Dispositivo non valido",
+            "Invalid device"
+        ));
+    }
+    app.state::<Database>()
+        .retire_sync_device(&device_id)
+        .map_err(message)?;
+    view(&app)
+}
+
 /// Dialog nativo per scegliere la cartella sincronizzata.
 #[tauri::command]
 pub async fn pick_sync_folder(app: AppHandle, title: String) -> CommandResult<Option<String>> {

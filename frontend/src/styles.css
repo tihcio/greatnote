@@ -6754,8 +6754,19 @@ button.time-grid-day-name:hover {
   color: var(--ink);
 }
 
+.sync-devices {
+  max-height: 260px;
+}
+
 .sync-devices li {
-  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-height: 30px;
+}
+
+.sync-devices .sync-device-current span {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .sync-conflicts {

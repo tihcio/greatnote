@@ -406,6 +406,13 @@ locali.
   chiave di firma Android sta nei segreti di GitHub Actions e in un backup
   dell'editore. Il permesso `REQUEST_INSTALL_PACKAGES` serve solo a questo;
   Android chiede all'utente di concederlo la prima volta.
+- **Android, promemoria in background:** il permesso
+  `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` serve solo a mostrare la richiesta
+  di sistema per l'esenzione dall'ottimizzazione della batteria, senza la
+  quale alcuni telefoni cancellano i promemoria programmati. Decide
+  l'utente, che può revocarla dalle impostazioni della batteria; Google
+  Play limita questo permesso alle app che ne hanno bisogno per la loro
+  funzione principale.
 
 ## Android (in sviluppo)
 

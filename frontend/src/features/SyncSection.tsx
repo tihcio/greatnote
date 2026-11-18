@@ -40,6 +40,8 @@ export interface SyncView {
     this_device: boolean;
   }[];
   conflicts: SyncConflict[];
+  /** Nome usato se `settings.device_name` è vuoto (nome host). */
+  default_device_name: string;
   running: boolean;
   /** Questa versione include il collegamento a Dropbox. */
   dropbox_available: boolean;
@@ -193,6 +195,30 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
     }
   };
 
+  /** Salva solo il nome, con qualunque trasporto e anche dopo il collegamento. */
+  const saveName = async () => {
+    if (!view) return;
+    await run(
+      () =>
+        invoke<SyncView>("set_sync_settings", {
+          settings: { ...view.settings, device_name: deviceName.trim() },
+        }),
+      t.syncNameSaved,
+    );
+  };
+
+  const removeDevice = async (device: SyncView["devices"][number]) => {
+    const name = device.name || t.syncUnnamedDevice;
+    const confirmed = await askConfirmation({
+      title: t.syncRemoveDeviceTitle,
+      message: t.syncRemoveDeviceMessage(name),
+      confirmLabel: t.syncRemoveDevice,
+    });
+    if (confirmed) {
+      await run(() => invoke<SyncView>("retire_sync_device", { deviceId: device.device_id }), t.syncDeviceRemoved(name));
+    }
+  };
+
   const dismiss = async (conflict: SyncConflict) => {
     try {
       await invoke("dismiss_sync_conflict", { id: conflict.id });
@@ -216,6 +242,8 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
   const dropboxActive = enabled && view.settings.transport === "dropbox";
   const folderActive = enabled && view.settings.transport === "folder";
   const otherDevices = view.devices.filter((device) => !device.this_device);
+  const thisDevice = view.devices.find((device) => device.this_device);
+  const nameChanged = deviceName.trim() !== view.settings.device_name;
 
   return (
     <div className="ai-settings sync-settings">
@@ -239,13 +267,26 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
         </div>
         <label className="dialog-field">
           <span>{t.syncDeviceName}</span>
-          <input
-            maxLength={100}
-            onChange={(event) => setDeviceName(event.target.value)}
-            placeholder={t.syncDeviceNamePlaceholder}
-            value={deviceName}
-          />
+          <div className="sync-folder-row sync-name-row">
+            <input
+              maxLength={100}
+              onChange={(event) => setDeviceName(event.target.value)}
+              placeholder={view.default_device_name || t.syncDeviceNamePlaceholder}
+              value={deviceName}
+            />
+            <button
+              className="data-action"
+              disabled={busy || !nameChanged}
+              onClick={() => void saveName()}
+              type="button"
+            >
+              {t.syncSaveName}
+            </button>
+          </div>
         </label>
+        {!deviceName.trim() && view.default_device_name && (
+          <p className="data-hint">{t.syncDeviceNameAuto(view.default_device_name)}</p>
+        )}
         {transport === "dropbox" ? (
           <>
             <p className="data-hint">{t.dropboxIntro}</p>
@@ -378,18 +419,27 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
       {enabled && (
         <fieldset>
           <legend>{t.syncDevices}</legend>
-          {otherDevices.length === 0 ? (
-            <p className="data-hint">{t.syncNoDevices}</p>
-          ) : (
-            <ul className="integration-audit sync-devices">
-              {otherDevices.map((device) => (
-                <li key={device.device_id}>
-                  <strong>{device.name || t.syncUnnamedDevice}</strong>
-                  <span>{device.last_seen_at ? t.syncDeviceSeen(formatDateTime(device.last_seen_at)) : ""}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <ul className="integration-audit sync-devices">
+            <li className="sync-device-current">
+              <strong>{thisDevice?.name || view.settings.device_name || view.default_device_name}</strong>
+              <span>{t.syncThisDeviceBadge}</span>
+            </li>
+            {otherDevices.map((device) => (
+              <li key={device.device_id}>
+                <strong>{device.name || t.syncUnnamedDevice}</strong>
+                <span>{device.last_seen_at ? t.syncDeviceSeen(formatDateTime(device.last_seen_at)) : ""}</span>
+                <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => void removeDevice(device)}
+                  type="button"
+                >
+                  {t.syncRemoveDevice}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="data-hint">{otherDevices.length === 0 ? t.syncNoDevices : t.syncDevicesHint}</p>
         </fieldset>
       )}
       {view.conflicts.length > 0 && (

@@ -743,6 +743,19 @@ Cosa succede:
 - **Nota aperta:** se la nota aperta cambia su un altro computer e non la
   stai modificando, viene aggiornata.
 
+**Nome e dispositivi.** Il nome di questo dispositivo è quello che gli
+altri vedono nell'elenco. Se lo lasci vuoto si usa il nome del computer
+(nome host) o, su Android, il nome del telefono (es. «Pixel 7 Pro»). Puoi
+cambiarlo in qualunque momento con **Salva il nome**, anche dopo aver
+collegato Dropbox: gli altri lo vedono alla sincronizzazione successiva.
+L'elenco **Dispositivi** mostra questo dispositivo e gli altri, con la data
+delle ultime modifiche inviate; un dispositivo compare dopo la sua prima
+modifica sincronizzata. Ogni reinstallazione o riattivazione della
+sincronizzazione crea un nuovo dispositivo: quelli che non usi più si
+tolgono con **Rimuovi dall'elenco**. La rimozione vale per tutti i
+dispositivi ma non cancella nulla: le note e le modifiche che quel
+dispositivo ha sincronizzato restano, e se torna a sincronizzare ricompare.
+
 **Modifiche contemporanee.** Se modifichi la stessa nota su due computer
 prima che si sincronizzino, nessun testo va perso. Tutti i dispositivi
 mostrano la stessa versione; l'altra è conservata nella **cronologia della

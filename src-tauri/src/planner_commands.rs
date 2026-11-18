@@ -283,6 +283,20 @@ pub async fn request_notification_permission(app: AppHandle) -> CommandResult<&'
     crate::data_commands::blocking(app, |app| Ok(reminder_alarms::request_permission(app))).await
 }
 
+/// Vero se i promemoria possono arrivare ad app chiusa: su Android serve
+/// l'esenzione dall'ottimizzazione della batteria (reminder_alarms.rs).
+#[tauri::command]
+pub async fn get_background_allowed(app: AppHandle) -> CommandResult<bool> {
+    crate::data_commands::blocking(app, |app| Ok(reminder_alarms::background_allowed(app))).await
+}
+
+/// Mostra la richiesta di sistema per l'esenzione dall'ottimizzazione della
+/// batteria (solo Android).
+#[tauri::command]
+pub async fn request_background_allowed(app: AppHandle) -> CommandResult<()> {
+    crate::data_commands::blocking(app, reminder_alarms::request_background).await
+}
+
 // ---------------------------------------------------------------------------
 // Scheduler
 

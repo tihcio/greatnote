@@ -372,6 +372,20 @@ Limiti noti:
   predefinita nella configurazione di Tauri (la sezione
   `plugins.notification` fa fallire l'avvio: provato), quindi l'icona è
   indicata su ogni notifica in `reminder_alarms.rs`.
+- **Telefoni che congelano le app (verificato su vivo X300 Pro, Android
+  16, 2026-11-18).** Chiudendo Greatnote dalle app recenti il sistema la
+  congela e rimuove le sue notifiche programmate (registro degli allarmi:
+  `Removal history … Reason=frozen`); il promemoria non arriva. Con
+  Greatnote esente dall'ottimizzazione della batteria lo stesso promemoria
+  è arrivato puntuale. La vista Promemoria e il pannello promemoria della
+  nota mostrano un avviso con **Consenti in background**, che apre la
+  richiesta di sistema (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`). Sul Pixel
+  7 Pro non serve.
+- **Permesso delle notifiche.** Era chiesto solo aggiungendo un promemoria
+  dal pannello della nota: non per le attività né per i promemoria arrivati
+  dalla sincronizzazione, che quindi non comparivano. Ora lo chiedono anche
+  il dialog dell'attività e l'avvio dell'app, se ci sono promemoria
+  programmati e il permesso non è mai stato deciso.
 - Dopo un riavvio del telefono le notifiche sono ripristinate dal plugin:
   **non provato**.
 - Chiusura dalle app recenti e arresto forzato dalle impostazioni: non
@@ -479,7 +493,9 @@ Fatto (2026-11-16):
   `INTERNET` (Dropbox, iCal, AI), `POST_NOTIFICATIONS` (promemoria),
   `RECEIVE_BOOT_COMPLETED` e `WAKE_LOCK` (il plugin delle notifiche
   ripristina i promemoria dopo il riavvio e li consegna col telefono in
-  attesa), più il permesso interno
+  attesa), `REQUEST_INSTALL_PACKAGES` (aggiornamenti dall'app, dalla
+  0.2.10), `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (richiesta di esenzione
+  per i promemoria ad app chiusa), più il permesso interno
   `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` aggiunto da AndroidX. Nessun
   accesso a file, posizione, contatti, fotocamera o microfono: i file
   passano dal selettore di sistema.
@@ -676,6 +692,8 @@ Gradle usa lo script `npm run tauri`, aggiunto a `package.json`.
 | 2026-11-13 | Pixel 7 Pro, prova manuale: calendario iCal di Google e sincronizzazione Dropbox | Funzionano entrambi |
 | 2026-11-13 | Pixel 7 Pro: impostazioni AI e vista Assistente | Visibili e coerenti nelle schermate; nessuna richiesta a un server |
 | — | Pixel 7 Pro: connessione a un server AI, chat, ricerca per significato | Da provare |
+| 2026-11-18 | Pixel 7 Pro, 0.2.10 di rilascio: promemoria alle 17:00 con app in background | Notifica arrivata alle 17:02 (finestra degli allarmi non esatti), icona e colore di Greatnote. Prima non arrivava: permesso delle notifiche mai chiesto |
+| 2026-11-18 | vivo X300 Pro (Android 16), 0.2.10: promemoria con app chiusa dalle recenti | Non arriva: allarme rimosso con motivo `frozen`. Dopo l'esenzione dall'ottimizzazione della batteria arriva puntuale |
 | 2026-11-13 | Pixel 7 Pro: promemoria su una nota alle 11:10, app in background e processo terminato | Notifica «Nota da android — Promemoria delle 11:10» arrivata alle 11:11:47 con l'app chiusa; riaprendo, il promemoria è «da gestire» |
 | 2026-11-13 | Pixel 7 Pro: permesso delle notifiche dalla vista Promemoria | Avviso mostrato senza permesso, sparito dopo averlo concesso |
 | 2026-11-13 | Pixel 7 Pro: viste Attività, Calendario (mese e settimana), dialog di attività ed evento | Leggibili e con controlli da 44px nelle schermate; uso a mano non ancora provato |

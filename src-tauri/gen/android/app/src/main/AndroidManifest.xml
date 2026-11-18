@@ -11,6 +11,12 @@
          questo permesso per l'aggiornamento automatico: in una build per
          lo store va tolto insieme alla funzione. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Promemoria (reminder_alarms.rs): su alcuni telefoni (vivo, Xiaomi,
+         Oppo…) un'app non esente dall'ottimizzazione della batteria viene
+         congelata alla chiusura e il sistema cancella le sue notifiche
+         programmate. Serve a mostrare la richiesta di sistema per
+         l'esenzione; l'utente decide e può revocarla. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- allowBackup="false": le note non vengono copiate nell'account Google
          dal backup automatico di Android. Il backup resta quello dell'app,

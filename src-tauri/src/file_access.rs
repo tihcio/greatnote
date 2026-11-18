@@ -258,6 +258,32 @@ mod platform {
             })
     }
 
+    /// Vero se l'app è esente dall'ottimizzazione della batteria (in caso di
+    /// errore si presume di sì, per non mostrare avvisi a vuoto).
+    pub fn background_allowed(app: &AppHandle) -> bool {
+        app.state::<FilesPlugin>()
+            .0
+            .run_mobile_plugin::<serde_json::Value>("backgroundAllowed", serde_json::json!({}))
+            .ok()
+            .and_then(|value| value.get("allowed").and_then(serde_json::Value::as_bool))
+            .unwrap_or(true)
+    }
+
+    /// Mostra la richiesta di sistema per l'esenzione dall'ottimizzazione
+    /// della batteria.
+    pub fn request_background(app: &AppHandle) -> CommandResult<()> {
+        app.state::<FilesPlugin>()
+            .0
+            .run_mobile_plugin::<serde_json::Value>("requestBackground", serde_json::json!({}))
+            .map(|_| ())
+            .map_err(|error| {
+                greatnote_core::tr!(
+                    "Impossibile aprire l'impostazione della batteria: {error}",
+                    "Unable to open the battery setting: {error}"
+                )
+            })
+    }
+
     fn message(error: impl ToString) -> String {
         error.to_string()
     }
@@ -460,8 +486,8 @@ mod platform {
     }
 }
 
-#[cfg(target_os = "android")]
-pub use platform::init;
 #[cfg(mobile)]
 pub use platform::install_package;
+#[cfg(target_os = "android")]
+pub use platform::{background_allowed, init, request_background};
 pub use platform::{clear, clear_all, open_file, pick_input, pick_inputs, pick_output, share_text};

@@ -95,6 +95,7 @@ import type { AiStatus, IndexFinished, IndexProgress, TransformAction } from "./
 import TagEditorDialog from "./features/TagEditorDialog";
 import TemplatesView from "./features/TemplatesView";
 import { askText } from "./lib/prompt";
+import { askNotificationPermissionAtStart } from "./lib/notificationPermission";
 import TrashItemsPanel from "./features/TrashItemsPanel";
 
 const PAGE_SIZE = 100;
@@ -706,6 +707,11 @@ export default function App() {
         invoke<TaskCounts>("task_counts"),
       ]);
       setReminders(loadedReminders);
+      // Promemoria creati altrove (sincronizzazione) compaiono su Android solo
+      // con il permesso delle notifiche: se non è mai stato deciso, si chiede.
+      void askNotificationPermissionAtStart(
+        loadedReminders.some((reminder) => reminder.status === "pending"),
+      ).catch(() => undefined);
       setTaskCounts(loadedCounts);
       setPlannerVersion((version) => version + 1);
     } catch (cause) {

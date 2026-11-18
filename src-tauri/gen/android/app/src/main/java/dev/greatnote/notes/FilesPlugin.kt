@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.DocumentsContract
 import android.provider.Settings
 import androidx.core.content.FileProvider
@@ -12,6 +13,7 @@ import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
+import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import java.io.File
 
@@ -141,6 +143,47 @@ class FilesPlugin(private val activity: Activity) : Plugin(activity) {
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
       activity.startActivity(intent)
       invoke.resolve()
+    } catch (ex: Exception) {
+      invoke.reject(ex.message)
+    }
+  }
+
+  /**
+   * Vero se Greatnote è esente dall'ottimizzazione della batteria. Su alcuni
+   * telefoni (vivo, Xiaomi, Oppo…) senza esenzione l'app viene congelata
+   * quando la si chiude e il sistema cancella le notifiche programmate dei
+   * promemoria (reminder_alarms.rs).
+   */
+  @Command
+  fun backgroundAllowed(invoke: Invoke) {
+    val power = activity.getSystemService(PowerManager::class.java)
+    val result = JSObject()
+    result.put("allowed", power?.isIgnoringBatteryOptimizations(activity.packageName) ?: true)
+    invoke.resolve(result)
+  }
+
+  /**
+   * Mostra la richiesta di sistema «Consentire a Greatnote di funzionare
+   * sempre in background?». L'utente può annullare o revocarla dalle
+   * impostazioni della batteria.
+   */
+  @Command
+  fun requestBackground(invoke: Invoke) {
+    try {
+      val intent = Intent(
+        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        Uri.parse("package:${activity.packageName}"),
+      )
+      activity.startActivity(intent)
+      invoke.resolve()
+    } catch (ex: ActivityNotFoundException) {
+      // Telefoni senza la richiesta diretta: elenco delle app nelle impostazioni.
+      try {
+        activity.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        invoke.resolve()
+      } catch (inner: Exception) {
+        invoke.reject(inner.message)
+      }
     } catch (ex: Exception) {
       invoke.reject(ex.message)
     }

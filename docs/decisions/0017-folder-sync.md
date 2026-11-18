@@ -30,6 +30,7 @@ greatnote-sync/
 ├── format.json                 {"format": 1, "library": "<uuid>"}
 ├── devices/<device-id>/
 │   ├── device.json             nome e ultima attività del dispositivo
+│   ├── retired.json            dispositivi che questo ha tolto dall'elenco
 │   └── changes/000000000001.json …   lotti di modifiche, immutabili
 └── blobs/<aa>/<sha256>         contenuto degli allegati, per hash
 ```
@@ -165,3 +166,18 @@ versione locale è davvero concorrente.
 - **Cartella indispensabile.** La sincronizzazione funziona solo se il
   servizio della cartella è attivo. Greatnote mostra l'ultimo esito e i
   dispositivi visti.
+
+## Aggiornamento 2026-11-18: dispositivi tolti dall'elenco
+
+Ogni reinstallazione o riattivazione crea un nuovo identificativo, e i
+vecchi restavano per sempre nell'elenco. Un dispositivo può ora toglierne
+un altro dall'elenco scrivendo l'identificativo e l'istante della scelta nel
+**proprio** `retired.json` (resta valida la regola di un solo scrittore per
+cartella). L'elenco condiviso è l'unione dei `retired.json` di tutti; una
+voce decade quando il dispositivo tolto risulta attivo dopo la rimozione
+(un suo lotto o il suo `device.json` più recenti). Un dispositivo che si
+trova tolto riscrive il proprio `device.json` con un istante successivo,
+così ricompare per tutti. **I lotti non vengono mai cancellati**: servono a
+chi entra nella libreria dopo, che altrimenti perderebbe le modifiche fatte
+solo da quel dispositivo. Il formato della libreria resta 1: le versioni
+precedenti ignorano `retired.json`.

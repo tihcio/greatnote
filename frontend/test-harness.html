@@ -68,8 +68,11 @@
       let syncView = {
         settings: { enabled: false, transport: "folder", folder: "", dropbox_account: "", device_name: "" }, device_id: null,
         last_sync_at: null, last_error: null, pending_changes: 0, missing_attachments: 0, running: false,
-        dropbox_available: true, connecting: false,
-        devices: [{ device_id: "d-2", name: "Portatile", applied_seq: 3, last_seen_at: now, this_device: false }],
+        dropbox_available: true, connecting: false, default_device_name: "postazione-prova",
+        devices: [
+          { device_id: "d-1", name: "postazione-prova", applied_seq: 1, last_seen_at: now, this_device: true },
+          { device_id: "d-2", name: "Portatile", applied_seq: 3, last_seen_at: now, this_device: false },
+        ],
         conflicts: [{ id: "c-1", entity: "notes", entity_key: "11111111-1111-4111-8111-111111111111", title: "Riunione di lunedì", from_device: "Portatile", created_at: now }],
       };
       let mcpStatus = {
@@ -195,6 +198,13 @@
           return syncView;
         },
         sync_now: () => (syncView = { ...syncView, last_sync_at: now }),
+        // Android: Greatnote non ancora esente dall'ottimizzazione della batteria.
+        get_notification_permission: () => "granted",
+        request_notification_permission: () => "granted",
+        get_background_allowed: () => false,
+        request_background_allowed: () => null,
+        retire_sync_device: (args) =>
+          (syncView = { ...syncView, devices: syncView.devices.filter((device) => device.device_id !== args.deviceId) }),
         dismiss_sync_conflict: (args) => {
           syncView = { ...syncView, conflicts: syncView.conflicts.filter((item) => item.id !== args.id) };
           return true;

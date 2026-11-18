@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n";
+import { ensureNotificationPermission } from "../lib/notificationPermission";
 import { askConfirmation } from "../lib/confirm";
 import { addDays, suggestedReminder, toIsoDate, toLocalInput } from "../lib/dates";
 import { errorMessage } from "../lib/format";
@@ -130,6 +131,9 @@ export default function TaskDialog({
           entityId: saved.id,
           localTime,
         });
+        // Su Android il promemoria è una notifica di sistema: senza permesso
+        // resta salvato ma non compare (la vista Promemoria lo segnala).
+        await ensureNotificationPermission().catch(() => undefined);
         onRemindersChanged?.();
       }
       onSaved(saved);

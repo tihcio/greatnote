@@ -467,6 +467,9 @@ const messages = {
     notificationsOff:
       "Le notifiche di Greatnote sono disattivate: i promemoria non verranno mostrati finché non le consenti.",
     notificationsAllow: "Consenti le notifiche",
+    backgroundRestricted:
+      "Android può bloccare i promemoria quando chiudi Greatnote: su alcuni telefoni (vivo, Xiaomi, Oppo…) le notifiche programmate vengono cancellate. Consenti a Greatnote di restare attiva in background.",
+    backgroundAllow: "Consenti in background",
     notificationsBlocked:
       "Le notifiche sono bloccate nelle impostazioni di Android: attivale da Impostazioni › App › Greatnote › Notifiche.",
     firedReminders: "Da gestire",
@@ -993,8 +996,18 @@ const messages = {
     syncPending: "Modifiche locali da inviare",
     syncMissingAttachments: "Allegati in arrivo",
     syncErrorPrefix: "Ultima sincronizzazione non riuscita:",
-    syncDevices: "Altri dispositivi",
+    syncDevices: "Dispositivi",
     syncNoDevices: "Nessun altro dispositivo finora: attiva la sincronizzazione sugli altri computer scegliendo la stessa cartella.",
+    syncDeviceNameAuto: (name: string) => `Lasciato vuoto, si usa il nome del dispositivo: «${name}».`,
+    syncSaveName: "Salva il nome",
+    syncNameSaved: "Nome salvato: gli altri dispositivi lo vedranno alla prossima sincronizzazione.",
+    syncThisDeviceBadge: "Questo dispositivo",
+    syncRemoveDevice: "Rimuovi dall'elenco",
+    syncRemoveDeviceTitle: "Rimuovere il dispositivo dall'elenco?",
+    syncRemoveDeviceMessage: (name: string) =>
+      `«${name}» sparirà dall'elenco su tutti i dispositivi alla prossima sincronizzazione. Le note e le modifiche che ha sincronizzato restano. Se quel dispositivo torna a sincronizzare, ricompare da solo.`,
+    syncDeviceRemoved: (name: string) => `«${name}» rimosso dall'elenco.`,
+    syncDevicesHint: "Un dispositivo compare qui dopo la sua prima modifica sincronizzata. Ogni reinstallazione o riattivazione della sincronizzazione crea un nuovo dispositivo: quelli che non usi più puoi rimuoverli dall'elenco.",
     syncUnnamedDevice: "Dispositivo senza nome",
     syncDeviceSeen: (date: string) => `ultime modifiche ${date}`,
     syncThisDevice: "questo dispositivo",
@@ -1856,6 +1869,9 @@ const messages = {
     notificationsOff:
       "Greatnote notifications are off: reminders will not be shown until you allow them.",
     notificationsAllow: "Allow notifications",
+    backgroundRestricted:
+      "Android may block reminders when you close Greatnote: on some phones (vivo, Xiaomi, Oppo…) scheduled notifications are cancelled. Allow Greatnote to stay active in the background.",
+    backgroundAllow: "Allow in background",
     notificationsBlocked:
       "Notifications are blocked in Android settings: turn them on in Settings › Apps › Greatnote › Notifications.",
     firedReminders: "Needs attention",
@@ -2379,8 +2395,18 @@ const messages = {
     syncPending: "Local changes to send",
     syncMissingAttachments: "Attachments on their way",
     syncErrorPrefix: "Last sync failed:",
-    syncDevices: "Other devices",
+    syncDevices: "Devices",
     syncNoDevices: "No other devices yet: turn on sync on your other computers choosing the same folder.",
+    syncDeviceNameAuto: (name: string) => `If left empty, the device name is used: “${name}”.`,
+    syncSaveName: "Save name",
+    syncNameSaved: "Name saved: other devices will see it at the next sync.",
+    syncThisDeviceBadge: "This device",
+    syncRemoveDevice: "Remove from list",
+    syncRemoveDeviceTitle: "Remove the device from the list?",
+    syncRemoveDeviceMessage: (name: string) =>
+      `“${name}” will disappear from the list on every device at the next sync. The notes and changes it synced are kept. If that device syncs again, it reappears on its own.`,
+    syncDeviceRemoved: (name: string) => `“${name}” removed from the list.`,
+    syncDevicesHint: "A device appears here after its first synced change. Every reinstall or re-enabling of sync creates a new device: you can remove the ones you no longer use.",
     syncUnnamedDevice: "Unnamed device",
     syncDeviceSeen: (date: string) => `latest changes ${date}`,
     syncThisDevice: "this device",

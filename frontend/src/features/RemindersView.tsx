@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isMobile } from "../app/platform";
 import { t } from "../i18n";
+import BackgroundNotice from "./BackgroundNotice";
 import { formatTime } from "../lib/dates";
 import { errorMessage, formatDateTime } from "../lib/format";
 import { askConfirmation } from "../lib/confirm";
@@ -281,6 +282,7 @@ export default function RemindersView({ reminders, onOpen, onChanged, refreshKey
             )}
           </div>
         )}
+        {permission === "granted" && <BackgroundNotice />}
         {error && (
           <div className="inline-error" role="alert">
             {error}

@@ -1021,3 +1021,14 @@
   display: inline-flex;
   align-items: center;
 }
+
+/* Dispositivi della sincronizzazione: nome sopra, data e azione sotto. */
+:root[data-platform="mobile"] .sync-devices li {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+:root[data-platform="mobile"] .sync-devices li strong {
+  grid-column: 1 / -1;
+}

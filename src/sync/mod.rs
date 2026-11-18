@@ -132,8 +132,11 @@ pub struct SyncStatus {
     pub last_error: Option<String>,
     pub pending_changes: i64,
     pub missing_attachments: i64,
+    /// Dispositivi della libreria, senza quelli tolti dall'elenco.
     pub devices: Vec<SyncDevice>,
     pub conflicts: Vec<SyncConflict>,
+    /// Nome usato quando `settings.device_name` è vuoto (nome host).
+    pub default_device_name: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +199,41 @@ fn set_version(
 /// dispositivo è entrato nella libreria.
 fn history_key(device: &str) -> String {
     format!("history:{device}")
+}
+
+/// Chiave di stato con i dispositivi tolti dall'elenco (identificativo →
+/// istante della scelta), propri e ricevuti dagli altri dispositivi.
+const RETIRED_KEY: &str = "retired";
+
+fn retired_devices(connection: &Connection) -> Result<BTreeMap<String, String>, rusqlite::Error> {
+    Ok(state(connection, RETIRED_KEY)?
+        .and_then(|value| serde_json::from_str(&value).ok())
+        .unwrap_or_default())
+}
+
+fn set_retired_devices(
+    connection: &Connection,
+    retired: &BTreeMap<String, String>,
+) -> Result<(), rusqlite::Error> {
+    let value = serde_json::to_string(retired).unwrap_or_else(|_| "{}".to_owned());
+    set_state(connection, RETIRED_KEY, &value)
+}
+
+/// Adesso, ma almeno un secondo dopo `instant`: gli istanti sono al
+/// secondo e un dispositivo che torna dopo essere stato tolto dall'elenco
+/// deve risultare attivo *dopo* la rimozione, anche nello stesso secondo.
+fn later_than(instant: &str) -> String {
+    // Confronto sugli istanti già formattati (al secondo): nello stesso
+    // secondo «adesso» è più tardi solo nelle frazioni, che si perdono.
+    let now = now_utc();
+    if now.as_str() > instant {
+        return now;
+    }
+    crate::time::parse_utc(instant)
+        .ok()
+        .and_then(|at| at.checked_add(jiff::SignedDuration::from_secs(1)).ok())
+        .map(crate::time::format_utc)
+        .unwrap_or(now)
 }
 
 fn now_utc() -> String {
@@ -295,6 +333,7 @@ impl Database {
         let settings = self.sync_settings()?;
         let connection = self.connection()?;
         let device_id = state(&connection, "device_id")?;
+        let retired = retired_devices(&connection)?;
         let devices = connection
             .prepare("SELECT device_id, name, applied_seq, last_seen_at FROM sync_devices ORDER BY name, device_id")?
             .query_map([], |row| {
@@ -307,7 +346,10 @@ impl Database {
                     last_seen_at: row.get(3)?,
                 })
             })?
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter(|device| device.this_device || !retired.contains_key(&device.device_id))
+            .collect();
         let conflicts = connection
             .prepare(&format!(
                 "SELECT c.id, c.entity, c.entity_key, c.title,
@@ -344,7 +386,37 @@ impl Database {
             devices,
             conflicts,
             settings,
+            default_device_name: default_device_name(),
         })
+    }
+
+    /// Toglie un altro dispositivo dall'elenco, su tutti i dispositivi della
+    /// libreria (alla prossima sincronizzazione). Nessun dato viene
+    /// cancellato: le sue modifiche restano nella libreria e, se torna a
+    /// sincronizzare, il dispositivo ricompare.
+    pub fn retire_sync_device(&self, device_id: &str) -> Result<(), StorageError> {
+        let connection = self.connection()?;
+        if state(&connection, "device_id")?.as_deref() == Some(device_id) {
+            return Err(StorageError::InvalidEvent(crate::tr_str!(
+                "non puoi togliere dall'elenco questo dispositivo",
+                "you cannot remove this device from the list"
+            )));
+        }
+        let known: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sync_devices WHERE device_id = ?1)",
+            [device_id],
+            |row| row.get(0),
+        )?;
+        if !known {
+            return Err(StorageError::InvalidEvent(crate::tr_str!(
+                "dispositivo sconosciuto",
+                "unknown device"
+            )));
+        }
+        let mut retired = retired_devices(&connection)?;
+        retired.insert(device_id.to_owned(), now_utc());
+        set_retired_devices(&connection, &retired)?;
+        Ok(())
     }
 
     pub fn dismiss_sync_conflict(&self, id: &str) -> Result<bool, StorageError> {
@@ -470,6 +542,8 @@ fn run(
         })?;
     }
 
+    reconcile_retired(database, &folder, &device, &name)?;
+
     let mut report = SyncReport::default();
     // Prima attivazione: si annota fin dove arrivava la storia di ogni altro
     // dispositivo. Letto dall'archivio prima di prendere il database.
@@ -526,18 +600,119 @@ fn run(
     Ok(report)
 }
 
-fn default_device_name() -> String {
-    // Android non ha un nome host utile: l'utente può cambiarlo nelle
-    // impostazioni della sincronizzazione.
-    if cfg!(target_os = "android") {
-        return "Android".to_owned();
-    }
-    std::env::var("HOSTNAME")
-        .ok()
-        .or_else(|| fs::read_to_string("/etc/hostname").ok())
-        .map(|name| name.trim().to_owned())
+/// Nome di questo dispositivo quando l'utente non ne sceglie uno: il nome
+/// host del computer, il nome commerciale del telefono su Android.
+pub fn default_device_name() -> String {
+    let name = if cfg!(target_os = "android") {
+        android_device_name()
+    } else {
+        host_name()
+    };
+    name.map(|name| name.trim().chars().take(100).collect::<String>())
         .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| "Computer".to_owned())
+        .unwrap_or_else(|| {
+            if cfg!(target_os = "android") {
+                "Android".to_owned()
+            } else {
+                "Computer".to_owned()
+            }
+        })
+}
+
+/// Windows: `COMPUTERNAME`. Linux: `HOSTNAME` della shell, poi il nome host
+/// del kernel (presente anche dove `/etc/hostname` manca).
+fn host_name() -> Option<String> {
+    let clean = |value: String| Some(value.trim().to_owned()).filter(|value| !value.is_empty());
+    ["COMPUTERNAME", "HOSTNAME"]
+        .iter()
+        .find_map(|key| std::env::var(key).ok().and_then(clean))
+        .or_else(|| {
+            ["/proc/sys/kernel/hostname", "/etc/hostname"]
+                .iter()
+                .find_map(|path| fs::read_to_string(path).ok().and_then(clean))
+        })
+}
+
+/// Nome commerciale («Pixel 7 Pro»), altrimenti il modello. Letto dalle
+/// proprietà di sistema con `getprop`, disponibile a ogni app.
+fn android_device_name() -> Option<String> {
+    if !cfg!(target_os = "android") {
+        return None;
+    }
+    ["ro.product.marketname", "ro.product.model"]
+        .iter()
+        .find_map(|property| {
+            std::process::Command::new("getprop")
+                .arg(property)
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+                .filter(|value| !value.is_empty())
+        })
+}
+
+/// Allinea l'elenco dei dispositivi tolti: unisce le scelte degli altri
+/// dispositivi alle proprie, scarta quelle superate (il dispositivo ha
+/// sincronizzato dopo essere stato tolto) e pubblica il risultato nel
+/// proprio `retired.json`. Se questo dispositivo era stato tolto, ripubblica
+/// il proprio file così gli altri lo vedono di nuovo.
+fn reconcile_retired(
+    database: &Database,
+    folder: &SyncFolder,
+    device: &str,
+    name: &str,
+) -> Result<(), SyncError> {
+    let mut retired = retired_devices(&*database.connection()?)?;
+    for remote in folder.devices()? {
+        if remote == device {
+            continue;
+        }
+        for (id, at) in folder.read_retired(&remote) {
+            let newer = retired.get(&id).is_none_or(|known| at > *known);
+            if newer {
+                retired.insert(id, at);
+            }
+        }
+    }
+    if let Some(at) = retired.remove(device) {
+        let stale = folder
+            .read_device(device)
+            .is_none_or(|file| file.updated_at <= at);
+        if stale {
+            folder.write_device(&DeviceFile {
+                device: device.to_owned(),
+                name: name.to_owned(),
+                updated_at: later_than(&at),
+            })?;
+        }
+    }
+    {
+        let connection = database.connection()?;
+        let mut active = Vec::new();
+        for (id, at) in &retired {
+            let seen: Option<String> = connection
+                .query_row(
+                    "SELECT last_seen_at FROM sync_devices WHERE device_id = ?1",
+                    [id],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .flatten();
+            let updated = folder.read_device(id).map(|file| file.updated_at);
+            if seen.is_some_and(|seen| seen > *at) || updated.is_some_and(|updated| updated > *at) {
+                active.push(id.clone());
+            }
+        }
+        for id in active {
+            retired.remove(&id);
+        }
+        set_retired_devices(&connection, &retired)?;
+    }
+    if folder.read_retired(device) != retired {
+        folder.write_retired(device, &retired)?;
+    }
+    Ok(())
 }
 
 /// Lotti remoti disponibili oltre quelli già applicati, letti senza

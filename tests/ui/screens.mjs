@@ -129,6 +129,8 @@ try {
     await shot(`${theme}-impostazioni-claude-code`);
     await clickText(".settings-nav-item", "Sincronizzazione");
     if (theme === "light") {
+      // La prima configurazione propone Dropbox: qui si mostra la cartella.
+      await clickText(".sync-transport .segment", "Cartella sincronizzata");
       await clickText(".sync-settings .data-action", "Scegli");
       await clickText(".sync-settings .data-action.primary", "Attiva");
       await clickText(".confirm-dialog .dialog-submit-button", "Attiva");

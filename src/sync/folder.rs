@@ -165,6 +165,16 @@ pub struct DeviceFile {
     pub updated_at: String,
 }
 
+/// Dispositivi che questo dispositivo ha tolto dall'elenco, con l'istante
+/// della scelta (`devices/<id>/retired.json`). Ogni dispositivo scrive solo
+/// il proprio file; l'elenco condiviso è l'unione di tutti. I lotti dei
+/// dispositivi tolti restano: servono a chi entra nella libreria dopo.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct RetiredFile {
+    #[serde(default)]
+    pub retired: BTreeMap<String, String>,
+}
+
 /// Versione di un'entità: (contatore di Lamport, dispositivo).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub(crate) struct Version(pub i64, pub String);
@@ -286,6 +296,36 @@ impl SyncFolder {
             .read(&format!("devices/{device}/device.json"))
             .ok()??;
         serde_json::from_slice(&bytes).ok()
+    }
+
+    /// Rimozioni dall'elenco decise da `device`; vuoto se il file manca o
+    /// non è valido (un file illeggibile non deve fermare la sincronizzazione).
+    pub(crate) fn read_retired(&self, device: &str) -> BTreeMap<String, String> {
+        self.store
+            .read(&format!("devices/{device}/retired.json"))
+            .ok()
+            .flatten()
+            .and_then(|bytes| serde_json::from_slice::<RetiredFile>(&bytes).ok())
+            .map(|file| {
+                file.retired
+                    .into_iter()
+                    .filter(|(id, _)| valid_id(id))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn write_retired(
+        &self,
+        device: &str,
+        retired: &BTreeMap<String, String>,
+    ) -> Result<(), FolderError> {
+        let bytes = serde_json::to_vec_pretty(&RetiredFile {
+            retired: retired.clone(),
+        })
+        .map_err(|error| FolderError::Invalid(error.to_string()))?;
+        self.store
+            .write(&format!("devices/{device}/retired.json"), &bytes, false)
     }
 
     /// Dispositivi presenti (solo nomi validi).

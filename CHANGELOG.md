@@ -4,6 +4,26 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.11 — 2026-11-18
+
+- **Android: promemoria che non arrivavano.** Il permesso delle notifiche
+  veniva chiesto solo aggiungendo un promemoria dal pannello della nota: i
+  promemoria delle attività e quelli arrivati dalla sincronizzazione non
+  comparivano. Ora l'app lo chiede anche lì e all'avvio, se ci sono
+  promemoria programmati. Su alcuni telefoni (provato su un vivo) chiudere
+  l'app dalle app recenti cancellava i promemoria programmati: la vista
+  Promemoria propone **Consenti in background**, che chiede ad Android di
+  non ottimizzare la batteria per Greatnote.
+
+- **Sincronizzazione: nome del dispositivo e gestione dell'elenco.** Senza
+  un nome scelto si usa il nome host del computer (su Windows prima
+  risultava «Computer») o il nome del telefono su Android (prima
+  «Android»). Il nome si può cambiare in qualunque momento con **Salva il
+  nome**: con Dropbox collegato il campo era modificabile ma il nome non
+  veniva mai salvato. L'elenco **Dispositivi** mostra anche questo
+  dispositivo, e quelli non più usati si tolgono con **Rimuovi
+  dall'elenco**, su tutti i dispositivi e senza cancellare dati.
+
 - **CI: avviso su `picomatch` accettato.** `npm audit` bloccava la CI per
   un ReDoS in `picomatch` (GHSA-fc5q-39xc-vjpf), senza versione corretta.
   Lo usano solo Vite e i suoi strumenti durante la compilazione: non entra

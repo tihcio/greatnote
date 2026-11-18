@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isMobile } from "../app/platform";
 import { t } from "../i18n";
+import BackgroundNotice from "./BackgroundNotice";
+import { ensureNotificationPermission } from "../lib/notificationPermission";
 import { suggestedReminder } from "../lib/dates";
 import { errorMessage, formatDateTime } from "../lib/format";
 import type { Reminder, ReminderEntity } from "../types";
@@ -51,7 +53,7 @@ export default function EntityReminders({
       // Su mobile il promemoria è una notifica di sistema: al primo si chiede
       // il permesso; se manca, il promemoria resta salvato ma va detto.
       if (isMobile) {
-        const permission = await invoke<string>("request_notification_permission");
+        const permission = await ensureNotificationPermission();
         if (permission !== "granted") {
           setError(permission === "denied" ? t.notificationsBlocked : t.notificationsOff);
         }
@@ -127,6 +129,7 @@ export default function EntityReminders({
           {error}
         </p>
       )}
+      {reminders.some((reminder) => reminder.status === "pending") && <BackgroundNotice />}
     </div>
   );
 }
