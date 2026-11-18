@@ -22,10 +22,19 @@ const THRESHOLD = LEVELS.indexOf("moderate");
 
 let output;
 try {
-  output = execFileSync("npm", ["audit", "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+  output = execFileSync("npm", ["audit", "--json"], {
+    encoding: "utf8",
+    // Su Windows npm è `npm.cmd`, che Node avvia solo tramite la shell. Il
+    // comando e gli argomenti sono fissi: nessun input esterno.
+    shell: process.platform === "win32",
+    // Il rapporto JSON di un albero grande supera il limite predefinito.
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "inherit"],
+  });
 } catch (error) {
   // `npm audit` esce con errore quando trova vulnerabilità: il JSON c'è comunque.
   output = error.stdout;
+  if (!output) console.error(error.message);
 }
 if (!output) {
   console.error("npm audit non ha prodotto un risultato");
