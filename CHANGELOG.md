@@ -4,6 +4,8 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.10 — 2026-11-18
+
 - **Aggiornamenti dall'app anche su Android.** Se su GitHub è pubblicata
   una versione più recente, l'app scarica l'APK firmato della release e
   chiede se installarlo; «Aggiorna» salva le note aperte e apre
