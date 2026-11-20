@@ -33,7 +33,7 @@ import { language, t } from "./i18n";
 import logoUrl from "./assets/logo.png";
 import { errorMessage, formatDate, formatFileSize, formatShortDate } from "./lib/format";
 import CalendarView from "./features/CalendarView";
-import DataDialog from "./features/DataDialog";
+import type { DataTab } from "./features/DataPanel";
 import ConfirmHost from "./features/ConfirmHost";
 import { askConfirmation } from "./lib/confirm";
 import NotePlanner from "./features/NotePlanner";
@@ -70,6 +70,8 @@ import type { DropTarget } from "./features/noteDrag";
 import NoteHistoryDialog from "./features/NoteHistoryDialog";
 import NoteInfoDialog from "./features/NoteInfoDialog";
 import PromptHost from "./features/PromptHost";
+import TableSizeHost from "./features/TableSizeHost";
+import TableToolbar from "./editor/TableToolbar";
 import QuickSwitcher from "./features/QuickSwitcher";
 import type { SwitchScope, SwitchTarget } from "./features/QuickSwitcher";
 import { formatTime } from "./lib/dates";
@@ -277,8 +279,7 @@ export default function App() {
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [isDataDialogOpen, setIsDataDialogOpen] = useState(false);
-  const [dataDialogTab, setDataDialogTab] = useState<"import" | "export" | "backup" | "integrity">("import");
+  const [dataTab, setDataTab] = useState<DataTab>("import");
   const { preferences, update: updatePreferences, loaded: preferencesLoaded } = usePreferences(isDesktop);
   const [layout, setLayout] = useState<NoteLayout>("normal");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -934,21 +935,29 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [notice]);
 
-  const exportActiveNote = async (format: ExportFormat | "pdf") => {
+  const exportActiveNote = async (format: ExportFormat | "pdf" | "print") => {
     const note = activeNoteRef.current;
     if (!note) return;
     if ((timerRef.current || saveState !== "saved") && !(await flushDraft(note))) return;
     try {
-      if (format === "pdf") {
+      if (format === "print") {
         await invoke("print_window");
         return;
       }
-      const saved = await invoke<string | null>("export_note_file", {
-        noteId: note.id,
-        format,
-        language,
-        title: t.exportNoteTitle,
-      });
+      // Il PDF viene scritto dal motore della finestra, con lo stile di stampa,
+      // nel file scelto: niente dialog della stampante.
+      const saved =
+        format === "pdf"
+          ? await invoke<string | null>("export_note_pdf", {
+              noteTitle: note.title,
+              title: t.exportNoteTitle,
+            })
+          : await invoke<string | null>("export_note_file", {
+              noteId: note.id,
+              format,
+              language,
+              title: t.exportNoteTitle,
+            });
       if (saved) setNotice(t.noteExported(saved));
       setError(null);
     } catch (cause) {
@@ -1908,9 +1917,10 @@ export default function App() {
     setEventCreateRequest((value) => value + 1);
   };
 
-  const openDataDialog = (tab: "import" | "export" | "backup" | "integrity") => {
-    setDataDialogTab(tab);
-    setIsDataDialogOpen(true);
+  /** Apre le impostazioni sulla sezione "Dati", alla scheda richiesta. */
+  const openDataDialog = (tab: DataTab) => {
+    setDataTab(tab);
+    openSettings("data");
   };
 
   const activeTextField = (): HTMLInputElement | HTMLTextAreaElement | null => {
@@ -2415,7 +2425,8 @@ export default function App() {
     saveNow: () => void flushDraft(activeNoteRef.current).then((saved) => saved && setNotice(t.savedNow)),
     importData: () => openDataDialog("import"),
     exportNote: (kind: ExportKind) => void exportActiveNote(kind),
-    printNote: () => void exportActiveNote("pdf"),
+    exportPdf: () => void exportActiveNote("pdf"),
+    printNote: () => void exportActiveNote("print"),
     openData: () => openDataDialog("backup"),
     quit: () => void quitApp(),
     undo: () => editAction("undo"),
@@ -2524,7 +2535,7 @@ export default function App() {
           ],
         },
         { id: "ctx-pdf", label: t.menuExportPdf, run: () => void exportActiveNote("pdf") },
-        { id: "ctx-print", label: t.menuPrint, accelerator: "Ctrl+P", run: () => void exportActiveNote("pdf") },
+        { id: "ctx-print", label: t.menuPrint, accelerator: "Ctrl+P", run: () => void exportActiveNote("print") },
         ...noteItems(menuContext).slice(-4),
       ];
 
@@ -3813,6 +3824,7 @@ export default function App() {
                   }}
                 />
                 {editor && <SlashMenu editor={editor} enabled={preferences.slashCommands && !isTrashView} />}
+                {editor && !isTrashView && <TableToolbar editor={editor} />}
                 {/* Su mobile tag e stato del salvataggio scorrono con la nota:
                     restano raggiungibili anche con la tastiera aperta. */}
                 {isMobile && noteFooter}
@@ -4130,7 +4142,8 @@ export default function App() {
             setIsSettingsOpen(false);
             void refreshSyncInfo();
           }}
-          onOpenData={() => openDataDialog("backup")}
+          initialDataTab={dataTab}
+          onImported={(notebookId) => void handleImported(notebookId)}
           onOpenNote={(noteId) => void openNoteById(noteId)}
           onInstallUpdate={installUpdate}
           onUpdateStatus={setUpdateStatus}
@@ -4233,20 +4246,13 @@ export default function App() {
         />
       )}
       <PromptHost />
+      <TableSizeHost />
       <ConfirmHost />
       <ContextMenuHost />
       {notice && (
         <div className="notice-toast" role="status">
           {notice}
         </div>
-      )}
-      {isDataDialogOpen && (
-        <DataDialog
-          initialTab={dataDialogTab}
-          notebooks={notebooks}
-          onClose={() => setIsDataDialogOpen(false)}
-          onImported={(notebookId) => void handleImported(notebookId)}
-        />
       )}
       {organizationDialog && (
         <div

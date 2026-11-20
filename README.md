@@ -229,7 +229,7 @@ supportato, taccuini, tag, date, allegati e collegamenti tra note.
 
 Sono inoltre disponibili l'importazione di Markdown, testo, HTML
 sanificato e archivi Greatnote, e l'esportazione in Markdown, HTML,
-testo, PDF tramite stampa, ZIP e archivio completo.
+testo, PDF, ZIP e archivio completo.
 
 Per i dettagli consulta la [guida
 utente](docs/USER_GUIDE.md#importare-da-evernote-joplin-e-obsidian).

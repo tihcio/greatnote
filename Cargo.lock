@@ -1974,7 +1974,7 @@ dependencies = [
 
 [[package]]
 name = "greatnote-core"
-version = "0.2.11"
+version = "0.2.12"
 dependencies = [
  "age",
  "base64 0.22.1",
@@ -2000,12 +2000,13 @@ dependencies = [
 
 [[package]]
 name = "greatnote-desktop"
-version = "0.2.11"
+version = "0.2.12"
 dependencies = [
  "android-native-keyring-store",
  "base64 0.22.1",
  "dirs",
  "greatnote-core",
+ "gtk",
  "keyring",
  "keyring-core",
  "notify-rust",
@@ -2024,6 +2025,9 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "webkit2gtk",
+ "webview2-com",
+ "windows",
  "windows-sys 0.61.2",
 ]
 

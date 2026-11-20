@@ -72,7 +72,8 @@ una nota aperta) sono disattivate. **Aiuto › Scorciatoie da tastiera**
     senza formattazione), seleziona tutto; su un collegamento **Apri
     collegamento** (nel browser, solo `http`, `https` e `mailto`), copia,
     modifica e rimuovi; con del testo selezionato **Formato**; dentro una
-    tabella righe e colonne; **Testo cifrato**, le funzioni AI e **Trova e
+    tabella, in cima al menu, inserisci ed elimina righe e colonne, unisci o
+    dividi celle e il sottomenu **Tabella** con tutti i comandi; **Testo cifrato**, le funzioni AI e **Trova e
     sostituisci**;
   - **campi di testo** (ricerca, titoli, dialog): taglia, copia, incolla,
     elimina, seleziona tutto;
@@ -104,6 +105,20 @@ nelle celle di una tabella: con il cursore in una cella, `Ctrl+A`
 seleziona tutta la tabella (un secondo `Ctrl+A` tutta la nota) e il comando
 si applica a tutte le celle. Negli elenchi il rientro sposta la voce di un
 livello.
+
+**Tabelle:** **Inserisci → Tabella** (o `/tabella`) apre un dialog in cui
+scegli righe e colonne passando sulla griglia o scrivendo i numeri (fino a
+100 righe e 20 colonne; poi puoi aggiungerne altre) e se la prima riga è
+d'intestazione. Con il cursore in una tabella compare sopra di essa una
+barra con: inserisci riga sopra/sotto, colonna a sinistra/destra, elimina
+riga o colonna, unisci celle (seleziona più celle trascinando o con
+`Ctrl+A`), dividi cella, svuota celle, riga e colonna d'intestazione,
+elimina tabella. Gli stessi comandi sono nel menu contestuale e in
+**Altro → Tabella**. Una singola cella non si può togliere da una tabella
+(lascerebbe un buco): per ridurla unisci le celle o elimina la riga o la
+colonna. Le celle unite restano unite nell'esportazione HTML e PDF; in
+Markdown e testo semplice il contenuto va nella prima posizione e le altre
+restano vuote, così le colonne restano allineate.
 Allineamento e rientro restano nell'esportazione HTML e PDF ma non in
 Markdown e testo semplice; apice e pedice restano anche in Markdown. Digita **/** a inizio riga
 per i comandi rapidi. Allegati, collegamenti, attività e promemoria della
@@ -290,13 +305,17 @@ bordo, poi frecce sinistra/destra (con Maiusc a passi più grandi).
 
 Nella barra dell'editor, il menu **Esporta** salva la nota corrente come
 Markdown (con titolo, date, taccuino e tag nel front matter), HTML autonomo o
-testo semplice. **PDF / Stampa…** apre il dialog di stampa del sistema: scegli
-"Stampa su file"/"Salva come PDF". Prima dell'esportazione le modifiche in
-corso vengono salvate.
+testo semplice. **PDF…** chiede dove salvare il file e lo genera direttamente,
+con lo stesso aspetto della stampa (su Linux e Windows). Per stampare su carta
+usa **Nota → Stampa nota…** (`Ctrl+P`). Prima dell'esportazione le modifiche
+in corso vengono salvate.
 
 ## Dati e backup
 
-Apri **Dati e backup** dal fondo della barra laterale.
+Importazione, esportazione, backup e verifica d'integrità sono nella sezione
+**Dati** delle impostazioni (Ctrl+,). Le voci **Dati e backup**, **Importa** e
+**Verifica integrità** dei menu aprono direttamente quella sezione, sulla scheda
+giusta.
 
 - **Importa**: scegli file Markdown/HTML/testo, una cartella di Markdown
   (sottocartelle incluse, file nascosti e collegamenti simbolici esclusi) o un
@@ -889,6 +908,7 @@ Promemoria solo ad app aperta; attività e promemoria ricorrenti e vista
 oraria del calendario non disponibili; i calendari esterni sono solo in
 lettura tramite iCal. La ricerca nelle
 attività ignora maiuscole/minuscole solo per lettere senza accenti. Backup interni non cifrati (solo le copie esportate possono esserlo). Il
-PDF dipende dal dialog di stampa del sistema. Gli allegati
+PDF usa il formato carta predefinito del sistema e non è disponibile su
+Android. Gli allegati
 di testo vengono indicizzati fino a 100.000 caratteri; gli altri tipi sono
 ricercabili per nome. La sintassi booleana della ricerca non è supportata.

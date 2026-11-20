@@ -4,6 +4,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { separator } from "../app/menu";
 import type { MenuEntry } from "../app/menu";
 import { t } from "../i18n";
+import { tableContextEntries } from "./tableMenu";
 import { openContextMenu } from "../lib/contextMenu";
 import { editLink } from "./EditorToolbar";
 import { startEncryptedText } from "./encryptedText";
@@ -47,6 +48,8 @@ function moveCaretToPointer(editor: Editor, event: { clientX: number; clientY: n
   if (!found) return;
   const { from, to } = editor.state.selection;
   if (found.pos >= from && found.pos <= to && from !== to) return;
+  // Celle selezionate (per unirle o svuotarle): la selezione resta.
+  if (document.elementFromPoint(event.clientX, event.clientY)?.closest(".selectedCell")) return;
   if (found.inside >= 0) {
     const node = editor.state.doc.nodeAt(found.inside);
     // Nodi atomici (immagini, testo cifrato): restano selezionati come blocco.
@@ -84,7 +87,9 @@ export function openEditorContextMenu(
     run,
   });
 
-  const items: MenuEntry[] = [
+  // Con il clic destro in una tabella i suoi comandi vengono per primi.
+  const items: MenuEntry[] = inTable && editable ? [...tableContextEntries(editor), separator] : [];
+  items.push(
     {
       id: "ed-undo",
       label: t.undo,
@@ -111,7 +116,7 @@ export function openEditorContextMenu(
       run: paste(true),
     },
     { id: "ed-select-all", label: t.menuSelectAll, accelerator: "Ctrl+A", run: () => void editor.chain().focus().selectAll().run() },
-  ];
+  );
 
   if (onLink && href) {
     items.push(
@@ -154,28 +159,6 @@ export function openEditorContextMenu(
           mark("ed-code", t.code, "code", () => editor.chain().focus().toggleCode().run(), "Ctrl+E"),
           separator,
           { id: "ed-clear", label: t.clearFormatting, run: () => void editor.chain().focus().unsetAllMarks().run() },
-        ],
-      });
-    }
-    if (inTable) {
-      items.push({
-        kind: "submenu",
-        id: "ed-table",
-        label: t.tableMenu,
-        items: [
-          { id: "ed-row-before", label: t.tableRowBefore, run: () => void editor.chain().focus().addRowBefore().run() },
-          { id: "ed-row-after", label: t.tableRowAfter, run: () => void editor.chain().focus().addRowAfter().run() },
-          { id: "ed-col-before", label: t.tableColumnBefore, run: () => void editor.chain().focus().addColumnBefore().run() },
-          { id: "ed-col-after", label: t.tableColumnAfter, run: () => void editor.chain().focus().addColumnAfter().run() },
-          separator,
-          { id: "ed-row-delete", label: t.tableDeleteRow, run: () => void editor.chain().focus().deleteRow().run() },
-          { id: "ed-col-delete", label: t.tableDeleteColumn, run: () => void editor.chain().focus().deleteColumn().run() },
-          {
-            id: "ed-table-delete",
-            label: t.tableDelete,
-            destructive: true,
-            run: () => void editor.chain().focus().deleteTable().run(),
-          },
         ],
       });
     }

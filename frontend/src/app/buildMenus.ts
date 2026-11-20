@@ -34,6 +34,7 @@ export interface MenuContext {
   saveNow: () => void;
   importData: () => void;
   exportNote: (kind: ExportKind) => void;
+  exportPdf: () => void;
   printNote: () => void;
   openData: () => void;
   quit: () => void;
@@ -233,7 +234,7 @@ export function buildMenus(context: MenuContext): Menu[] {
             item("export-txt", t.exportAsText, () => context.exportNote("text")),
           ],
         },
-        item("export-pdf", t.menuExportPdf, context.printNote, { enabled: note }),
+        item("export-pdf", t.menuExportPdf, context.exportPdf, { enabled: note }),
         item("print", t.menuPrint, context.printNote, { accelerator: "Ctrl+P", enabled: note }),
         separator,
         item("data", t.dataAndBackup, context.openData),

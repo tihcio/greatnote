@@ -22,10 +22,15 @@ frontend API generiche di filesystem e senza perdere dati in caso di errore.
   completo `gna-archive` v1 (JSON + allegati, vedi
   [ARCHIVE_FORMAT](../ARCHIVE_FORMAT.md)). I file vengono scritti in un file
   temporaneo e rinominati solo a scrittura completata.
-- **PDF**: generato dal dialog di stampa di sistema (`WebviewWindow::print`)
-  con un foglio di stile di stampa dedicato, invece di includere un motore PDF
-  e font nel binario. È una scelta reversibile se servirà un PDF non
-  interattivo.
+- **PDF**: generato dal motore della webview con il foglio di stile di stampa
+  dedicato, invece di includere un motore PDF e font nel binario. *Aggiornato
+  in 0.2.12:* il file si sceglie con il selettore nativo e viene scritto senza
+  dialog di stampa: su Linux una `WebKitPrintOperation` stampa sulla
+  stampante virtuale «Stampa su file» di GTK (cercata con il nome tradotto;
+  se manca l'operazione fallisce senza ripiegare su una stampante reale), su
+  Windows `ICoreWebView2_7::PrintToPdf`. Il file è scritto con nome
+  temporaneo nella cartella di destinazione, controllato (`%PDF-`) e
+  rinominato. La stampa su carta resta `WebviewWindow::print` (`Ctrl+P`).
 - **Importazione in due fasi**: un piano analizza i file e produce
   un'anteprima (dry-run) con nuove note, duplicati ed errori; il commit applica
   le voci nuove in un'**unica transazione SQLite**. Gli allegati scritti prima

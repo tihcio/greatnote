@@ -4,6 +4,30 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.12 — 2026-11-20
+
+- **Tabelle: righe e colonne a scelta e comandi a portata di mano.**
+  «Inserisci tabella» apre un dialog con una griglia e due campi per
+  scegliere righe e colonne (prima la tabella era sempre 3×3) e se usare
+  la prima riga come intestazione. Con il cursore in una tabella compare
+  una barra per inserire ed eliminare righe e colonne, unire e dividere
+  celle, svuotarle, impostare le intestazioni ed eliminare la tabella. Il
+  menu contestuale mostra i comandi della tabella in cima. Le celle unite
+  sono esportate correttamente in HTML (`colspan`/`rowspan`), Markdown e
+  testo semplice.
+
+- **Esporta come PDF senza il dialog della stampante.** «Esporta nota come
+  PDF…» e la voce **PDF…** del menu Esporta chiedono dove salvare il file e
+  lo generano direttamente, con lo stesso aspetto della stampa. **Stampa
+  nota…** (`Ctrl+P`) apre ancora il dialog di stampa.
+
+- **Impostazioni: la sezione Dati contiene direttamente importazione,
+  esportazione, backup e integrità.** Prima mostrava solo un pulsante che
+  chiudeva le impostazioni e apriva una finestra separata. Anche le voci dei
+  menu (Dati e backup, Importa, Verifica integrità) aprono ora le
+  impostazioni sulla sezione Dati; durante un'operazione in corso le
+  impostazioni non si chiudono e non si cambia sezione.
+
 ## 0.2.11 — 2026-11-18
 
 - **Android: promemoria che non arrivavano.** Il permesso delle notifiche

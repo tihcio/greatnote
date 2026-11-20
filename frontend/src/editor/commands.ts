@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { t } from "../i18n";
+import { askTableSize } from "../lib/tableSize";
 import { startEncryptedText } from "./encryptedText";
 
 export interface BlockCommand {
@@ -78,8 +79,12 @@ export function blockCommands(): BlockCommand[] {
       label: t.insertTable,
       keywords: "tabella table griglia",
       icon: "▦",
+      // Righe e colonne si scelgono nel dialog; la posizione del cursore
+      // resta quella di prima.
       run: (editor) =>
-        editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+        void askTableSize().then((size) => {
+          if (size && !editor.isDestroyed) editor.chain().focus().insertTable(size).run();
+        }),
     },
     {
       id: "divider",

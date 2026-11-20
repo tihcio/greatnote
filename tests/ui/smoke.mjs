@@ -163,6 +163,17 @@ try {
     await expectVisible(".note-editor");
     await expectVisible(".editor-toolbar");
   });
+  await step("esporta-pdf-senza-stampa", async () => {
+    await page.evaluate(() => {
+      window.__SMOKE_LOG__.length = 0;
+    });
+    await clickText(".menu-bar-item", "File");
+    await clickText(".menu-item", "Esporta nota come PDF");
+    await pause(200);
+    const log = await page.evaluate(() => window.__SMOKE_LOG__.join("\n"));
+    if (!log.includes("export_note_pdf")) throw new Error("export_note_pdf non chiamato");
+    if (log.includes("print_window")) throw new Error("l'esportazione PDF apre ancora la stampa");
+  });
   await step("titolo-aggiornato-nella-lista", async () => {
     const listTitle = () =>
       page.$eval(".note-list-item.active .note-item-title", (element) => element.textContent ?? "");
@@ -372,6 +383,10 @@ try {
     await pause(150);
     await clickText(".menu-item", "Tabella");
     await pause(200);
+    // Il dialog propone 3×3: Invio la inserisce.
+    await expectVisible(".table-size-dialog");
+    await page.keyboard.press("Enter");
+    await pause(200);
     await page.click(".note-editor td");
     await more("Allinea a destra");
     if ((await count('.note-editor td [style*="text-align: right"]')) !== 1) {
@@ -395,6 +410,51 @@ try {
     await page.keyboard.press("Enter");
     await pause(150);
     if ((await count(".note-editor table")) !== 0) throw new Error("tabella non eliminata dalla ricerca");
+    // Tabella 2×4 scelta sulla griglia del dialog.
+    await page.click(".toolbar-dropdown");
+    await pause(150);
+    await clickText(".menu-item", "Tabella");
+    await pause(200);
+    await page.hover('.table-size-cell[data-cell="2x4"]');
+    const summary = await page.$eval(".table-size-summary", (element) => element.textContent ?? "");
+    if (!summary.includes("2 righe × 4 colonne")) throw new Error(`riepilogo: ${summary}`);
+    await page.screenshot({ path: `${output}/tabella-dialog.png` });
+    await page.click('.table-size-cell[data-cell="2x4"]');
+    await pause(200);
+    const shape = () =>
+      page.$eval(".note-editor table", (table) => [...table.rows].map((row) => row.cells.length).join(","));
+    if ((await shape()) !== "4,4") throw new Error(`tabella 2×4: ${await shape()}`);
+    // Barra della tabella: aggiunge una riga sotto e toglie una colonna.
+    await page.click(".note-editor table td");
+    await expectVisible(".table-toolbar");
+    await page.click('.table-toolbar-button[aria-label="Inserisci riga sotto"]');
+    await page.click('.table-toolbar-button[aria-label="Elimina colonna"]');
+    await pause(150);
+    if ((await shape()) !== "3,3,3") throw new Error(`dopo la barra: ${await shape()}`);
+    // Menu contestuale: i comandi della tabella sono in cima.
+    const cell = await page.$(".note-editor table td");
+    const cellBox = await cell.boundingBox();
+    await page.mouse.click(cellBox.x + 10, cellBox.y + cellBox.height / 2, { button: "right" });
+    await pause(300);
+    const first = await page.$eval(".context-menu-layer .menu-item", (element) => element.textContent ?? "");
+    if (!first.includes("Inserisci riga sopra")) throw new Error(`prima voce: ${first}`);
+    await clickText(".context-menu-layer .menu-item", "Elimina riga");
+    await pause(150);
+    if ((await shape()) !== "3,3") throw new Error(`dopo il menu: ${await shape()}`);
+    // Ctrl+A seleziona le celle; «Unisci celle» le fonde in una.
+    await page.click(".note-editor table td");
+    await keys("Control", "KeyA");
+    await page.screenshot({ path: `${output}/tabella-barra.png` });
+    await page.click('.table-toolbar-button[aria-label="Unisci celle"]');
+    await pause(150);
+    if ((await shape()) !== "1,0") throw new Error(`dopo l'unione: ${await shape()}`);
+    await page.click('.table-toolbar-button[aria-label="Dividi cella"]');
+    await pause(150);
+    if ((await shape()) !== "3,3") throw new Error(`dopo la divisione: ${await shape()}`);
+    await page.click('.table-toolbar-button[aria-label="Elimina tabella"]');
+    await pause(150);
+    if ((await count(".note-editor table")) !== 0) throw new Error("tabella non eliminata dalla barra");
+    if (await page.$(".table-toolbar")) throw new Error("barra della tabella ancora visibile");
     await page.click(".note-editor p");
     // «Rimuovi formattazione» su tutta la nota toglie allineamento e rientro.
     await keys("Control", "KeyA");
@@ -1074,10 +1134,21 @@ try {
     const log = await page.evaluate(() => window.__SMOKE_LOG__.join("\n"));
     if (!log.includes('"kind":"keep-structure","space_name":"Vault"')) throw new Error("destinazione non inviata");
     await expectVisible(".data-success");
+    // L'importazione si apre dentro le impostazioni, nella sezione "Dati".
+    const current = await page.$eval(".settings-nav-item.selected", (element) => element.textContent ?? "");
+    if (current !== "Dati") throw new Error(`sezione selezionata: ${current}`);
+  });
+  await step("impostazioni-dati-integrate", async () => {
+    await clickText(".settings-nav-item", "Generali");
+    await clickText(".settings-nav-item", "Dati");
+    await pause(200);
+    const tabs = await page.$$eval(".settings-content .data-tab", (items) => items.map((item) => item.textContent));
+    if (tabs.length !== 4) throw new Error(`schede dati: ${tabs.join(", ")}`);
+    if (await page.$(".data-dialog")) throw new Error("finestra dati separata ancora presente");
   });
   await step("impostazioni-claude-code", async () => {
-    const dataDialog = await page.$(".data-dialog .dialog-close-button");
-    if (dataDialog) await dataDialog.click();
+    const settings = await page.$(".planner-dialog .dialog-close-button");
+    if (settings) await settings.click();
     await keys("Control", "Comma");
     await clickText(".settings-nav-item", "Intelligenza artificiale");
     await pause(200);

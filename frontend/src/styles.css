@@ -1545,11 +1545,6 @@ p {
   white-space: pre-wrap;
 }
 
-.data-dialog {
-  width: min(620px, 100%);
-  max-height: min(90vh, 760px);
-}
-
 .data-tabs {
   display: flex;
   gap: 4px;
@@ -6938,4 +6933,137 @@ button.time-grid-day-name:hover {
   background: var(--accent-soft);
   box-shadow: inset 0 0 0 2px var(--accent);
   color: var(--ink);
+}
+
+/* Barra dei comandi sopra la tabella in cui si scrive. */
+.table-toolbar {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 4px 14px rgb(16 24 32 / 14%);
+}
+
+.table-toolbar-group {
+  display: flex;
+  gap: 1px;
+}
+
+.table-toolbar-group + .table-toolbar-group {
+  margin-left: 3px;
+  padding-left: 4px;
+  border-left: 1px solid var(--line);
+}
+
+.table-toolbar-button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--soft-ink);
+  cursor: pointer;
+}
+
+.table-toolbar-button:hover:not(:disabled),
+.table-toolbar-button:focus-visible {
+  background: var(--selection);
+  color: var(--ink);
+}
+
+.table-toolbar-button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.table-toolbar-button .table-toolbar-accent {
+  color: var(--accent);
+}
+
+.table-toolbar-button.destructive .table-toolbar-accent,
+.table-toolbar-button.destructive:hover:not(:disabled) {
+  color: var(--error);
+}
+
+.table-toolbar-button.destructive path {
+  stroke: currentColor;
+}
+
+.table-toolbar-button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+/* Dialog «Inserisci tabella». */
+.table-size-dialog {
+  gap: 12px;
+}
+
+.table-size-fields {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+
+.table-size-fields .dialog-field {
+  flex: 1;
+}
+
+.table-size-times {
+  padding-bottom: 9px;
+  color: var(--muted);
+}
+
+.table-size-grid {
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ground);
+}
+
+.table-size-grid:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.table-size-cell {
+  aspect-ratio: 1.4;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.table-size-cell.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.table-size-summary {
+  margin: 0;
+  text-align: center;
+}
+
+:root[data-platform="mobile"] .table-toolbar {
+  flex-wrap: wrap;
+  max-width: calc(100vw - 16px);
+}
+
+:root[data-platform="mobile"] .table-toolbar-button {
+  width: 36px;
+  height: 36px;
+}
+
+.table-size-dialog .checkbox-field {
+  font-size: 13px;
 }

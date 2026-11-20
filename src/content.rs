@@ -262,11 +262,53 @@ fn task_list(node: &Value, render: fn(&[Value]) -> String, bullet: &str, indent:
 }
 
 /// Celle di una tabella, riga per riga, già convertite.
+/// Limite di colonne o righe coperte da una cella unita: i valori oltre
+/// sono trattati come documento anomalo e ridotti.
+const MAX_CELL_SPAN: u64 = 1000;
+
+/// Righe o colonne coperte da una cella (`colspan`/`rowspan`), almeno 1.
+fn cell_span(cell: &Value, name: &str) -> usize {
+    // Il limite è piccolo: la conversione non perde informazione.
+    attr_u64(cell, name).unwrap_or(1).clamp(1, MAX_CELL_SPAN) as usize
+}
+
+/// Griglia del testo delle celle. Le celle unite occupano tutte le posizioni
+/// che coprono: la prima riceve il testo, le altre restano vuote, così
+/// Markdown e testo semplice mantengono le colonne allineate.
 fn table_rows(node: &Value, cell: impl Fn(&Value) -> String) -> Vec<Vec<String>> {
+    // Per ogni colonna, quante righe successive sono ancora coperte da una
+    // cella unita di una riga precedente.
+    let mut covered: Vec<usize> = Vec::new();
     children(node)
         .iter()
         .filter(|row| node_type(row) == "tableRow")
-        .map(|row| children(row).iter().map(&cell).collect())
+        .map(|row| {
+            let mut output = Vec::new();
+            let mut cells = children(row).iter();
+            loop {
+                while covered.get(output.len()).is_some_and(|rows| *rows > 0) {
+                    covered[output.len()] -= 1;
+                    output.push(String::new());
+                }
+                let Some(current) = cells.next() else {
+                    break;
+                };
+                let rowspan = cell_span(current, "rowspan");
+                for index in 0..cell_span(current, "colspan") {
+                    let column = output.len();
+                    if covered.len() <= column {
+                        covered.resize(column + 1, 0);
+                    }
+                    covered[column] = rowspan - 1;
+                    output.push(if index == 0 {
+                        cell(current)
+                    } else {
+                        String::new()
+                    });
+                }
+            }
+            output
+        })
         .collect()
 }
 
@@ -763,8 +805,15 @@ fn blocks_to_html(blocks: &[Value]) -> String {
                         } else {
                             "td"
                         };
+                        let mut spans = String::new();
+                        for name in ["colspan", "rowspan"] {
+                            let span = cell_span(cell, name);
+                            if span > 1 {
+                                spans.push_str(&format!(" {name}=\"{span}\""));
+                            }
+                        }
                         output.push_str(&format!(
-                            "<{tag}>{}</{tag}>",
+                            "<{tag}{spans}>{}</{tag}>",
                             blocks_to_html(children(cell)).trim_end()
                         ));
                     }
@@ -1768,6 +1817,41 @@ mod tests {
 
     fn paragraph(text: &str) -> Value {
         json!({ "type": "paragraph", "content": [{ "type": "text", "text": text }] })
+    }
+
+    #[test]
+    fn merged_table_cells_keep_columns_aligned() {
+        let cell = |text: &str, attrs: Value| json!({ "type": "tableCell", "attrs": attrs, "content": [paragraph(text)] });
+        let document = json!({ "type": "doc", "content": [
+            { "type": "table", "content": [
+                { "type": "tableRow", "content": [
+                    cell("A", json!({ "colspan": 2, "rowspan": 1 })),
+                    cell("C", json!({ "colspan": 1, "rowspan": 2 }))
+                ]},
+                { "type": "tableRow", "content": [
+                    cell("D", json!({ "colspan": 1, "rowspan": 1 })),
+                    cell("E", json!({ "colspan": 1, "rowspan": 1 }))
+                ]},
+                { "type": "tableRow", "content": [
+                    cell("G", json!({ "colspan": 99999, "rowspan": 1 }))
+                ]}
+            ]}
+        ]});
+        validate_document(&document).expect("valid document");
+        let rows = table_rows(&document["content"][0], |cell| {
+            inline_cell(cell, inline_to_plain)
+        });
+        assert_eq!(rows[0], ["A", "", "C"]);
+        assert_eq!(rows[1], ["D", "E", ""]);
+        assert_eq!(rows[2].len(), MAX_CELL_SPAN as usize);
+
+        let markdown = to_markdown("Prova", &document, &FrontMatter::default());
+        assert!(markdown.contains("| A |  | C |"), "{markdown}");
+        assert!(markdown.contains("| D | E |  |"), "{markdown}");
+        let html = to_html("Prova", &document, "it");
+        assert!(html.contains(r#"<td colspan="2"><p>A</p></td>"#), "{html}");
+        assert!(html.contains(r#"<td rowspan="2"><p>C</p></td>"#), "{html}");
+        assert!(html.contains("<td><p>D</p></td>"), "{html}");
     }
 
     #[test]

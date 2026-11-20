@@ -44,15 +44,19 @@ const backupKindLabels: Record<BackupKind, string> = {
   "pre-restore": t.backupKindPreRestore,
 };
 
-interface DataDialogProps {
+export type DataTab = Tab;
+
+interface DataPanelProps {
   notebooks: Notebook[];
   initialTab?: Tab;
-  onClose: () => void;
+  /** Segnala un'operazione in corso: le impostazioni non si chiudono finché dura. */
+  onBusyChange: (busy: boolean) => void;
   /** Chiamato dopo un'importazione riuscita, con l'eventuale taccuino creato. */
   onImported: (notebookId: string | null) => void;
 }
 
-export default function DataDialog({ notebooks, initialTab = "import", onClose, onImported }: DataDialogProps) {
+/** Importazione, esportazione, backup e integrità: sezione "Dati" delle impostazioni. */
+export default function DataPanel({ notebooks, initialTab = "import", onBusyChange, onImported }: DataPanelProps) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
@@ -78,14 +82,12 @@ export default function DataDialog({ notebooks, initialTab = "import", onClose, 
   const [unlockPassphrase, setUnlockPassphrase] = useState("");
 
   const [integrity, setIntegrity] = useState<IntegrityReport | null>(null);
-  const firstTab = useRef<HTMLButtonElement>(null);
   const preparedRef = useRef<PreparedImport | null>(null);
   preparedRef.current = prepared;
   const externalRef = useRef<ExternalBackup | null>(null);
   externalRef.current = externalBackup;
 
   useEffect(() => {
-    firstTab.current?.focus();
     return () => {
       const pending = preparedRef.current;
       if (pending) void invoke("cancel_import", { token: pending.token });
@@ -126,9 +128,9 @@ export default function DataDialog({ notebooks, initialTab = "import", onClose, 
     }
   }, [loadBackups, tab]);
 
-  const close = () => {
-    if (!busy) onClose();
-  };
+  useEffect(() => {
+    onBusyChange(busy !== null);
+  }, [busy, onBusyChange]);
 
   const chooseImport = async (source: ImportSource) => {
     if (prepared) await invoke("cancel_import", { token: prepared.token });
@@ -377,44 +379,8 @@ export default function DataDialog({ notebooks, initialTab = "import", onClose, 
   const totalItems = (prepared?.preview.items ?? report?.items ?? []).length;
 
   return (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) close();
-      }}
-    >
-      <section
-        aria-busy={busy !== null}
-        aria-labelledby="data-dialog-title"
-        aria-modal="true"
-        className="organization-dialog data-dialog"
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            close();
-          }
-        }}
-        role="dialog"
-      >
-        <header className="organization-dialog-header">
-          <div className="dialog-mark" aria-hidden="true">
-            ⇅
-          </div>
-          <div>
-            <h2 id="data-dialog-title">{t.dataAndBackup}</h2>
-            <p>{t.dataDialogSubtitle}</p>
-          </div>
-          <button
-            aria-label={t.close}
-            className="dialog-close-button"
-            disabled={busy !== null}
-            onClick={close}
-            type="button"
-          >
-            ×
-          </button>
-        </header>
-
+    <div aria-busy={busy !== null} className="data-section">
+      <p className="data-hint">{t.dataDialogSubtitle}</p>
         <div className="data-tabs" role="tablist" aria-label={t.dataAndBackup}>
           {tabs.map((item, index) => (
             <button
@@ -436,7 +402,6 @@ export default function DataDialog({ notebooks, initialTab = "import", onClose, 
                 setTab(next.id);
                 document.getElementById(`data-tab-${next.id}`)?.focus();
               }}
-              ref={index === 0 ? firstTab : undefined}
               role="tab"
               tabIndex={tab === item.id ? 0 : -1}
               type="button"
@@ -894,7 +859,6 @@ export default function DataDialog({ notebooks, initialTab = "import", onClose, 
             </>
           )}
         </div>
-      </section>
     </div>
   );
 }

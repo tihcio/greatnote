@@ -613,8 +613,9 @@ I test del core (fixture sintetiche e directory temporanee) coprono:
 
 Verifica manuale in `npm run tauri:dev`:
 
-1. Esporta una nota in Markdown, HTML, testo e PDF (dialog di stampa) e apri
-   i file prodotti.
+1. Esporta una nota in Markdown, HTML, testo e PDF e apri i file prodotti:
+   il PDF va salvato dal selettore di file senza passare dal dialog della
+   stampante (Linux e Windows); `Ctrl+P` apre invece il dialog di stampa.
 2. In *Dati e backup*, esporta un taccuino come ZIP Markdown, estrailo e
    reimportalo come cartella: controlla anteprima, duplicati, taccuino di
    destinazione, tag e allegati.

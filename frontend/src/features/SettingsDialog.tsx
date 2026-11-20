@@ -1,4 +1,6 @@
 import { useState } from "react";
+import DataPanel from "./DataPanel";
+import type { DataTab } from "./DataPanel";
 import UpdatesSection from "./updates/UpdatesSection";
 import type { UpdateStatus } from "./updates/updatesApi";
 import CalendarIntegrations from "./calendar/CalendarIntegrations";
@@ -26,6 +28,8 @@ export type SettingsSection =
 interface SettingsDialogProps {
   preferences: UiPreferences;
   initialSection?: SettingsSection;
+  /** Scheda aperta all'ingresso nella sezione "Dati". */
+  initialDataTab?: DataTab;
   aiStatus: AiStatus | null;
   aiProgress: IndexProgress | null;
   notebooks: Notebook[];
@@ -33,7 +37,8 @@ interface SettingsDialogProps {
   onStartIndexing: () => void;
   onCancelIndexing: () => void;
   onChange: (patch: Partial<UiPreferences>) => void;
-  onOpenData: () => void;
+  /** Chiamato dopo un'importazione riuscita, con l'eventuale taccuino creato. */
+  onImported: (notebookId: string | null) => void;
   onShowShortcuts: () => void;
   /** Apre una nota (per esempio da un conflitto di sincronizzazione). */
   onOpenNote: (noteId: string) => void;
@@ -47,6 +52,7 @@ interface SettingsDialogProps {
 export default function SettingsDialog({
   preferences,
   initialSection = "general",
+  initialDataTab = "import",
   aiStatus,
   aiProgress,
   notebooks,
@@ -54,7 +60,7 @@ export default function SettingsDialog({
   onStartIndexing,
   onCancelIndexing,
   onChange,
-  onOpenData,
+  onImported,
   onShowShortcuts,
   onOpenNote,
   updateStatus,
@@ -68,6 +74,8 @@ export default function SettingsDialog({
   const [section, setSection] = useState<SettingsSection>(
     hidden.includes(initialSection) ? "general" : initialSection,
   );
+  // Durante import, backup o ripristino le impostazioni restano aperte.
+  const [dataBusy, setDataBusy] = useState(false);
   const allSections: { id: SettingsSection; label: string }[] = [
     { id: "general", label: t.settingsGeneral },
     { id: "sidebar", label: t.settingsSidebar },
@@ -111,13 +119,14 @@ export default function SettingsDialog({
   );
 
   return (
-    <PlannerDialog mark="⚙" onClose={onClose} title={t.settingsTitle}>
+    <PlannerDialog busy={dataBusy} mark="⚙" onClose={onClose} title={t.settingsTitle}>
       <div className="settings-layout">
         <nav aria-label={t.settingsTitle} className="settings-nav">
           {sections.map((item) => (
             <button
               aria-current={section === item.id ? "page" : undefined}
               className={`settings-nav-item${section === item.id ? " selected" : ""}`}
+              disabled={dataBusy}
               key={item.id}
               onClick={() => setSection(item.id)}
               type="button"
@@ -222,19 +231,12 @@ export default function SettingsDialog({
             <UpdatesSection onInstall={onInstallUpdate} onStatus={onUpdateStatus} status={updateStatus} />
           )}
           {section === "data" && (
-            <>
-              <p className="data-hint">{t.settingsDataHint}</p>
-              <button
-                className="data-action primary"
-                onClick={() => {
-                  onClose();
-                  onOpenData();
-                }}
-                type="button"
-              >
-                {t.dataAndBackup}
-              </button>
-            </>
+            <DataPanel
+              initialTab={initialDataTab}
+              notebooks={notebooks}
+              onBusyChange={setDataBusy}
+              onImported={onImported}
+            />
           )}
         </div>
       </div>

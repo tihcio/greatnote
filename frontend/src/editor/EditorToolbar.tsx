@@ -9,6 +9,7 @@ import type { MenuAction, MenuEntry } from "../app/menu";
 import { askText } from "../lib/prompt";
 import MenuList from "../features/MenuList";
 import { blockCommands } from "./commands";
+import { tableMenuEntries } from "./tableMenu";
 import { startEncryptedText } from "./encryptedText";
 import { FONT_FAMILIES, FONT_SIZES, HIGHLIGHT_COLORS, TEXT_COLORS, isSafeLink } from "./extensions";
 import { canChangeIndent, changeIndent, currentTextAlign, setTextAlign } from "./textLayout";
@@ -339,18 +340,7 @@ export default function EditorToolbar({
       id: "table",
       label: t.tableMenu,
       enabled: inTable,
-      items: [
-        action("row-before", t.tableRowBefore, () => editor.chain().focus().addRowBefore().run()),
-        action("row-after", t.tableRowAfter, () => editor.chain().focus().addRowAfter().run()),
-        action("col-before", t.tableColumnBefore, () => editor.chain().focus().addColumnBefore().run()),
-        action("col-after", t.tableColumnAfter, () => editor.chain().focus().addColumnAfter().run()),
-        separator,
-        action("row-delete", t.tableDeleteRow, () => editor.chain().focus().deleteRow().run()),
-        action("col-delete", t.tableDeleteColumn, () => editor.chain().focus().deleteColumn().run()),
-        action("table-delete", t.tableDelete, () => editor.chain().focus().deleteTable().run(), {
-          destructive: true,
-        }),
-      ],
+      items: tableMenuEntries(editor),
     },
     separator,
     action("clear", t.clearFormatting, () => {

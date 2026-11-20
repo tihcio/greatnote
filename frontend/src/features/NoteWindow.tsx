@@ -19,6 +19,8 @@ import { ContextMenuHost } from "./ContextMenu";
 import EncryptedTextHost from "./EncryptedTextDialog";
 import ImageAnnotationHost from "./ImageAnnotator";
 import PromptHost from "./PromptHost";
+import TableSizeHost from "./TableSizeHost";
+import TableToolbar from "../editor/TableToolbar";
 
 export const NOTE_CHANGED_EVENT = "note-changed";
 
@@ -209,11 +211,13 @@ export default function NoteWindow({ noteId }: { noteId: string }) {
             }}
           />
           {editor && <SlashMenu editor={editor} enabled={preferences.slashCommands} />}
+          {editor && <TableToolbar editor={editor} />}
         </div>
       </div>
       <ImageAnnotationHost />
       <EncryptedTextHost flush={flush} noteId={noteId} />
       <PromptHost />
+      <TableSizeHost />
       <ConfirmHost />
       <ContextMenuHost />
     </div>

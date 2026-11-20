@@ -5,6 +5,7 @@ mod data_commands;
 mod file_access;
 mod mcp_commands;
 mod msix;
+mod pdf_export;
 mod planner_commands;
 mod reminder_alarms;
 mod secret_commands;
@@ -640,6 +641,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             data_commands::check_integrity,
             data_commands::rebuild_search_index,
             data_commands::print_window,
+            pdf_export::export_note_pdf,
             planner_commands::get_time_context,
             planner_commands::set_ui_language,
             planner_commands::list_tasks,
