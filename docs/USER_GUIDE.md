@@ -359,7 +359,9 @@ giusta.
 - **Backup**: crea un backup, verificalo, salvane una copia altrove (per
   esempio su un disco esterno) o ripristinalo. Il backup automatico all'avvio
   è attivo per impostazione predefinita (ogni 7 giorni, ultimi 10
-  conservati); i backup manuali non vengono mai eliminati automaticamente.
+  conservati). Prima di ogni aggiornamento del database e prima di un
+  ripristino l'app crea una copia di sicurezza: di ciascun tipo restano le 3
+  più recenti. I backup manuali non vengono mai eliminati automaticamente.
 - **Copia cifrata**: accanto a ogni backup, **Copia cifrata…** chiede una
   password (almeno 10 caratteri, da ripetere) e salva un file `.zip.age`.
   La password non viene salvata da nessuna parte: **se la dimentichi la copia
@@ -928,15 +930,23 @@ nell'archivio di esportazione.
 
 ## Limitazioni
 
-La sincronizzazione richiede una cartella sincronizzata da un servizio
-esterno; i file non sono cifrati. L'AI richiede un server di
-modelli configurato dall'utente (o Claude Code); la trascrizione di riunioni
-non è disponibile.
-Promemoria solo ad app aperta; attività e promemoria ricorrenti e vista
-oraria del calendario non disponibili; i calendari esterni sono solo in
-lettura tramite iCal. La ricerca nelle
-attività ignora maiuscole/minuscole solo per lettere senza accenti. Backup interni non cifrati (solo le copie esportate possono esserlo). Il
-PDF usa il formato carta predefinito del sistema e non è disponibile su
-Android. Gli allegati
-di testo vengono indicizzati fino a 100.000 caratteri; gli altri tipi sono
-ricercabili per nome. La sintassi booleana della ricerca non è supportata.
+- **Sincronizzazione:** richiede una cartella sincronizzata da un servizio
+  esterno o Dropbox; i file non sono cifrati. Modifiche contemporanee alla
+  stessa nota non vengono fuse: restano entrambe le versioni da confrontare.
+- **AI:** richiede il motore integrato con un modello scaricato, un server
+  di modelli configurato o Claude Code. La trascrizione di riunioni non è
+  disponibile.
+- **Promemoria sul computer:** arrivano a finestra chiusa solo con la
+  modalità in background attiva; con il computer spento o sospeso arrivano
+  alla riaccensione come «persi».
+- **Calendari esterni:** solo in lettura tramite iCal (il collegamento a
+  Google e Microsoft è sospeso). Le serie ricorrenti si modificano solo per
+  gli eventi di Greatnote.
+- **Ricerca:** gli operatori `AND`, `OR`, `NOT` e le parentesi non sono
+  supportati; nelle attività maiuscole e minuscole si equivalgono solo per
+  le lettere senza accento. Gli allegati di testo vengono indicizzati fino a
+  100.000 caratteri; gli altri tipi sono ricercabili per nome.
+- **Backup:** quelli interni non sono cifrati (solo le copie esportate
+  possono esserlo).
+- **PDF:** usa il formato carta predefinito del sistema e non è disponibile
+  su Android.

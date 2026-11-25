@@ -408,6 +408,8 @@ const messages = {
     autoBackupLabel: "Backup automatico all'avvio",
     intervalLabel: "Frequenza (giorni)",
     retentionLabel: "Backup automatici conservati",
+    retentionHint:
+      "Il numero vale per i backup automatici. Delle copie create prima di un aggiornamento o di un ripristino restano le 3 più recenti; i backup manuali restano finché non li elimini.",
     saveSettings: "Salva impostazioni",
     settingsSaved: "Impostazioni salvate.",
     integrityIntro: "Controlla database, indice di ricerca e file allegati.",
@@ -1847,6 +1849,8 @@ const messages = {
     autoBackupLabel: "Automatic backup at startup",
     intervalLabel: "Frequency (days)",
     retentionLabel: "Automatic backups kept",
+    retentionHint:
+      "The number applies to automatic backups. Of the copies made before an update or a restore, the 3 most recent are kept; manual backups stay until you delete them.",
     saveSettings: "Save settings",
     settingsSaved: "Settings saved.",
     integrityIntro: "Check the database, search index and attachment files.",

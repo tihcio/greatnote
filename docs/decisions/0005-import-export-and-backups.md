@@ -44,7 +44,9 @@ frontend API generiche di filesystem e senza perdere dati in caso di errore.
   `VACUUM INTO` e allegati, ciascuno con dimensione e SHA-256. Tipi:
   manuale, automatico (all'avvio, ogni N giorni, conservazione configurabile),
   pre-migrazione (creato automaticamente prima di aggiornare uno schema
-  esistente) e pre-ripristino.
+  esistente) e pre-ripristino. *Aggiornato in 0.2.14:* delle copie
+  pre-migrazione e pre-ripristino restano le 3 più recenti per tipo (prima
+  si accumulavano); i manuali non vengono mai eliminati automaticamente.
 - **Ripristino**: verifica completa (manifest, hash, `PRAGMA
   integrity_check`, allegati referenziati), migrazione della copia, backup di
   sicurezza dello stato corrente, poi scambio dei file con rollback in caso di

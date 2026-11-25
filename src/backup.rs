@@ -47,6 +47,9 @@ const ATTACHMENT_EXTENSIONS: [&str; 5] = ["png", "jpg", "gif", "pdf", "txt"];
 const SETTING_AUTO_ENABLED: &str = "backup.auto_enabled";
 const SETTING_INTERVAL_DAYS: &str = "backup.interval_days";
 const SETTING_RETENTION: &str = "backup.retention";
+/// Copie di sicurezza conservate per tipo (prima di una migrazione e prima
+/// di un ripristino): le più vecchie sono superate dai backup successivi.
+pub const SAFETY_BACKUPS_KEPT: usize = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -373,6 +376,32 @@ pub(crate) fn create_backup_with_connection(
             Err(error)
         }
     }
+}
+
+/// Elimina i backup oltre le soglie di conservazione: gli automatici oltre
+/// quella scelta (solo con i backup automatici attivi), le copie di
+/// sicurezza oltre le [`SAFETY_BACKUPS_KEPT`] più recenti per tipo. I backup
+/// manuali non vengono mai eliminati.
+fn prune_backups(data_directory: &Path, settings: &BackupSettings) -> Result<(), StorageError> {
+    let backups = list_backups(data_directory)?;
+    let mut limits = vec![
+        (BackupKind::PreMigration, SAFETY_BACKUPS_KEPT),
+        (BackupKind::PreRestore, SAFETY_BACKUPS_KEPT),
+    ];
+    if settings.auto_enabled {
+        limits.push((BackupKind::Automatic, settings.retention as usize));
+    }
+    for (kind, kept) in limits {
+        // `list_backups` li ordina dal più recente.
+        for old in backups
+            .iter()
+            .filter(|backup| backup.kind == kind)
+            .skip(kept)
+        {
+            fs::remove_file(data_directory.join("backups").join(&old.file_name))?;
+        }
+    }
+    Ok(())
 }
 
 pub fn list_backups(data_directory: &Path) -> Result<Vec<BackupInfo>, StorageError> {
@@ -863,6 +892,9 @@ impl Database {
             &settings.retention.to_string(),
         )?;
         transaction.commit()?;
+        drop(connection);
+        // Una soglia più bassa vale subito, non al prossimo avvio.
+        prune_backups(self.data_directory()?, &settings)?;
         Ok(settings)
     }
 
@@ -969,6 +1001,8 @@ impl Database {
     pub fn run_automatic_backup(&self) -> Result<Option<BackupInfo>, StorageError> {
         let settings = self.backup_settings()?;
         if !settings.auto_enabled {
+            // Le copie di sicurezza si riducono anche senza backup automatici.
+            prune_backups(self.data_directory()?, &settings)?;
             return Ok(None);
         }
         let data_directory = self.data_directory()?;
@@ -995,13 +1029,7 @@ impl Database {
             None
         };
         drop(connection);
-        let automatic: Vec<BackupInfo> = list_backups(data_directory)?
-            .into_iter()
-            .filter(|backup| backup.kind == BackupKind::Automatic)
-            .collect();
-        for old in automatic.iter().skip(settings.retention as usize) {
-            fs::remove_file(data_directory.join("backups").join(&old.file_name))?;
-        }
+        prune_backups(data_directory, &settings)?;
         Ok(created)
     }
 
@@ -1502,6 +1530,27 @@ mod tests {
                 .all(|backup| !backup.created_at.starts_with("2020-01-01"))
         );
 
+        // Copie di sicurezza vecchie (anche col nome precedente) e un backup
+        // manuale: restano le 3 più recenti per tipo, il manuale sempre.
+        for (index, day) in ["20200101", "20200102", "20200103", "20200104", "20200105"]
+            .iter()
+            .enumerate()
+        {
+            for kind in ["premigration", "prerestore"] {
+                fs::write(
+                    data.join("backups")
+                        .join(format!("gna-{kind}-{day}T000000Z-0000000{index}.zip")),
+                    b"old",
+                )
+                .expect("write");
+            }
+        }
+        fs::write(
+            data.join("backups")
+                .join("greatnote-manual-20190101T000000Z-00000000.zip"),
+            b"old",
+        )
+        .expect("write");
         database
             .update_backup_settings(BackupSettings {
                 auto_enabled: false,
@@ -1509,6 +1558,25 @@ mod tests {
                 retention: 2,
             })
             .expect("disabled");
+        let kinds: Vec<_> = list_backups(data)
+            .expect("list")
+            .into_iter()
+            .map(|backup| (backup.kind, backup.created_at))
+            .collect();
+        for kind in [BackupKind::PreMigration, BackupKind::PreRestore] {
+            let kept: Vec<_> = kinds.iter().filter(|(item, _)| *item == kind).collect();
+            assert_eq!(kept.len(), super::SAFETY_BACKUPS_KEPT, "{kind:?}");
+            assert!(kept.iter().all(|(_, at)| at.as_str() >= "2020-01-03"));
+        }
+        assert!(kinds.iter().any(|(kind, _)| *kind == BackupKind::Manual));
+        // Con i backup automatici spenti, quelli esistenti restano.
+        assert_eq!(
+            kinds
+                .iter()
+                .filter(|(kind, _)| *kind == BackupKind::Automatic)
+                .count(),
+            2
+        );
         drop(database);
         let reopened = Database::open(data.join("gna.sqlite3")).expect("reopen");
         assert!(!reopened.backup_settings().expect("settings").auto_enabled);

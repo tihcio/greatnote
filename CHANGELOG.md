@@ -4,6 +4,17 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.14 — 2026-11-25
+
+- **Backup: le copie di sicurezza non si accumulano più.** Le copie create
+  prima di ogni aggiornamento del database e prima di un ripristino non
+  venivano mai eliminate (il numero di backup conservati valeva solo per
+  quelli automatici): ora di ciascun tipo restano le 3 più recenti. Una
+  soglia più bassa per i backup automatici si applica subito al
+  salvataggio. I backup manuali restano finché non li elimini.
+- **Sicurezza:** dipendenze `url` e `cookie` aggiornate (RUSTSEC-2026-0592,
+  RUSTSEC-2026-0594).
+
 ## 0.2.13 — 2026-11-25
 
 - **Promemoria anche a finestra chiusa sul computer.** In Impostazioni ›

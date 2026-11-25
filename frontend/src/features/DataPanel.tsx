@@ -801,6 +801,7 @@ export default function DataPanel({ notebooks, initialTab = "import", onBusyChan
                       />
                     </label>
                   </div>
+                  <p className="data-hint">{t.retentionHint}</p>
                   <button className="data-action" disabled={busy !== null} onClick={() => void saveSettings()} type="button">
                     {t.saveSettings}
                   </button>
