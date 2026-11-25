@@ -111,6 +111,7 @@ impl Database {
         )?;
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.execute_batch("PRAGMA query_only = ON;")?;
+        crate::storage::register_functions(&connection)?;
         let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         if version != CURRENT_SCHEMA_VERSION {
             return Err(StorageError::IncompatibleSchema(version));

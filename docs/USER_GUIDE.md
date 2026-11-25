@@ -217,8 +217,14 @@ bordo, poi frecce sinistra/destra (con Maiusc a passi più grandi).
   `created:2026-01-01..2026-12-31`, `updated:7d`, `has:attachment`,
   `is:pinned`, `is:archived`, `is:task` (note con attività aperte),
   `before:2026-10-01` e `after:2026-01-01`.
-  Gli operatori booleani e le parentesi non sono supportati e mostrano un
-  errore esplicito.
+- **Operatori:** `AND`, `OR`, `NOT` (in maiuscolo) e le parentesi
+  combinano parole, frasi e filtri. `NOT` lega più di `AND`, che lega più di
+  `OR`; lo spazio vale come `AND`. Esempi: `progetto OR piano`,
+  `budget NOT bozza`, `(tag:lavoro OR tag:casa) is:pinned`,
+  `NOT tag:archivio`, `is:archived OR tag:importante` (comprende anche le
+  note archiviate). Scritti in minuscolo o tra virgolette restano parole.
+  Una ricerca malformata (parentesi non chiuse, operatore senza termine)
+  mostra un errore che dice cosa manca.
 - Le parole valgono anche come inizio di parola (`euron` trova
   «Euronics»), così i risultati compaiono mentre scrivi; per una frase
   esatta usa le virgolette. La ricerca comprende titolo, testo, allegati di
@@ -324,6 +330,15 @@ bordo, poi frecce sinistra/destra (con Maiusc a passi più grandi).
   esiste per il passaggio all'ora legale (es. 02:30 dell'ultima domenica di
   marzo in Italia) viene spostato alle 03:30; un orario ripetuto al ritorno
   all'ora solare usa la prima occorrenza.
+
+## Condividere verso Greatnote (Android)
+
+Da un'altra app (browser, galleria, gestore dei file…) usa **Condividi** e
+scegli **Greatnote**: nasce una nota, che si apre subito. Il titolo è
+l'oggetto indicato dall'app o la prima riga del testo; testo e link vanno
+nel corpo, immagini (PNG, JPEG, GIF), PDF e file di testo diventano
+allegati (fino a 20 file da 25 MB). I file di altri tipi vengono saltati e
+indicati in un avviso.
 
 ## Esportare una nota
 
@@ -942,10 +957,10 @@ nell'archivio di esportazione.
 - **Calendari esterni:** solo in lettura tramite iCal (il collegamento a
   Google e Microsoft è sospeso). Le serie ricorrenti si modificano solo per
   gli eventi di Greatnote.
-- **Ricerca:** gli operatori `AND`, `OR`, `NOT` e le parentesi non sono
-  supportati; nelle attività maiuscole e minuscole si equivalgono solo per
-  le lettere senza accento. Gli allegati di testo vengono indicizzati fino a
-  100.000 caratteri; gli altri tipi sono ricercabili per nome.
+- **Ricerca:** al massimo 32 termini e 8 livelli di parentesi. Nelle
+  attività maiuscole e accenti si equivalgono per le lettere latine. Gli
+  allegati di testo vengono indicizzati fino a 100.000 caratteri; gli altri
+  tipi sono ricercabili per nome.
 - **Backup:** quelli interni non sono cifrati (solo le copie esportate
   possono esserlo).
 - **PDF:** usa il formato carta predefinito del sistema e non è disponibile

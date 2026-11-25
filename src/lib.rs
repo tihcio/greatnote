@@ -13,6 +13,7 @@ pub mod ocr;
 pub mod planner;
 pub mod search;
 pub mod secret_text;
+pub mod share;
 pub mod storage;
 pub mod sync;
 pub mod time;

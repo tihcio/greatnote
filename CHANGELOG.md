@@ -4,6 +4,27 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.15 — 2026-11-25
+
+- **Android: condividere verso Greatnote.** Dal pannello «Condividi» di
+  un'altra app testo, link, immagini, PDF e file di testo (anche più
+  insieme) diventano una nota, che si apre subito.
+
+- **Più veloce con archivi grandi.** Con 30.000 note il controllo
+  d'integrità passa da 149 secondi a mezzo secondo, e salvare o creare una
+  nota da 9 ms a 0,16 ms (il tempo non cresce più con il numero di note);
+  anche le importazioni grandi ne beneficiano. Il database passa alla
+  versione 17. Nuova prova ripetibile delle prestazioni
+  (`tests/performance.rs`).
+- Assegnare due volte lo stesso tag a una nota non dà più un errore.
+
+- **Ricerca con AND, OR, NOT e parentesi.** Combinano parole, frasi e
+  filtri (`progetto OR piano`, `budget NOT bozza`,
+  `(tag:lavoro OR tag:casa) is:pinned`); senza operatori la ricerca resta
+  quella di prima, con pertinenza ed evidenziazione.
+- **Ricerca nelle attività senza distinzione di accenti:** «citta» trova
+  «Città», «CITTÀ» trova «città».
+
 ## 0.2.14 — 2026-11-25
 
 - **Backup: le copie di sicurezza non si accumulano più.** Le copie create

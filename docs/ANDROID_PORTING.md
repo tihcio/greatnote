@@ -438,8 +438,11 @@ Limiti noti:
   c'è lavoro in background.
 - iCal: aggiunta di un calendario e aggiornamento **non provati** (prima
   richiesta HTTPS dal lato Rust su Android).
-- Ricevere contenuti condivisi da altre app (testo o file verso Greatnote):
-  non implementato.
+- Ricevere contenuti condivisi da altre app (2026-11-25): testo e link,
+  immagini, PDF e file di testo, anche più file insieme, diventano una nota
+  aperta subito (`share.rs`, `share_commands.rs`, `FilesPlugin.takeShare`,
+  filtri nel manifest). Provato sull'emulatore con `adb`; da provare sul
+  telefono con app reali.
 - La condivisione invia solo testo, senza allegati.
 
 ### Fase F — AI

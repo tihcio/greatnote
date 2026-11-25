@@ -1230,7 +1230,7 @@ fn apply_op(
                     .query_map([&key], |row| row.get(0))?
                     .collect::<Result<_, _>>()?;
                 orphaned_files.extend(files);
-                connection.execute("DELETE FROM note_search WHERE note_id = ?1", [&key])?;
+                crate::storage::remove_from_search_index(connection, &key)?;
                 connection.execute(
                     "DELETE FROM reminders WHERE entity_type = 'note' AND entity_id = ?1",
                     [&key],

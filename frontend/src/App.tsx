@@ -1913,6 +1913,44 @@ export default function App() {
     await openLinkedNote(noteId);
   };
 
+  const openNoteByIdRef = useRef(openNoteById);
+  openNoteByIdRef.current = openNoteById;
+
+  // Android: contenuto condiviso da un'altra app (pannello «Condividi»).
+  // Diventa una nota, che viene aperta; i file non accettati vengono detti.
+  useEffect(() => {
+    if (!isMobile) return;
+    let checking = false;
+    const takeShared = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const shared = await invoke<{ note: { id: string; title: string }; skipped: string[] } | null>(
+          "take_shared_content",
+        );
+        if (!shared) return;
+        setNoteListVersion((version) => version + 1);
+        await openNoteByIdRef.current(shared.note.id);
+        if (shared.skipped.length > 0) setError(t.sharedSkipped(shared.skipped.join("; ")));
+        else setNotice(t.sharedNoteCreated(shared.note.title));
+      } catch (cause) {
+        setError(t.sharedFailed(errorMessage(cause)));
+      } finally {
+        checking = false;
+      }
+    };
+    // Dopo la riapertura dell'ultima nota, così vince quella condivisa.
+    const startup = window.setTimeout(() => void takeShared(), 700);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void takeShared();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearTimeout(startup);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
   const startNewTask = async () => {
     if (!(await flushDraft(activeNoteRef.current))) return;
     setPendingTask(null);

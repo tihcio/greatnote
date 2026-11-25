@@ -142,6 +142,11 @@ mod platform {
 
     /// La condivisione con altre app esiste solo su mobile: sul desktop la
     /// nota si copia negli appunti o si esporta.
+    /// Sul desktop nessuna app condivide contenuti verso Greatnote.
+    pub fn take_shared(_app: &AppHandle) -> CommandResult<Option<SharedPayload>> {
+        Ok(None)
+    }
+
     pub fn share_text(_app: &AppHandle, _title: &str, _text: &str) -> CommandResult<()> {
         Err(greatnote_core::tr!(
             "La condivisione con altre app non è disponibile su questo sistema",
@@ -362,6 +367,20 @@ mod platform {
     /// Android limita a circa 1 MB.
     const MAX_SHARED_CHARS: usize = 100_000;
 
+    /// Contenuto condiviso da un'altra app, se c'è (`FilesPlugin.takeShare`).
+    /// I file restano copiati in `<cache>/shared/`, che il chiamante svuota.
+    pub fn take_shared(app: &AppHandle) -> CommandResult<Option<SharedPayload>> {
+        let value = app
+            .state::<FilesPlugin>()
+            .0
+            .run_mobile_plugin::<serde_json::Value>("takeShare", serde_json::json!({}))
+            .map_err(|error| error.to_string())?;
+        if value.get("empty").and_then(serde_json::Value::as_bool) == Some(true) {
+            return Ok(None);
+        }
+        serde_json::from_value(value).map(Some).map_err(message)
+    }
+
     /// Mostra il pannello «Condividi» di Android con il testo dato.
     pub fn share_text(app: &AppHandle, title: &str, text: &str) -> CommandResult<()> {
         if text.chars().count() > MAX_SHARED_CHARS {
@@ -490,4 +509,22 @@ mod platform {
 pub use platform::install_package;
 #[cfg(target_os = "android")]
 pub use platform::{background_allowed, init, request_background};
-pub use platform::{clear, clear_all, open_file, pick_input, pick_inputs, pick_output, share_text};
+pub use platform::{
+    clear, clear_all, open_file, pick_input, pick_inputs, pick_output, share_text, take_shared,
+};
+
+/// File ricevuto da un'altra app, copiato nella cache dell'app.
+#[derive(Debug, serde::Deserialize)]
+pub struct SharedFileCopy {
+    pub path: PathBuf,
+    pub name: String,
+}
+
+/// Contenuto del pannello «Condividi» di Android.
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct SharedPayload {
+    pub text: Option<String>,
+    pub subject: Option<String>,
+    #[serde(default)]
+    pub files: Vec<SharedFileCopy>,
+}

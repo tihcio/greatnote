@@ -461,6 +461,14 @@ applicate. Stato e prove in `docs/ANDROID_PORTING.md`.
 - **Condivisione.** Il testo di una nota esce dall'app solo dal pannello
   «Condividi» di Android, dopo una scelta esplicita della nota e dell'app
   di destinazione.
+- **Contenuti ricevuti da altre app.** Greatnote si offre nel pannello
+  «Condividi» solo per testo, immagini PNG/JPEG/GIF, PDF e file di testo.
+  I file vengono copiati in `<cache>/shared/` con un nome ripulito (al
+  massimo 20 file, ciascuno troppo grande oltre 25 MB); il lato Rust legge
+  solo file dentro quella cartella, ne riconosce il tipo dal contenuto e
+  non dall'estensione (come ogni allegato) e cancella le copie. Una
+  condivisione viene letta una volta sola, anche se Android ricrea
+  l'activity.
 - **Plugin `fs`** attivo solo su Android e usato solo dal lato Rust: il
   frontend non ha alcun permesso sul filesystem.
 - **Permessi dichiarati:** solo `INTERNET`, oggi non usato da nessuna

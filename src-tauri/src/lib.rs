@@ -11,6 +11,7 @@ mod planner_commands;
 mod reminder_alarms;
 mod secret_commands;
 mod secrets;
+mod share_commands;
 mod sync_commands;
 mod ui_commands;
 #[cfg(desktop)]
@@ -713,6 +714,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             ui_commands::share_note_text,
             ui_commands::app_info,
             ui_commands::open_note_window,
+            share_commands::take_shared_content,
             background::get_background_settings,
             background::set_background_settings,
             ai_commands::get_ai_status,

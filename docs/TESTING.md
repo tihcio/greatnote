@@ -45,6 +45,41 @@ Su Fedora, Tauri richiede i pacchetti di sviluppo GTK 3, WebKitGTK 4.1 e
 librerie associate. Verificare le dipendenze correnti nella documentazione
 Tauri per la propria versione di Fedora.
 
+## Prestazioni
+
+Prova ripetibile su un archivio sintetico (`tests/performance.rs`), esclusa
+dalla suite normale perché lenta. Crea in una cartella temporanea note con
+80 parole, 40 taccuini, 60 tag, 2.000 attività e 300 eventi (un quinto
+settimanali), poi misura la mediana di 5 esecuzioni per operazione:
+
+```sh
+cargo test --release --test performance -- --ignored --nocapture
+GREATNOTE_PERF_NOTES=100000 cargo test --release --test performance -- --ignored --nocapture
+```
+
+Le soglie del test sono larghe (un peggioramento di un ordine di grandezza
+lo fa fallire). Risultati del 2026-11-25 (Fedora, build release):
+
+| Operazione | 30.000 note | 100.000 note |
+| --- | ---: | ---: |
+| Apertura del database | 0,7 ms | 0,8 ms |
+| Contatori della barra laterale | 63 ms | 252 ms |
+| Elenco: prima pagina / offset 20.000 | 0,3 / 17 ms | 0,4 / 19 ms |
+| Ricerca di una parola presente in quasi tutte le note | 56 ms | 225 ms |
+| Ricerca per prefisso / frase / parola rara | 63 / 22 / 0,07 ms | 227 / 54 / 0,09 ms |
+| Ricerca con filtri / con operatori | 0,6 / 106 ms | 1,6 / 407 ms |
+| Attività con ricerca, calendario del mese | 5 / 0,4 ms | 5 / 0,5 ms |
+| Salvataggio di una nota | 0,16 ms | 0,16 ms |
+| Controllo d'integrità / backup completo | 0,5 / 1,3 s | 1,8 / 4,2 s |
+
+Problemi trovati e corretti con questa prova: il controllo d'integrità
+impiegava 149 s con 30.000 note (confronto per nota sulla colonna non
+indicizzata dell'indice FTS); salvare o creare una nota cancellava la riga
+dell'indice scorrendolo tutto (9 ms con 30.000 note, in crescita lineare):
+ora la tabella `note_search_rows` (migrazione v17) lega ogni nota alla sua
+riga. Due indici "coprenti" sullo stato delle note sono stati provati e
+scartati: SQLite li sceglieva per l'elenco, che passava da 0,3 a 31 ms.
+
 ## Principi per le fixture
 
 - Usare solo note sintetiche nei test.

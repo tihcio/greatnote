@@ -7,7 +7,9 @@ use std::{
 };
 
 use rusqlite::{
-    Connection, OptionalExtension, Row, params, params_from_iter,
+    Connection, OptionalExtension, Row,
+    functions::FunctionFlags,
+    params, params_from_iter,
     types::{Type, Value as SqlValue},
 };
 use serde_json::Value;
@@ -19,7 +21,7 @@ use crate::domain::{
     note::{Attachment, Note, NoteDraft, NoteLink, validate_document},
     organization::{Notebook, Space, Tag},
 };
-use crate::search::{SearchQuery, parse_query};
+use crate::search::{Expr, Filter, SearchQuery, fold_text, parse_query};
 
 /// Nuovo `updated_at` di una nota in un `UPDATE notes`: l'istante attuale,
 /// ma sempre successivo al valore precedente. L'orologio di SQLite su
@@ -47,13 +49,14 @@ const MIGRATION_13: &str = include_str!("../migrations/0013_calendar_subscriptio
 const MIGRATION_14: &str = include_str!("../migrations/0014_sync.sql");
 const MIGRATION_15: &str = include_str!("../migrations/0015_task_recurrence.sql");
 const MIGRATION_16: &str = include_str!("../migrations/0016_event_recurrence.sql");
-pub const CURRENT_SCHEMA_VERSION: u32 = 16;
+const MIGRATION_17: &str = include_str!("../migrations/0017_search_row_map.sql");
+pub const CURRENT_SCHEMA_VERSION: u32 = 17;
 const MAX_TITLE_LENGTH: usize = 512;
 const MAX_ORGANIZATION_NAME_LENGTH: usize = 200;
 const MAX_TAG_NAME_LENGTH: usize = 100;
 const MAX_DESCRIPTION_LENGTH: usize = 4096;
 const MAX_PAGE_SIZE: u32 = 500;
-pub(crate) const MAX_ATTACHMENT_BYTES: usize = 25 * 1024 * 1024;
+pub const MAX_ATTACHMENT_BYTES: usize = 25 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -427,7 +430,10 @@ impl Database {
         match scope {
             "all" => {
                 conditions.push("notes.deleted_at IS NULL".to_owned());
-                if query.is_archived {
+                if query.expression.is_some() && query.is_archived {
+                    // Con gli operatori decide l'espressione (es. `is:archived
+                    // OR tag:x`): note archiviate e non.
+                } else if query.is_archived {
                     conditions.push("notes.archived_at IS NOT NULL".to_owned());
                 } else {
                     conditions.push("notes.archived_at IS NULL".to_owned());
@@ -491,17 +497,26 @@ impl Database {
             }
             _ => return Err(StorageError::InvalidSearchScope),
         }
+        let (scope_conditions, scope_values) = (conditions.len(), values.len());
 
-        let match_expression = fts_expression(&query);
-        if !match_expression.is_empty() {
-            conditions.push("note_search MATCH ?".to_owned());
-            values.push(SqlValue::Text(match_expression));
+        let match_expression = match &query.expression {
+            Some(expression) => boolean_conditions(expression, &mut conditions, &mut values),
+            None => {
+                append_search_filters(&query, &mut conditions, &mut values);
+                fts_expression(&query)
+            }
+        };
+        let has_text = !match_expression.is_empty();
+        if has_text {
+            // Primo parametro dopo quelli dell'ambito: va inserito prima dei
+            // valori delle condizioni aggiunte dopo di lui.
+            conditions.insert(scope_conditions, "note_search MATCH ?".to_owned());
+            values.insert(scope_values, SqlValue::Text(match_expression));
         }
-        append_search_filters(&query, &mut conditions, &mut values);
         values.push(SqlValue::Integer(i64::from(limit)));
         values.push(SqlValue::Integer(i64::from(offset)));
 
-        let search_from = match (query.terms.is_empty(), scope == "recent") {
+        let search_from = match (!has_text, scope == "recent") {
             (true, true) => "notes INNER JOIN note_visits ON note_visits.note_id = notes.id",
             (false, true) => {
                 "note_search INNER JOIN notes ON notes.id = note_search.note_id
@@ -510,19 +525,19 @@ impl Database {
             (true, false) => "notes",
             (false, false) => "note_search INNER JOIN notes ON notes.id = note_search.note_id",
         };
-        let snippet = if query.terms.is_empty() {
+        let snippet = if !has_text {
             "''"
         } else {
             // Colonna scelta da FTS5: testo della nota o allegati (anche il
             // testo letto dalle immagini), dove si trova la corrispondenza.
             "snippet(note_search, -1, char(57344), char(57345), '…', 12)"
         };
-        let highlighted_title = if query.terms.is_empty() {
+        let highlighted_title = if !has_text {
             "notes.title"
         } else {
             "highlight(note_search, 1, char(57344), char(57345))"
         };
-        let order = if scope == "recent" || query.terms.is_empty() {
+        let order = if scope == "recent" || !has_text {
             order
         } else {
             "bm25(note_search), notes.updated_at DESC, notes.id"
@@ -964,7 +979,14 @@ impl Database {
             [note_id],
         )?;
         transaction.execute(
-            &format!("DELETE FROM note_search WHERE note_id IN ({TRASHED})"),
+            &format!(
+                "DELETE FROM note_search WHERE rowid IN (
+                     SELECT search_rowid FROM note_search_rows WHERE note_id IN ({TRASHED}))"
+            ),
+            [note_id],
+        )?;
+        transaction.execute(
+            &format!("DELETE FROM note_search_rows WHERE note_id IN ({TRASHED})"),
             [note_id],
         )?;
         // Le altre relazioni seguono i vincoli dello schema: CASCADE per tag,
@@ -1199,8 +1221,9 @@ impl Database {
 
         transaction.execute("DELETE FROM note_tags WHERE note_id = ?1", [note_id])?;
         for tag_id in tag_ids {
+            // Un tag ripetuto nell'elenco vale una volta sola.
             transaction.execute(
-                "INSERT INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
+                "INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
                 params![note_id, tag_id],
             )?;
         }
@@ -1447,6 +1470,82 @@ pub(crate) fn validate_page(limit: u32) -> Result<(), StorageError> {
     Ok(())
 }
 
+/// Termine FTS5 tra virgolette; senza virgolette nella ricerca vale anche
+/// come prefisso.
+fn fts_term(text: &str, exact: bool) -> String {
+    let quoted = format!("\"{}\"", text.replace('"', "\"\""));
+    if exact { quoted } else { format!("{quoted}*") }
+}
+
+/// Parte di solo testo di un'espressione, traducibile in FTS5 (parole,
+/// frasi, `AND`, `OR`); `None` se contiene filtri o `NOT`.
+fn fts_boolean(expression: &Expr) -> Option<String> {
+    match expression {
+        Expr::Term { text, quoted } => Some(fts_term(text, *quoted)),
+        Expr::And(items) | Expr::Or(items) => {
+            let joiner = if matches!(expression, Expr::And(_)) {
+                " AND "
+            } else {
+                " OR "
+            };
+            let parts = items.iter().map(fts_boolean).collect::<Option<Vec<_>>>()?;
+            Some(format!("({})", parts.join(joiner)))
+        }
+        Expr::Filter(_) | Expr::Not(_) => None,
+    }
+}
+
+/// Condizione SQL di un'espressione: i termini diventano sottoquery sulla
+/// tabella FTS, i filtri le loro condizioni. Ogni valore è un parametro.
+fn boolean_sql(expression: &Expr, values: &mut Vec<SqlValue>) -> String {
+    match expression {
+        Expr::Term { text, quoted } => {
+            values.push(SqlValue::Text(fts_term(text, *quoted)));
+            "notes.id IN (SELECT note_id FROM note_search WHERE note_search MATCH ?)".to_owned()
+        }
+        Expr::Filter(filter) => {
+            let (condition, filter_values) = filter_condition(filter);
+            values.extend(filter_values);
+            condition
+        }
+        Expr::Not(inner) => format!("NOT ({})", boolean_sql(inner, values)),
+        Expr::And(items) | Expr::Or(items) => {
+            let joiner = if matches!(expression, Expr::And(_)) {
+                " AND "
+            } else {
+                " OR "
+            };
+            let parts: Vec<String> = items
+                .iter()
+                .map(|item| format!("({})", boolean_sql(item, values)))
+                .collect();
+            parts.join(joiner)
+        }
+    }
+}
+
+/// Traduce un'espressione con operatori: le condizioni principali di solo
+/// testo formano l'espressione FTS5 restituita (pertinenza, evidenziazione
+/// ed estratti come nella ricerca semplice), le altre diventano condizioni.
+fn boolean_conditions(
+    expression: &Expr,
+    conditions: &mut Vec<String>,
+    values: &mut Vec<SqlValue>,
+) -> String {
+    let parts: Vec<&Expr> = match expression {
+        Expr::And(items) => items.iter().collect(),
+        other => vec![other],
+    };
+    let mut text = Vec::new();
+    for part in parts {
+        match fts_boolean(part) {
+            Some(fts) => text.push(fts),
+            None => conditions.push(format!("({})", boolean_sql(part, values))),
+        }
+    }
+    text.join(" AND ")
+}
+
 /// Espressione FTS5 (passata come parametro): ogni termine tra virgolette;
 /// le parole non scritte tra virgolette valgono anche come prefisso, così la
 /// ricerca trova mentre si scrive e parole di cui si ricorda solo l'inizio.
@@ -1455,11 +1554,7 @@ fn fts_expression(query: &SearchQuery) -> String {
         .terms
         .iter()
         .enumerate()
-        .map(|(index, term)| {
-            let exact = query.quoted.get(index).copied().unwrap_or(false);
-            let quoted = format!("\"{}\"", term.replace('"', "\"\""));
-            if exact { quoted } else { format!("{quoted}*") }
-        })
+        .map(|(index, term)| fts_term(term, query.quoted.get(index).copied().unwrap_or(false)))
         .collect::<Vec<_>>()
         .join(" AND ")
 }
@@ -1469,69 +1564,68 @@ fn append_search_filters(
     conditions: &mut Vec<String>,
     values: &mut Vec<SqlValue>,
 ) {
-    for tag in &query.tags {
-        conditions.push(
+    for filter in query.flat_filters() {
+        let (condition, filter_values) = filter_condition(&filter);
+        conditions.push(condition);
+        values.extend(filter_values);
+    }
+}
+
+/// Condizione SQL di un filtro, con i suoi parametri.
+fn filter_condition(filter: &Filter) -> (String, Vec<SqlValue>) {
+    let text = |value: &str| SqlValue::Text(value.to_owned());
+    match filter {
+        Filter::Tag(tag) => (
             "EXISTS (SELECT 1 FROM note_tags
              INNER JOIN tags ON tags.id = note_tags.tag_id
              WHERE note_tags.note_id = notes.id AND tags.name = ? COLLATE NOCASE)"
                 .to_owned(),
-        );
-        values.push(SqlValue::Text(tag.clone()));
-    }
-    for notebook in &query.notebooks {
-        conditions.push(
+            vec![text(tag)],
+        ),
+        Filter::Notebook(notebook) => (
             "EXISTS (SELECT 1 FROM notebooks
              WHERE notebooks.id = notes.notebook_id AND notebooks.name = ? COLLATE NOCASE)"
                 .to_owned(),
-        );
-        values.push(SqlValue::Text(notebook.clone()));
-    }
-    for space in &query.spaces {
-        conditions.push(
+            vec![text(notebook)],
+        ),
+        Filter::Space(space) => (
             "EXISTS (SELECT 1 FROM notebooks
              INNER JOIN spaces ON spaces.id = notebooks.space_id
              WHERE notebooks.id = notes.notebook_id AND spaces.name = ? COLLATE NOCASE)"
                 .to_owned(),
-        );
-        values.push(SqlValue::Text(space.clone()));
-    }
-    if let Some((start, end)) = &query.created_range {
-        conditions.push("date(notes.created_at) BETWEEN date(?) AND date(?)".to_owned());
-        values.push(SqlValue::Text(start.clone()));
-        values.push(SqlValue::Text(end.clone()));
-    }
-    if let Some(before) = &query.before {
-        conditions.push("date(notes.created_at) < date(?)".to_owned());
-        values.push(SqlValue::Text(before.clone()));
-    }
-    if let Some(after) = &query.after {
-        conditions.push("date(notes.created_at) > date(?)".to_owned());
-        values.push(SqlValue::Text(after.clone()));
-    }
-    if let Some(days) = query.updated_days {
-        conditions.push("notes.updated_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)".to_owned());
-        values.push(SqlValue::Text(format!("-{days} days")));
-    }
-    if query.has_attachment {
-        conditions.push(
+            vec![text(space)],
+        ),
+        Filter::Created(start, end) => (
+            "date(notes.created_at) BETWEEN date(?) AND date(?)".to_owned(),
+            vec![text(start), text(end)],
+        ),
+        Filter::Before(before) => (
+            "date(notes.created_at) < date(?)".to_owned(),
+            vec![text(before)],
+        ),
+        Filter::After(after) => (
+            "date(notes.created_at) > date(?)".to_owned(),
+            vec![text(after)],
+        ),
+        Filter::UpdatedDays(days) => (
+            "notes.updated_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)".to_owned(),
+            vec![SqlValue::Text(format!("-{days} days"))],
+        ),
+        Filter::HasAttachment => (
             "EXISTS (SELECT 1 FROM attachments
              WHERE attachments.note_id = notes.id AND attachments.deleted_at IS NULL)"
                 .to_owned(),
-        );
-    }
-    if query.is_pinned {
-        conditions.push("notes.is_pinned = 1".to_owned());
-    }
-    if query.is_archived {
-        conditions.push("notes.archived_at IS NOT NULL".to_owned());
-    }
-    if query.has_open_task {
-        conditions.push(
+            Vec::new(),
+        ),
+        Filter::Pinned => ("notes.is_pinned = 1".to_owned(), Vec::new()),
+        Filter::Archived => ("notes.archived_at IS NOT NULL".to_owned(), Vec::new()),
+        Filter::OpenTask => (
             "EXISTS (SELECT 1 FROM tasks
              WHERE tasks.note_id = notes.id AND tasks.status = 'open'
                AND tasks.deleted_at IS NULL)"
                 .to_owned(),
-        );
+            Vec::new(),
+        ),
     }
 }
 
@@ -1549,12 +1643,30 @@ pub(crate) fn sync_search_index(
         [note_id],
         |row| row.get(0),
     )?;
-    connection.execute("DELETE FROM note_search WHERE note_id = ?1", [note_id])?;
+    remove_from_search_index(connection, note_id)?;
     connection.execute(
         "INSERT INTO note_search (note_id, title, content, attachments)
          VALUES (?1, ?2, ?3, ?4)",
         params![note_id, title, text.join(" "), attachment_text],
     )?;
+    connection.execute(
+        "INSERT OR REPLACE INTO note_search_rows (note_id, search_rowid) VALUES (?1, ?2)",
+        params![note_id, connection.last_insert_rowid()],
+    )?;
+    Ok(())
+}
+
+/// Toglie una nota dall'indice di ricerca, per rowid (vedi migrazione 17).
+pub(crate) fn remove_from_search_index(
+    connection: &Connection,
+    note_id: &str,
+) -> Result<(), StorageError> {
+    connection.execute(
+        "DELETE FROM note_search
+         WHERE rowid = (SELECT search_rowid FROM note_search_rows WHERE note_id = ?1)",
+        [note_id],
+    )?;
+    connection.execute("DELETE FROM note_search_rows WHERE note_id = ?1", [note_id])?;
     Ok(())
 }
 
@@ -1694,6 +1806,10 @@ fn migrate(connection: &Connection) -> Result<(), StorageError> {
         connection.execute_batch(MIGRATION_16)?;
         version = 16;
     }
+    if version == 16 {
+        connection.execute_batch(MIGRATION_17)?;
+        version = 17;
+    }
     if version == CURRENT_SCHEMA_VERSION {
         repair_ai_index_schema(connection)?;
     }
@@ -1746,6 +1862,22 @@ fn repair_ai_index_schema(connection: &Connection) -> Result<(), StorageError> {
 pub(crate) fn configure_connection(connection: &Connection) -> Result<(), StorageError> {
     connection.busy_timeout(Duration::from_secs(5))?;
     connection.execute_batch("PRAGMA foreign_keys = ON;")?;
+    register_functions(connection)
+}
+
+/// Funzioni SQL dell'app, da registrare su ogni connessione (anche quella in
+/// sola lettura del server MCP).
+pub(crate) fn register_functions(connection: &Connection) -> Result<(), StorageError> {
+    // Confronto senza maiuscole né accenti per la ricerca nelle attività.
+    connection.create_scalar_function(
+        "gn_fold",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |context| {
+            let text: Option<String> = context.get(0)?;
+            Ok(text.map(|text| fold_text(&text)))
+        },
+    )?;
     Ok(())
 }
 
@@ -2229,6 +2361,64 @@ mod tests {
             )
             .expect("FTS5 table is available");
         assert!(fts5_table_exists);
+    }
+
+    #[test]
+    fn boolean_search_combines_terms_filters_and_scopes() {
+        let database = Database::in_memory().expect("database initializes");
+        let text = |value: &str| {
+            json!({ "type": "doc", "content": [{ "type": "paragraph",
+                "content": [{ "type": "text", "text": value }] }] })
+        };
+        let alpha = database
+            .create_note("Alfa", &text("progetto budget"))
+            .expect("note");
+        let beta = database
+            .create_note("Beta", &text("piano budget"))
+            .expect("note");
+        let gamma = database
+            .create_note("Gamma", &text("progetto vecchio"))
+            .expect("note");
+        let delta = database
+            .create_note("Delta", &text("appunti vari"))
+            .expect("note");
+        let tag = database.create_tag("casa", None).expect("tag");
+        database
+            .set_note_tags(&delta.id, std::slice::from_ref(&tag.id))
+            .expect("tags");
+        database
+            .set_note_archived(&gamma.id, true)
+            .expect("archive");
+        let titles = |query: &str| -> Vec<String> {
+            let mut found: Vec<String> = database
+                .search_notes(query, "all", None, 50, 0)
+                .unwrap_or_else(|error| panic!("{query}: {error}"))
+                .into_iter()
+                .map(|result| result.note.title)
+                .collect();
+            found.sort();
+            found
+        };
+        assert_eq!(titles("progetto OR piano"), ["Alfa", "Beta"]);
+        assert_eq!(titles("budget NOT piano"), ["Alfa"]);
+        assert_eq!(titles("(progetto OR piano) AND budget"), ["Alfa", "Beta"]);
+        // Filtri dentro un OR e NOT iniziale.
+        assert_eq!(titles("piano OR tag:casa"), ["Beta", "Delta"]);
+        assert_eq!(titles("NOT budget"), ["Delta"]);
+        // `is:archived` in un OR: anche le note archiviate, insieme alle altre.
+        assert_eq!(titles("is:archived OR tag:casa"), ["Delta", "Gamma"]);
+        // Le parti di solo testo mantengono l'evidenziazione.
+        let highlighted = database
+            .search_notes("budget AND (progetto OR piano)", "all", None, 50, 0)
+            .expect("search");
+        assert!(
+            highlighted
+                .iter()
+                .all(|result| result.snippet.contains('\u{e000}'))
+        );
+        // Un valore con caratteri SQL resta testo cercato.
+        assert!(titles("x OR tag:\"casa') OR 1=1 --\"").is_empty());
+        let _ = (alpha, beta);
     }
 
     #[test]
@@ -2867,6 +3057,10 @@ mod tests {
             connection
                 .execute_batch(
                     "DELETE FROM note_search;
+                     DROP TRIGGER attachments_search_insert;
+                     DROP TRIGGER attachments_search_update;
+                     DROP TRIGGER attachments_search_delete;
+                     DROP TABLE note_search_rows;
                      ALTER TABLE attachments DROP COLUMN ocr_text;
                      ALTER TABLE attachments DROP COLUMN ocr_status;
                      ALTER TABLE attachments DROP COLUMN ocr_engine;
@@ -2936,6 +3130,28 @@ mod tests {
                      DROP TABLE tasks;
                      DROP TABLE settings;
                      ALTER TABLE notes DROP COLUMN source;
+                     CREATE TRIGGER attachments_search_insert AFTER INSERT ON attachments
+                     BEGIN
+                         UPDATE note_search SET attachments = COALESCE((
+                             SELECT group_concat(search_text, ' ') FROM attachments
+                             WHERE note_id = NEW.note_id AND deleted_at IS NULL), '')
+                         WHERE note_id = NEW.note_id;
+                     END;
+                     CREATE TRIGGER attachments_search_update
+                     AFTER UPDATE OF deleted_at, search_text ON attachments
+                     BEGIN
+                         UPDATE note_search SET attachments = COALESCE((
+                             SELECT group_concat(search_text, ' ') FROM attachments
+                             WHERE note_id = NEW.note_id AND deleted_at IS NULL), '')
+                         WHERE note_id = NEW.note_id;
+                     END;
+                     CREATE TRIGGER attachments_search_delete AFTER DELETE ON attachments
+                     BEGIN
+                         UPDATE note_search SET attachments = COALESCE((
+                             SELECT group_concat(search_text, ' ') FROM attachments
+                             WHERE note_id = OLD.note_id AND deleted_at IS NULL), '')
+                         WHERE note_id = OLD.note_id;
+                     END;
                      PRAGMA user_version = 4;",
                 )
                 .expect("legacy v4 state is recreated");

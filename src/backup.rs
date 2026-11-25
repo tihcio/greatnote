@@ -1061,8 +1061,11 @@ impl Database {
                 .is_ok();
             let missing_search_rows = count(
                 &connection,
+                // Sottoquery non correlata: `note_id` della tabella FTS non ha
+                // indice, e un confronto per nota costerebbe O(n²).
                 "SELECT COUNT(*) FROM notes
-                 WHERE NOT EXISTS (SELECT 1 FROM note_search WHERE note_search.note_id = notes.id)",
+                 WHERE id NOT IN (SELECT note_id FROM note_search)
+                    OR id NOT IN (SELECT note_id FROM note_search_rows)",
             )?;
             let note_count = count(&connection, "SELECT COUNT(*) FROM notes")?;
             let mut statement = connection.prepare(
@@ -1154,6 +1157,7 @@ impl Database {
         let mut connection = self.connection()?;
         let transaction = connection.transaction()?;
         transaction.execute("DELETE FROM note_search", [])?;
+        transaction.execute("DELETE FROM note_search_rows", [])?;
         let count = transaction.execute(
             "INSERT INTO note_search (note_id, title, content, attachments)
              SELECT notes.id, notes.title,
@@ -1169,6 +1173,11 @@ impl Database {
                           AND attachments.deleted_at IS NULL
                     ), '')
              FROM notes",
+            [],
+        )?;
+        transaction.execute(
+            "INSERT INTO note_search_rows (note_id, search_rowid)
+             SELECT note_id, rowid FROM note_search",
             [],
         )?;
         transaction.execute(
@@ -1322,6 +1331,25 @@ mod tests {
             .search_notes("ricercabile", "all", None, 10, 0)
             .expect("search");
         assert_eq!(results.len(), 1);
+        // Dopo il ripristino la corrispondenza nota → riga dell'indice resta
+        // valida: una modifica sostituisce la riga, senza doppioni.
+        database
+            .update_note(&kept.id, "Da conservare", &document("contenuto rivisto"))
+            .expect("update after restore");
+        assert!(
+            database
+                .search_notes("originale", "all", None, 10, 0)
+                .expect("search")
+                .is_empty()
+        );
+        assert_eq!(
+            database
+                .search_notes("rivisto", "all", None, 10, 0)
+                .expect("search")
+                .len(),
+            1
+        );
+        assert!(database.check_integrity().expect("integrity").ok);
 
         // Il backup di sicurezza riporta allo stato precedente al ripristino.
         database

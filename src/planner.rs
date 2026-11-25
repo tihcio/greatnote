@@ -600,12 +600,12 @@ impl Database {
             TaskView::Completed => ("status = 'done' AND ?1 IS NOT NULL", "completed_at DESC"),
         };
         let connection = self.connection()?;
-        // Confronto senza distinzione di maiuscole tramite `lower()` sui due
-        // lati: copre l'ASCII, non tutte le lingue (limite documentato).
+        // Confronto senza maiuscole né accenti (`gn_fold`, registrata su
+        // ogni connessione): «citta» trova «Città».
         let mut statement = connection.prepare(&format!(
             "SELECT {TASK_COLUMNS} FROM tasks
              WHERE {condition} AND deleted_at IS NULL
-               AND (?2 IS NULL OR instr(lower(title || ' ' || description), lower(?2)) > 0)
+               AND (?2 IS NULL OR instr(gn_fold(title || ' ' || description), gn_fold(?2)) > 0)
              ORDER BY {order}
              LIMIT {MAX_TASKS}"
         ))?;
@@ -1866,6 +1866,29 @@ mod tests {
                 .expect("open")
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn task_search_ignores_case_and_accents() {
+        let database = Database::in_memory().expect("database");
+        database
+            .create_task(&task("Visita in Città", None))
+            .expect("task");
+        database
+            .create_task(&task("ÉTÉ à Paris", None))
+            .expect("task");
+        let found = |search: &str| {
+            database
+                .list_tasks(TaskView::NoDate, date("2026-11-25"), Some(search))
+                .expect("search")
+                .into_iter()
+                .map(|task| task.title)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(found("città"), ["Visita in Città"]);
+        assert_eq!(found("CITTA"), ["Visita in Città"]);
+        assert_eq!(found("été"), ["ÉTÉ à Paris"]);
+        assert!(found("roma").is_empty());
     }
 
     fn recurring_event(title: &str, start: &str, end: &str, rule: &str) -> EventInput {
