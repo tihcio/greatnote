@@ -185,6 +185,8 @@ pub(crate) const TABLES: &[SyncTable] = &[
             "created_at",
             "updated_at",
             "deleted_at",
+            "recurrence",
+            "recurrence_exceptions",
         ],
         // Gli eventi di calendari esterni e iCal restano locali.
         filter: Some("calendar_provider IS NULL"),
@@ -204,6 +206,7 @@ pub(crate) const TABLES: &[SyncTable] = &[
             "last_triggered_at",
             "created_at",
             "updated_at",
+            "recurrence",
         ],
         filter: Some(
             "(entity_type <> 'event' OR EXISTS (SELECT 1 FROM events

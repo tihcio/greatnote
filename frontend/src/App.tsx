@@ -347,6 +347,8 @@ export default function App() {
   const activeNoteTrashedRef = useRef(false);
   const saveChainRef = useRef<Promise<boolean>>(Promise.resolve(true));
   const allowWindowCloseRef = useRef(false);
+  /** Modalità in background (ADR 0031): chiudere la finestra la nasconde. */
+  const backgroundRef = useRef(false);
   const draftRef = useRef<{ title: string; content: JSONContent }>({
     title: "",
     content: EMPTY_DOCUMENT,
@@ -602,6 +604,14 @@ export default function App() {
           return;
         }
         event.preventDefault();
+        if (backgroundRef.current) {
+          // Greatnote resta attivo nell'area di notifica: la bozza viene
+          // salvata e la finestra nascosta, senza chiudere l'app.
+          if (await flushDraft(activeNoteRef.current)) {
+            await appWindow.hide().catch((cause: unknown) => setError(errorMessage(cause)));
+          }
+          return;
+        }
         if (await flushDraft(activeNoteRef.current)) {
           allowWindowCloseRef.current = true;
           try {
@@ -2074,6 +2084,29 @@ export default function App() {
     allowWindowCloseRef.current = true;
     await invoke("quit_app");
   };
+  const quitAppRef = useRef(quitApp);
+  quitAppRef.current = quitApp;
+
+  // Modalità in background: preferenza letta all'avvio e «Esci» dall'icona
+  // nell'area di notifica, che passa dal salvataggio della bozza.
+  useEffect(() => {
+    if (!isDesktop || isMobile) return;
+    void invoke<{ enabled: boolean }>("get_background_settings")
+      .then((settings) => {
+        backgroundRef.current = settings.enabled;
+      })
+      .catch(() => undefined);
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void listen("quit-requested", () => void quitAppRef.current()).then((stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   const changeZoom = (direction: 0 | 1 | -1) => {
     updatePreferences({ zoom: direction === 0 ? 1 : nextZoom(preferences.zoom, direction) });
@@ -4145,6 +4178,9 @@ export default function App() {
           initialDataTab={dataTab}
           onImported={(notebookId) => void handleImported(notebookId)}
           onOpenNote={(noteId) => void openNoteById(noteId)}
+          onBackgroundChange={(enabled) => {
+            backgroundRef.current = enabled;
+          }}
           onInstallUpdate={installUpdate}
           onUpdateStatus={setUpdateStatus}
           updateStatus={updateStatus}

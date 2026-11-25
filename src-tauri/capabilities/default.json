@@ -1,7 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permessi core minimi per le finestre Greatnote (principale e note aperte a parte)",
-  "windows": ["main", "note-*"],
-  "permissions": ["core:default", "core:window:allow-close", "core:window:allow-destroy"]
+  "description": "Permessi core minimi per le finestre Greatnote (principale e note aperte a parte); hide per la modalità in background",
+  "windows": [
+    "main",
+    "note-*"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-hide"
+  ]
 }

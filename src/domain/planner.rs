@@ -149,6 +149,11 @@ pub struct Reminder {
     pub note_id: Option<String>,
     /// Ultima modifica; per un promemoria gestito è il momento della gestione.
     pub updated_at: String,
+    /// Ripetizione propria (solo promemoria delle note): quando scatta nasce
+    /// il successivo alla stessa ora locale.
+    pub recurrence: Option<Recurrence>,
+    /// Il promemoria si ripete con il suo evento ricorrente.
+    pub repeats_with_event: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -188,6 +193,13 @@ pub struct CalendarEvent {
     pub web_link: Option<String>,
     /// Abbonamento iCal d'origine (eventi in sola lettura).
     pub subscription_id: Option<String>,
+    /// Ripetizione dell'evento: la serie parte dalla data d'inizio.
+    pub recurrence: Option<Recurrence>,
+    /// Date (`AAAA-MM-GG`) delle occorrenze tolte dalla serie.
+    pub recurrence_exceptions: Vec<String>,
+    /// Per un evento ricorrente elencato in un intervallo: data d'inizio di
+    /// questa occorrenza (l'id resta quello della serie).
+    pub occurrence_date: Option<String>,
 }
 
 /// Dati inseriti dall'utente: per un evento con orario `start`/`end` sono
@@ -202,4 +214,7 @@ pub struct EventInput {
     pub end: String,
     pub timezone: Option<String>,
     pub note_id: Option<String>,
+    /// Ripetizione a partire dalla data d'inizio.
+    #[serde(default)]
+    pub recurrence: Option<Recurrence>,
 }

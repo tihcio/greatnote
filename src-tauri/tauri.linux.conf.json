@@ -18,7 +18,8 @@
         "desktopTemplate": "linux/greatnote.desktop",
         "depends": [
           "libvulkan1",
-          "libssl3"
+          "libssl3",
+          "libayatana-appindicator3-1"
         ],
         "files": {
           "/usr/share/metainfo/dev.greatnote.notes.metainfo.xml": "linux/dev.greatnote.notes.metainfo.xml"
@@ -28,7 +29,8 @@
         "desktopTemplate": "linux/greatnote.desktop",
         "depends": [
           "vulkan-loader",
-          "openssl-libs"
+          "openssl-libs",
+          "libayatana-appindicator-gtk3"
         ],
         "files": {
           "/usr/share/metainfo/dev.greatnote.notes.metainfo.xml": "linux/dev.greatnote.notes.metainfo.xml"

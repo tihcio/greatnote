@@ -16,6 +16,7 @@ use greatnote_core::{
         CalendarEvent, EventInput, Reminder, ReminderEntity, SnoozePreset, Task, TaskCounts,
         TaskInput, TaskView,
     },
+    domain::recurrence::Recurrence,
     storage::Database,
     time::{self, Zone},
 };
@@ -190,6 +191,44 @@ pub fn get_event(database: State<'_, Database>, id: String) -> CommandResult<Cal
     database.get_event(&id).map_err(to_message)
 }
 
+/// «Elimina solo questa» per un'occorrenza di un evento ricorrente.
+#[tauri::command]
+pub fn skip_event_occurrence(
+    database: State<'_, Database>,
+    id: String,
+    date: String,
+) -> CommandResult<CalendarEvent> {
+    database
+        .skip_event_occurrence(&id, &date)
+        .map_err(to_message)
+}
+
+/// «Modifica solo questa»: l'occorrenza diventa un evento a sé.
+#[tauri::command]
+pub fn detach_event_occurrence(
+    database: State<'_, Database>,
+    id: String,
+    date: String,
+    input: EventInput,
+) -> CommandResult<CalendarEvent> {
+    database
+        .detach_event_occurrence(&id, &date, &input)
+        .map_err(to_message)
+}
+
+/// «Elimina questa e le successive»: `None` se era la prima occorrenza (il
+/// chiamante sposta allora l'intera serie nel cestino).
+#[tauri::command]
+pub fn end_event_series_before(
+    database: State<'_, Database>,
+    id: String,
+    date: String,
+) -> CommandResult<Option<CalendarEvent>> {
+    database
+        .end_event_series_before(&id, &date)
+        .map_err(to_message)
+}
+
 // ---------------------------------------------------------------------------
 // Promemoria
 
@@ -200,9 +239,17 @@ pub fn create_reminder(
     entity_type: ReminderEntity,
     entity_id: String,
     local_time: String,
+    recurrence: Option<Recurrence>,
 ) -> CommandResult<Reminder> {
     let reminder = database
-        .create_reminder(entity_type, &entity_id, &local_time, None, time::now())
+        .create_repeating_reminder(
+            entity_type,
+            &entity_id,
+            &local_time,
+            None,
+            time::now(),
+            recurrence.as_ref(),
+        )
         .map_err(to_message)?;
     reminder_alarms::sync_soon(&app);
     Ok(reminder)
@@ -496,6 +543,8 @@ mod tests {
             entity_title: "Nota".to_owned(),
             note_id: None,
             updated_at: "2026-10-14T09:00:00.000Z".to_owned(),
+            recurrence: None,
+            repeats_with_event: false,
         }
     }
 

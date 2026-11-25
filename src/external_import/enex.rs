@@ -377,7 +377,8 @@ fn attribute(tag: &str, name: &str) -> Option<String> {
 }
 
 /// Sostituisce gli elementi propri di Evernote con HTML comune: allegati con
-/// un segnaposto, caselle `en-todo` con ☐/☑, testo cifrato con un avviso.
+/// un segnaposto, caselle `en-todo` con caselle HTML, testo cifrato con un
+/// avviso.
 fn enml_to_html(
     enml: &str,
     by_hash: &HashMap<String, String>,
@@ -413,7 +414,13 @@ fn enml_to_html(
             }
             "en-todo" => {
                 let checked = attribute(tag, "checked").is_some_and(|value| value == "true");
-                output.push_str(if checked { "☑ " } else { "☐ " });
+                // Diventa una casella HTML: la conversione ne fa una voce di
+                // checklist se apre la riga, altrimenti il simbolo ☑/☐.
+                output.push_str(if checked {
+                    r#"<input type="checkbox" checked>"#
+                } else {
+                    r#"<input type="checkbox">"#
+                });
                 if let Some(close) = after[consumed..].trim_start().strip_prefix("</en-todo>") {
                     consumed = after.len() - close.len();
                 }
@@ -492,9 +499,21 @@ pub(crate) mod tests {
         assert_eq!(first.updated_at.as_deref(), Some("2024-01-16T10:00:00Z"));
         assert_eq!(first.attachments.len(), 1);
         assert_eq!(first.attachments[0].filename, "schema.png");
+        // Le caselle di Evernote diventano un'unica checklist.
+        let checklist = first.document["content"]
+            .as_array()
+            .and_then(|blocks| blocks.iter().find(|block| block["type"] == "taskList"))
+            .expect("checklist");
+        let states: Vec<_> = checklist["content"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .map(|item| item["attrs"]["checked"].clone())
+            .collect();
+        assert_eq!(states, [serde_json::json!(true), serde_json::json!(false)]);
         let text = to_plain_text(&first.document);
-        assert!(text.contains("☑ Fatto"), "{text}");
-        assert!(text.contains("☐ Da fare"), "{text}");
+        assert!(text.contains("[x] Fatto"), "{text}");
+        assert!(text.contains("[ ] Da fare"), "{text}");
         assert!(text.contains("📎 schema.png"), "{text}");
         assert!(!text.contains("alert"), "{text}");
         assert!(

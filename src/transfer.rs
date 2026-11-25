@@ -339,6 +339,9 @@ struct ArchiveManifest {
     /// archivi creati prima della fase 4.
     #[serde(flatten, default)]
     planner: crate::planner::PlannerArchive,
+    /// Modelli dell'utente: assenti negli archivi precedenti la 0.2.13.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    templates: Vec<crate::library::ArchiveTemplate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -371,6 +374,9 @@ struct ArchiveNote {
     tag_ids: Vec<String>,
     links: Vec<ArchiveLink>,
     attachments: Vec<ArchiveAttachment>,
+    /// Cronologia delle revisioni: assente negli archivi precedenti.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    revisions: Vec<crate::library::ArchiveRevision>,
 }
 
 fn json_entry<W: Write + io::Seek>(
@@ -573,6 +579,7 @@ impl Database {
                 .collect::<Result<Vec<_>, _>>()?
         };
         let planner = crate::planner::export_planner(&connection)?;
+        let templates = crate::library::export_templates(&connection)?;
         let notes = {
             let mut statement = connection.prepare(
                 "SELECT id, notebook_id, title, content_json, created_at, updated_at, is_pinned,
@@ -623,7 +630,9 @@ impl Database {
                         path,
                     });
                 }
+                let revisions = crate::library::export_revisions(&connection, &note.id)?;
                 let archive_note = ArchiveNote {
+                    revisions,
                     id: note.id.clone(),
                     notebook_id: note.notebook_id,
                     title: note.title,
@@ -658,6 +667,7 @@ impl Database {
                 notes: note_files,
                 attachments: attachment_files,
                 planner,
+                templates,
             };
             json_entry(zip, ARCHIVE_MANIFEST, &manifest)?;
             Ok(summary)
@@ -780,6 +790,8 @@ pub struct ImportReport {
     pub attachments: u64,
     /// Attività, eventi e promemoria importati da un archivio completo.
     pub planner_items: u64,
+    /// Modelli e revisioni importati da un archivio completo.
+    pub library_items: u64,
     pub notebook_id: Option<String>,
     /// Taccuini e collegamenti creati mantenendo la struttura d'origine.
     pub notebooks: u64,
@@ -1616,6 +1628,7 @@ fn commit_files(
         failed: 0,
         attachments: 0,
         planner_items: 0,
+        library_items: 0,
         notebook_id: notebook_id.clone(),
         notebooks: 0,
         links: 0,
@@ -1949,6 +1962,7 @@ fn commit_archive(
         failed: 0,
         attachments: 0,
         planner_items: 0,
+        library_items: 0,
         notebook_id: None,
         notebooks: 0,
         links: 0,
@@ -2069,6 +2083,8 @@ fn commit_archive(
                 ));
             }
         }
+        report.library_items +=
+            crate::library::import_revisions(transaction, &note.id, &note.revisions, &remapped)?;
         if !remapped.is_empty() {
             // Le immagini nel testo seguono gli allegati con un nuovo id.
             let mut content = note.content.clone();
@@ -2089,6 +2105,7 @@ fn commit_archive(
     }
     report.planner_items =
         crate::planner::import_planner(transaction, &manifest.planner, crate::time::now())?;
+    report.library_items += crate::library::import_templates(transaction, &manifest.templates)?;
     for note in imported_ids {
         for link in &note.links {
             if link.target_note_id == note.id {
@@ -2401,6 +2418,7 @@ mod tests {
                 end: "2026-11-02T11:00".to_owned(),
                 timezone: Some("Europe/Rome".to_owned()),
                 note_id: None,
+                recurrence: None,
             })
             .expect("event");
         let created_at = crate::time::parse_utc("2026-10-14T00:00:00Z").expect("now");
@@ -2423,6 +2441,23 @@ mod tests {
             )
             .expect("past reminder");
 
+        // Un modello dell'utente e una revisione della prima nota.
+        let template = source
+            .create_template_from_note(&first.id, "Contratto tipo")
+            .expect("template");
+        source
+            .connection()
+            .expect("connection")
+            .execute(
+                "INSERT INTO note_revisions (id, note_id, title, content_json, created_at)
+                 VALUES (?1, ?2, 'Cliente A (bozza)', ?3, '2026-10-01T08:00:00.000Z')",
+                params![
+                    Uuid::new_v4().to_string(),
+                    first.id,
+                    serde_json::to_string(&document("bozza del contratto")).expect("json")
+                ],
+            )
+            .expect("revision");
         let archive_path = source_directory.path().join("export.zip");
         let summary = source.export_archive(&archive_path).expect("export");
         assert_eq!(
@@ -2450,6 +2485,26 @@ mod tests {
             .expect("commit");
         assert_eq!((report.imported, report.attachments), (2, 1));
         assert_eq!(report.planner_items, 5);
+        assert_eq!(report.library_items, 2);
+        let revisions = target.list_note_revisions(&first.id).expect("revisions");
+        assert_eq!(revisions.len(), 1);
+        assert_eq!(revisions[0].title, "Cliente A (bozza)");
+        assert!(revisions[0].preview.contains("bozza del contratto"));
+        let templates = target.list_templates(false).expect("templates");
+        let imported_template = templates
+            .iter()
+            .find(|item| item.id == template.id)
+            .expect("template imported");
+        assert_eq!(imported_template.name, "Contratto tipo");
+        assert!(!imported_template.builtin);
+        // Una seconda importazione non duplica modelli né revisioni.
+        let again = target
+            .commit_import(
+                &plan_archive_import(&archive_path).expect("plan"),
+                &ImportDestination::Unfiled,
+            )
+            .expect("second commit");
+        assert_eq!(again.library_items, 0);
 
         let task = target.get_task(&linked_task.id).expect("task");
         assert_eq!(task.note_id.as_deref(), Some(first.id.as_str()));

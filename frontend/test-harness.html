@@ -50,8 +50,9 @@
         id, note_id: null, note_title: null, title, description: "", all_day: true, start_at: null, end_at: null,
         start_date: today, end_date: today, timezone: "Europe/Rome", created_at: now, updated_at: now,
         external_calendar_id: "cal-1", calendar_provider: "google", read_only: readOnly, web_link: "https://calendar.google.com/x",
-        subscription_id: null,
+        subscription_id: null, recurrence: null, recurrence_exceptions: [], occurrence_date: null,
       });
+      let backgroundStatus = { enabled: false, autostart: false, autostart_supported: true };
       const externalEvents = [
         externalEvent("ext-1", "Dentista", false),
         externalEvent("ext-2", "Standup", true),
@@ -178,10 +179,31 @@
           window.__SMOKE_LOG__.push(`create_task:${JSON.stringify(args.input)}`);
           return { ...aiTask, id: "task-nuova", title: args.input.title, due_date: args.input.due_date, recurrence: args.input.recurrence };
         },
-        list_events: () => externalEvents,
+        list_events: () => [
+          ...externalEvents,
+          // Occorrenza di un evento ricorrente di Greatnote.
+          {
+            ...externalEvent("rec-1", "Palestra", false),
+            all_day: false, start_date: null, end_date: null,
+            start_at: `${today}T16:00:00Z`, end_at: `${today}T17:00:00Z`,
+            external_calendar_id: null, calendar_provider: null, web_link: null,
+            recurrence: { frequency: "weekly", interval: 1, weekdays: [], month_day: null, until: null },
+            occurrence_date: today,
+          },
+        ],
+        create_event: (args) => {
+          window.__SMOKE_LOG__.push(`create_event:${JSON.stringify(args.input.recurrence ?? null)}`);
+          return null;
+        },
         get_sync_status: () => syncView,
         // Aggiornamenti in-app: la ricerca trova la 0.2.0, già scaricata.
         get_update_status: () => updateStatus,
+        get_background_settings: () => backgroundStatus,
+        set_background_settings: (args) => {
+          window.__SMOKE_LOG__.push(`background:${JSON.stringify(args.settings)}`);
+          backgroundStatus = { ...args.settings, autostart: args.settings.enabled && args.settings.autostart, autostart_supported: true };
+          return backgroundStatus;
+        },
         check_for_updates: () =>
           (updateStatus = {
             ...updateStatus,

@@ -27,12 +27,17 @@ attachments/<uuid-allegato>.<png|jpg|gif|pdf|txt>
 | `spaces`, `notebooks`, `tags` | elenchi completi con `id`, nomi, descrizioni, ordinamento e date |
 | `notes`, `attachments` | voci `{ "path", "sha256", "size" }` per ogni file |
 | `planner` | facoltativo: `tasks`, `events`, `reminders` (vedi sotto) |
+| `templates` | facoltativo: modelli dell'utente con `id`, `name`, `title`, `content` (documento Tiptap v1), `created_at`, `updated_at`; i modelli predefiniti e quelli nel cestino non sono esportati |
 
 Nel `planner`, ogni attività può avere `recurrence`: la regola di
 ripetizione in JSON (`frequency` `daily`/`weekly`/`monthly`/`yearly`,
 `interval` 1–99, `weekdays` 1–7 per le settimanali, `month_day` per mensili
 e annuali, `until` data di fine facoltativa). In importazione una regola non
 valida per la scadenza dell'attività viene scartata; l'attività resta.
+Allo stesso modo ogni evento può avere `recurrence` (la serie parte dalla
+data d'inizio nel fuso dell'evento) e `recurrence_exceptions` (array JSON
+di date `AAAA-MM-GG` tolte dalla serie), e ogni promemoria di una nota
+`recurrence`.
 
 Ogni `notes/<id>.json` contiene: `id`, `notebook_id`, `title`, `content`
 (documento JSON Tiptap v1; le immagini sono nodi `image` con `attachmentId`
@@ -43,7 +48,9 @@ in coordinate relative 0–1; i testi cifrati sono nodi `encryptedText` con
 `ciphertext` nel formato testuale di age e `hint` facoltativo), `created_at`, `updated_at`, `is_pinned`,
 `archived_at`, `tag_ids`, `links` (`target_note_id`, `label`) e
 `attachments` (`id`, `original_filename`, `mime_type`, `size_bytes`,
-`sha256`, `created_at`, `path`).
+`sha256`, `created_at`, `path`) e, facoltativo, `revisions`: la cronologia
+della nota (`id`, `title`, `content`, `created_at`) dalla più vecchia alla
+più recente.
 
 Regole di importazione:
 
@@ -52,6 +59,10 @@ Regole di importazione:
 - spazi e taccuini esistenti con lo stesso ID vengono riusati; un tag con lo
   stesso nome (senza distinzione di maiuscole) viene riusato;
 - i collegamenti vengono creati solo se entrambe le note esistono;
+- modelli e revisioni con ID già presente o con un documento non valido
+  vengono saltati; le revisioni sono importate solo per le note create
+  dall'importazione, al massimo le 50 più recenti per nota, e le immagini
+  seguono gli allegati che hanno ricevuto un nuovo ID;
 - le note nel cestino non sono esportate.
 
 ## ZIP Markdown

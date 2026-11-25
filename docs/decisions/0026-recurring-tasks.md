@@ -48,7 +48,7 @@ dispositivi (ADR 0017) e i promemoria hanno orari locali con fuso (ADR
 
 ## Limiti
 
-- Gli eventi del calendario locale e i promemoria sulle note non si
-  ripetono ancora.
+- Eventi del calendario locale e promemoria sulle note si ripetono dalla
+  versione successiva: vedi ADR 0030.
 - Una regola che una versione precedente non sa leggere equivale a nessuna
   ripetizione su quella versione.

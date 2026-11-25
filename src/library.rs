@@ -911,6 +911,160 @@ impl Database {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Archivio completo (campi facoltativi di `gna-archive` v1)
+
+/// Modello creato dall'utente, nel manifest dell'archivio.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ArchiveTemplate {
+    id: String,
+    name: String,
+    title: String,
+    content: Value,
+    created_at: String,
+    updated_at: String,
+}
+
+/// Revisione di una nota, nel file della nota.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ArchiveRevision {
+    id: String,
+    title: String,
+    content: Value,
+    created_at: String,
+}
+
+fn parse_json(text: &str) -> rusqlite::Result<Value> {
+    serde_json::from_str(text).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
+    })
+}
+
+/// Modelli dell'utente non cestinati (quelli predefiniti sono nell'app).
+pub(crate) fn export_templates(
+    connection: &Connection,
+) -> Result<Vec<ArchiveTemplate>, StorageError> {
+    let templates = connection
+        .prepare(
+            "SELECT id, name, title, content_json, created_at, updated_at FROM templates
+             WHERE deleted_at IS NULL ORDER BY created_at, id",
+        )?
+        .query_map([], |row| {
+            Ok(ArchiveTemplate {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                title: row.get(2)?,
+                content: parse_json(&row.get::<_, String>(3)?)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(templates)
+}
+
+/// Revisioni di una nota, dalla più vecchia alla più recente.
+pub(crate) fn export_revisions(
+    connection: &Connection,
+    note_id: &str,
+) -> Result<Vec<ArchiveRevision>, StorageError> {
+    let revisions = connection
+        .prepare(
+            "SELECT id, title, content_json, created_at FROM note_revisions
+             WHERE note_id = ?1 ORDER BY created_at, rowid",
+        )?
+        .query_map([note_id], |row| {
+            Ok(ArchiveRevision {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                content: parse_json(&row.get::<_, String>(2)?)?,
+                created_at: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(revisions)
+}
+
+fn archive_timestamp(value: &str) -> Option<&str> {
+    crate::content::is_utc_timestamp(value).then_some(value)
+}
+
+/// Importa i modelli: quelli con un id già presente (anche nel cestino) o
+/// con contenuto non valido vengono saltati. Restituisce quanti ne crea.
+pub(crate) fn import_templates(
+    transaction: &Transaction<'_>,
+    templates: &[ArchiveTemplate],
+) -> Result<u64, StorageError> {
+    let mut imported = 0;
+    for template in templates {
+        let name = template.name.trim();
+        if Uuid::parse_str(&template.id).is_err()
+            || name.is_empty()
+            || name.chars().count() > 200
+            || validate_document(&template.content).is_err()
+        {
+            continue;
+        }
+        let title: String = template.title.chars().take(512).collect();
+        imported += transaction.execute(
+            &format!(
+                "INSERT OR IGNORE INTO templates (id, name, title, content_json, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, COALESCE(?5, {NOW}), COALESCE(?6, {NOW}))"
+            ),
+            params![
+                template.id,
+                name,
+                title,
+                serde_json::to_string(&template.content)?,
+                archive_timestamp(&template.created_at),
+                archive_timestamp(&template.updated_at),
+            ],
+        )? as u64;
+    }
+    Ok(imported)
+}
+
+/// Importa le revisioni di una nota appena creata dall'archivio, con le
+/// immagini che seguono gli allegati a cui è stato dato un nuovo id. Restano
+/// al massimo le revisioni più recenti consentite per nota.
+pub(crate) fn import_revisions(
+    transaction: &Transaction<'_>,
+    note_id: &str,
+    revisions: &[ArchiveRevision],
+    remapped: &HashMap<String, String>,
+) -> Result<u64, StorageError> {
+    let mut valid: Vec<&ArchiveRevision> = revisions
+        .iter()
+        .filter(|revision| {
+            Uuid::parse_str(&revision.id).is_ok()
+                && archive_timestamp(&revision.created_at).is_some()
+                && validate_document(&revision.content).is_ok()
+        })
+        .collect();
+    valid.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    let skip = valid.len().saturating_sub(MAX_REVISIONS_PER_NOTE as usize);
+    let mut imported = 0;
+    for revision in valid.into_iter().skip(skip) {
+        let mut content = revision.content.clone();
+        if !remapped.is_empty() {
+            crate::domain::note::remap_image_attachments(&mut content, remapped);
+        }
+        let title: String = revision.title.chars().take(512).collect();
+        imported += transaction.execute(
+            "INSERT OR IGNORE INTO note_revisions (id, note_id, title, content_json, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                revision.id,
+                note_id,
+                title,
+                serde_json::to_string(&content)?,
+                revision.created_at,
+            ],
+        )? as u64;
+    }
+    Ok(imported)
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -924,6 +1078,75 @@ mod tests {
     fn document(text: &str) -> serde_json::Value {
         json!({ "type": "doc", "content": [{ "type": "paragraph",
             "content": [{ "type": "text", "text": text }] }] })
+    }
+
+    #[test]
+    fn archived_templates_and_revisions_are_validated_and_capped() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database = Database::open(directory.path().join("gna.sqlite3")).expect("database");
+        let note = database
+            .create_note("Nota", &document("testo"))
+            .expect("note");
+        let revision = |index: usize, content: serde_json::Value| super::ArchiveRevision {
+            id: uuid::Uuid::new_v4().to_string(),
+            title: format!("v{index}"),
+            content,
+            created_at: format!("2026-01-01T00:{:02}:{:02}.000Z", index / 60, index % 60),
+        };
+        let mut revisions: Vec<_> = (0..60)
+            .map(|index| revision(index, document("x")))
+            .collect();
+        // Contenuto con un nodo sconosciuto: scartato.
+        revisions.push(revision(
+            61,
+            json!({ "type": "doc", "content": [{ "type": "script" }] }),
+        ));
+        let templates = vec![
+            super::ArchiveTemplate {
+                id: uuid::Uuid::new_v4().to_string(),
+                name: "  Valido  ".to_owned(),
+                title: String::new(),
+                content: document("modello"),
+                created_at: "non è una data".to_owned(),
+                updated_at: "2026-01-01T00:00:00.000Z".to_owned(),
+            },
+            super::ArchiveTemplate {
+                id: "non-uuid".to_owned(),
+                name: "Id non valido".to_owned(),
+                title: String::new(),
+                content: document("modello"),
+                created_at: String::new(),
+                updated_at: String::new(),
+            },
+        ];
+        let mut connection = database.connection().expect("connection");
+        let transaction = connection.transaction().expect("transaction");
+        let imported = super::import_revisions(
+            &transaction,
+            &note.id,
+            &revisions,
+            &std::collections::HashMap::new(),
+        )
+        .expect("revisions");
+        assert_eq!(imported, u64::from(super::MAX_REVISIONS_PER_NOTE));
+        assert_eq!(
+            super::import_templates(&transaction, &templates).expect("templates"),
+            1
+        );
+        transaction.commit().expect("commit");
+        drop(connection);
+        let kept = database.list_note_revisions(&note.id).expect("list");
+        // Restano le più recenti: la più vecchia conservata è la v10.
+        assert!(kept.iter().all(|item| item.title != "v9"));
+        assert!(kept.iter().any(|item| item.title == "v59"));
+        let names: Vec<_> = database
+            .list_templates(false)
+            .expect("templates")
+            .into_iter()
+            .filter(|item| !item.builtin)
+            .map(|item| item.name)
+            .collect();
+        assert_eq!(names, ["Valido"]);
     }
 
     /// Sposta indietro nel tempo la creazione della nota e le revisioni,

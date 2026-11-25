@@ -960,7 +960,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 2.0.119",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -1974,7 +1974,7 @@ dependencies = [
 
 [[package]]
 name = "greatnote-core"
-version = "0.2.12"
+version = "0.2.13"
 dependencies = [
  "age",
  "base64 0.22.1",
@@ -2000,7 +2000,7 @@ dependencies = [
 
 [[package]]
 name = "greatnote-desktop"
-version = "0.2.12"
+version = "0.2.13"
 dependencies = [
  "android-native-keyring-store",
  "base64 0.22.1",
@@ -2019,6 +2019,7 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tempfile",
  "time",
@@ -5434,6 +5435,22 @@ dependencies = [
  "thiserror 2.0.21",
  "url",
  "windows",
+ "zbus",
+]
+
+[[package]]
+name = "tauri-plugin-single-instance"
+version = "2.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "726b6da0dd5bd1344f84f4108a622c07d01923baacb5c803a605189672c5352f"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "windows-sys 0.61.2",
  "zbus",
 ]
 

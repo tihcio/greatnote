@@ -1,4 +1,5 @@
 mod ai_commands;
+mod background;
 mod builtin_ai_commands;
 mod calendar_commands;
 mod data_commands;
@@ -538,7 +539,18 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
     initialize_logging();
     greatnote_core::l10n::init_from_environment();
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Una sola istanza (ADR 0031): aprire di nuovo Greatnote mostra la
+    // finestra di quella già attiva, anche nascosta in background. Va
+    // registrato per primo.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+        // L'avvio all'accesso di una seconda copia non apre la finestra.
+        if !args.iter().any(|arg| arg == background::BACKGROUND_FLAG) {
+            background::show_main(app);
+        }
+    }));
+    let builder = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -571,6 +583,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             data_commands::spawn_automatic_backup(app.handle());
             reminder_alarms::setup(app.handle());
             planner_commands::spawn_reminder_scheduler(app.handle());
+            #[cfg(desktop)]
+            background::setup(app.handle());
             ai_commands::spawn_auto_indexer(app.handle());
             calendar_commands::spawn_calendar_sync(app.handle());
             sync_commands::spawn_sync_loop(app.handle());
@@ -656,6 +670,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             planner_commands::create_event,
             planner_commands::update_event,
             planner_commands::get_event,
+            planner_commands::skip_event_occurrence,
+            planner_commands::detach_event_occurrence,
+            planner_commands::end_event_series_before,
             planner_commands::create_reminder,
             planner_commands::list_reminders,
             planner_commands::list_reminder_history,
@@ -696,6 +713,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             ui_commands::share_note_text,
             ui_commands::app_info,
             ui_commands::open_note_window,
+            background::get_background_settings,
+            background::set_background_settings,
             ai_commands::get_ai_status,
             ai_commands::update_ai_settings,
             ai_commands::set_ai_api_key,

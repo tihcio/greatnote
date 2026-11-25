@@ -435,6 +435,7 @@ mod tests {
             end: "2026-10-21".to_owned(),
             timezone: None,
             note_id: None,
+            recurrence: None,
         };
         assert!(matches!(
             database.update_event(&dinner.id, &input),

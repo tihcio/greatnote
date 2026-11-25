@@ -10,6 +10,7 @@ import type { NoteWidth, StartView, ThemePreference, UiPreferences } from "../ap
 import { ZOOM_STEPS } from "../app/preferences";
 import type { Notebook } from "../types";
 import AiSettingsSection from "./ai/AiSettingsSection";
+import BackgroundSection from "./BackgroundSection";
 import IntegrationsSection from "./IntegrationsSection";
 import SyncSection from "./SyncSection";
 import type { AiStatus, IndexProgress } from "./ai/aiApi";
@@ -42,6 +43,8 @@ interface SettingsDialogProps {
   onShowShortcuts: () => void;
   /** Apre una nota (per esempio da un conflitto di sincronizzazione). */
   onOpenNote: (noteId: string) => void;
+  /** La modalità in background è cambiata (chiudere la finestra la nasconde). */
+  onBackgroundChange?: (enabled: boolean) => void;
   updateStatus: UpdateStatus | null;
   onUpdateStatus: (status: UpdateStatus) => void;
   onInstallUpdate: () => Promise<void>;
@@ -63,6 +66,7 @@ export default function SettingsDialog({
   onImported,
   onShowShortcuts,
   onOpenNote,
+  onBackgroundChange,
   updateStatus,
   onUpdateStatus,
   onInstallUpdate,
@@ -167,6 +171,7 @@ export default function SettingsDialog({
                   { value: "notes", label: t.allNotes },
                 ], (startView) => onChange({ startView }))}
               </fieldset>
+              {!isMobile && <BackgroundSection onChange={(enabled) => onBackgroundChange?.(enabled)} />}
             </>
           )}
           {section === "sidebar" && (

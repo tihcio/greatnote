@@ -46,7 +46,7 @@ pub(crate) const EVENT_COLUMNS: &str = "events.id, events.note_id,
     events.title, events.description, events.all_day, events.start_at, events.end_at,
     events.start_date, events.end_date, events.timezone, events.created_at, events.updated_at,
     events.external_calendar_id, events.calendar_provider, events.read_only, events.web_link,
-    events.subscription_id";
+    events.subscription_id, events.recurrence, events.recurrence_exceptions";
 
 /// Colonne di un promemoria con titolo e nota dell'entità. Usa l'alias `r`.
 pub(crate) const REMINDER_COLUMNS: &str =
@@ -64,7 +64,9 @@ pub(crate) const REMINDER_COLUMNS: &str =
         WHEN 'event' THEN (SELECT notes.id FROM events JOIN notes ON notes.id = events.note_id
                            WHERE events.id = r.entity_id AND notes.deleted_at IS NULL)
     END,
-    r.updated_at";
+    r.updated_at, r.recurrence,
+    r.entity_type = 'event' AND EXISTS(SELECT 1 FROM events
+        WHERE events.id = r.entity_id AND events.recurrence IS NOT NULL)";
 
 /// Vero se l'entità del promemoria `r` esiste ed è attiva. Le note nel
 /// cestino conservano i promemoria, che riprendono dopo il ripristino.
@@ -100,6 +102,20 @@ fn parse_recurrence(value: Option<&str>) -> Option<Recurrence> {
     serde_json::from_str(value?).ok()
 }
 
+/// Date tolte da una serie di eventi; valori non validi vengono ignorati.
+fn parse_exceptions(value: Option<&str>) -> Vec<String> {
+    let dates: Vec<String> = value
+        .and_then(|value| serde_json::from_str(value).ok())
+        .unwrap_or_default();
+    dates
+        .into_iter()
+        .filter(|date| time::parse_date(date).is_ok())
+        .collect()
+}
+
+/// Occorrenze tolte al massimo da una serie (limite della colonna).
+const MAX_EXCEPTIONS: usize = 2000;
+
 /// Id della prossima occorrenza, derivato dall'attività completata e dalla
 /// nuova scadenza: due dispositivi che completano la stessa attività creano
 /// la stessa riga, che la sincronizzazione unisce invece di duplicare.
@@ -130,6 +146,9 @@ pub(crate) fn event_from_row(row: &Row<'_>) -> rusqlite::Result<CalendarEvent> {
         read_only: row.get(15)?,
         web_link: row.get(16)?,
         subscription_id: row.get(17)?,
+        recurrence: parse_recurrence(row.get::<_, Option<String>>(18)?.as_deref()),
+        recurrence_exceptions: parse_exceptions(row.get::<_, Option<String>>(19)?.as_deref()),
+        occurrence_date: None,
     })
 }
 
@@ -147,6 +166,8 @@ pub(crate) fn reminder_from_row(row: &Row<'_>) -> rusqlite::Result<Reminder> {
         entity_title: row.get(8)?,
         note_id: row.get(9)?,
         updated_at: row.get(10)?,
+        recurrence: parse_recurrence(row.get::<_, Option<String>>(11)?.as_deref()),
+        repeats_with_event: row.get(12)?,
     })
 }
 
@@ -291,9 +312,49 @@ pub(crate) struct ValidEvent {
     pub(crate) end_date: Option<String>,
     pub(crate) timezone: String,
     pub(crate) note_id: Option<String>,
+    /// Regola in JSON, già validata per la data d'inizio.
+    pub(crate) recurrence: Option<String>,
+}
+
+impl ValidEvent {
+    /// Data d'inizio nel fuso dell'evento: il punto di partenza della serie.
+    fn anchor(&self) -> Result<Date, StorageError> {
+        match (&self.start_date, &self.start_at) {
+            (Some(date), _) => time::parse_date(date),
+            (None, Some(start)) => Ok(time::parse_utc(start)?
+                .to_zoned(Zone::stored(&self.timezone).tz)
+                .date()),
+            (None, None) => Err(StorageError::InvalidEvent(crate::tr_str!(
+                "inizio mancante",
+                "missing start"
+            ))),
+        }
+    }
+}
+
+/// Valida la regola di un evento rispetto alla sua data d'inizio.
+fn validated_event_recurrence(
+    event: &ValidEvent,
+    rule: Option<&Recurrence>,
+) -> Result<Option<String>, StorageError> {
+    let Some(rule) = rule else {
+        return Ok(None);
+    };
+    let anchor = event.anchor()?;
+    let rule = rule
+        .clone()
+        .validated(anchor)
+        .map_err(StorageError::InvalidEvent)?;
+    Ok(Some(serde_json::to_string(&rule)?))
 }
 
 pub(crate) fn validate_event(input: &EventInput) -> Result<ValidEvent, StorageError> {
+    let mut event = validate_event_times(input)?;
+    event.recurrence = validated_event_recurrence(&event, input.recurrence.as_ref())?;
+    Ok(event)
+}
+
+fn validate_event_times(input: &EventInput) -> Result<ValidEvent, StorageError> {
     let title = normalize_title(
         &input.title,
         StorageError::InvalidEvent(crate::tr_str!(
@@ -336,6 +397,7 @@ pub(crate) fn validate_event(input: &EventInput) -> Result<ValidEvent, StorageEr
             end_date: Some(end.to_string()),
             timezone: zone.name,
             note_id,
+            recurrence: None,
         })
     } else {
         let start = time::local_to_utc(input.start.trim(), &zone)?;
@@ -362,6 +424,7 @@ pub(crate) fn validate_event(input: &EventInput) -> Result<ValidEvent, StorageEr
             end_date: None,
             timezone: zone.name,
             note_id,
+            recurrence: None,
         })
     }
 }
@@ -601,23 +664,7 @@ impl Database {
         let id = Uuid::new_v4().to_string();
         let connection = self.connection()?;
         ensure_active_note(&connection, event.note_id.as_deref())?;
-        connection.execute(
-            "INSERT INTO events (id, note_id, title, description, all_day, start_at, end_at,
-                                 start_date, end_date, timezone)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![
-                id,
-                event.note_id,
-                event.title,
-                event.description,
-                event.all_day,
-                event.start_at,
-                event.end_at,
-                event.start_date,
-                event.end_date,
-                event.timezone
-            ],
-        )?;
+        insert_event(&connection, &id, &event)?;
         get_event(&connection, &id)
     }
 
@@ -639,8 +686,12 @@ impl Database {
             &format!(
                 "UPDATE events SET note_id = ?1, title = ?2, description = ?3, all_day = ?4,
                      start_at = ?5, end_at = ?6, start_date = ?7, end_date = ?8, timezone = ?9,
+                     recurrence = ?10,
+                     -- Senza ripetizione non restano occorrenze da escludere.
+                     recurrence_exceptions = CASE WHEN ?10 IS NULL THEN NULL
+                                                  ELSE recurrence_exceptions END,
                      updated_at = {NOW_SQL}
-                 WHERE id = ?10"
+                 WHERE id = ?11"
             ),
             params![
                 event.note_id,
@@ -652,10 +703,78 @@ impl Database {
                 event.start_date,
                 event.end_date,
                 event.timezone,
+                event.recurrence,
                 id
             ],
         )?;
         get_event(&connection, id)
+    }
+
+    /// Toglie dalla serie l'occorrenza che inizia il giorno `date` (per
+    /// esempio «Elimina solo questa»).
+    pub fn skip_event_occurrence(
+        &self,
+        id: &str,
+        date: &str,
+    ) -> Result<CalendarEvent, StorageError> {
+        let connection = self.connection()?;
+        let event = editable_series(&connection, id)?;
+        add_exception(&connection, &event, date)?;
+        get_event(&connection, id)
+    }
+
+    /// Modifica una sola occorrenza: viene tolta dalla serie e diventa un
+    /// evento a sé con i dati indicati. Restituisce il nuovo evento.
+    pub fn detach_event_occurrence(
+        &self,
+        id: &str,
+        date: &str,
+        input: &EventInput,
+    ) -> Result<CalendarEvent, StorageError> {
+        let mut detached = input.clone();
+        detached.recurrence = None;
+        let event = validate_event(&detached)?;
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let series = editable_series(&transaction, id)?;
+        ensure_active_note(&transaction, event.note_id.as_deref())?;
+        add_exception(&transaction, &series, date)?;
+        let new_id = occurrence_id(id, time::parse_date(date)?);
+        insert_event(&transaction, &new_id, &event)?;
+        let created = get_event(&transaction, &new_id)?;
+        transaction.commit()?;
+        Ok(created)
+    }
+
+    /// Termina la serie prima dell'occorrenza del giorno `date` («Elimina
+    /// questa e le successive»). Se era la prima, l'evento va nel cestino
+    /// come gli altri: lo fa il chiamante, qui restituisce `None`.
+    pub fn end_event_series_before(
+        &self,
+        id: &str,
+        date: &str,
+    ) -> Result<Option<CalendarEvent>, StorageError> {
+        let connection = self.connection()?;
+        let event = editable_series(&connection, id)?;
+        let date = time::parse_date(date)?;
+        let (Some(rule), Some(anchor)) = (&event.recurrence, series_anchor(&event)) else {
+            return Err(not_recurring());
+        };
+        if date <= anchor {
+            return Ok(None);
+        }
+        let mut rule = rule.clone();
+        rule.until = Some(
+            date.checked_sub(jiff::Span::new().days(1))
+                .map_err(|_| not_recurring())?
+                .to_string(),
+        );
+        let rule = rule.validated(anchor).map_err(StorageError::InvalidEvent)?;
+        connection.execute(
+            &format!("UPDATE events SET recurrence = ?1, updated_at = {NOW_SQL} WHERE id = ?2"),
+            params![serde_json::to_string(&rule)?, id],
+        )?;
+        get_event(&connection, id).map(Some)
     }
 
     pub fn get_event(&self, id: &str) -> Result<CalendarEvent, StorageError> {
@@ -676,6 +795,7 @@ impl Database {
         let mut statement = connection.prepare(&format!(
             "SELECT {EVENT_COLUMNS} FROM events
              WHERE deleted_at IS NULL
+               AND recurrence IS NULL
                AND ((all_day = 0 AND start_at < ?2 AND (end_at > ?1 OR start_at >= ?1))
                     OR (all_day = 1 AND start_date <= ?4 AND end_date >= ?3))
              ORDER BY all_day DESC, COALESCE(start_at, start_date), title
@@ -685,7 +805,34 @@ impl Database {
             params![start, end, from.to_string(), to.to_string()],
             event_from_row,
         )?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        let mut events = rows.collect::<Result<Vec<_>, _>>()?;
+        // Le serie ricorrenti diventano le loro occorrenze nell'intervallo.
+        let mut series = connection.prepare(&format!(
+            "SELECT {EVENT_COLUMNS} FROM events
+             WHERE deleted_at IS NULL AND recurrence IS NOT NULL
+               AND COALESCE(start_date, substr(start_at, 1, 10)) <= ?1"
+        ))?;
+        let series = series
+            .query_map([time::next_day(to)?.to_string()], event_from_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        let range_start = time::parse_utc(&start)?;
+        let range_end = time::parse_utc(&end)?;
+        for event in &series {
+            events.extend(expand_occurrences(event, from, to, range_start, range_end));
+        }
+        events.sort_by(|a, b| {
+            b.all_day
+                .cmp(&a.all_day)
+                .then_with(|| {
+                    a.start_at
+                        .as_deref()
+                        .or(a.start_date.as_deref())
+                        .cmp(&b.start_at.as_deref().or(b.start_date.as_deref()))
+                })
+                .then_with(|| a.title.cmp(&b.title))
+        });
+        events.truncate(2000);
+        Ok(events)
     }
 
     // -----------------------------------------------------------------------
@@ -701,6 +848,27 @@ impl Database {
         timezone: Option<&str>,
         now: Timestamp,
     ) -> Result<Reminder, StorageError> {
+        self.create_repeating_reminder(entity, entity_id, local, timezone, now, None)
+    }
+
+    /// Come [`Database::create_reminder`], con una ripetizione propria
+    /// (solo per le note: i promemoria di attività ed eventi seguono la
+    /// ripetizione del loro elemento).
+    pub fn create_repeating_reminder(
+        &self,
+        entity: ReminderEntity,
+        entity_id: &str,
+        local: &str,
+        timezone: Option<&str>,
+        now: Timestamp,
+        recurrence: Option<&Recurrence>,
+    ) -> Result<Reminder, StorageError> {
+        if recurrence.is_some() && entity != ReminderEntity::Note {
+            return Err(StorageError::InvalidReminder(crate::tr_str!(
+                "solo i promemoria delle note hanno una ripetizione propria",
+                "only note reminders have their own repetition"
+            )));
+        }
         let zone = Zone::resolve(timezone)?;
         let remind_at = time::local_to_utc(local, &zone)?;
         if remind_at < time::add_minutes(now, -PAST_TOLERANCE_MINUTES)? {
@@ -709,19 +877,32 @@ impl Database {
                 "time has already passed"
             )));
         }
+        let recurrence = match recurrence {
+            Some(rule) => {
+                let anchor = remind_at.to_zoned(zone.tz.clone()).date();
+                let rule = rule
+                    .clone()
+                    .validated(anchor)
+                    .map_err(StorageError::InvalidReminder)?;
+                Some(serde_json::to_string(&rule)?)
+            }
+            None => None,
+        };
         let id = Uuid::new_v4().to_string();
         let connection = self.connection()?;
         ensure_reminder_entity(&connection, entity, entity_id)?;
         connection.execute(
-            "INSERT INTO reminders (id, entity_type, entity_id, remind_at, timezone, local_time)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO reminders (id, entity_type, entity_id, remind_at, timezone, local_time,
+                 recurrence)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 id,
                 entity.as_str(),
                 entity_id,
                 time::format_utc(remind_at),
                 zone.name,
-                time::local_wall(remind_at, &zone)
+                time::local_wall(remind_at, &zone),
+                recurrence
             ],
         )?;
         get_reminder(&connection, &id)
@@ -853,7 +1034,9 @@ impl Database {
                 ),
                 params![now_text, id],
             )?;
-            due.push(get_reminder(&transaction, id)?);
+            let reminder = get_reminder(&transaction, id)?;
+            schedule_next_reminder(&transaction, &reminder, now)?;
+            due.push(reminder);
         }
         transaction.commit()?;
         Ok(due)
@@ -974,6 +1157,11 @@ pub(crate) struct ArchiveEvent {
     timezone: String,
     created_at: String,
     updated_at: String,
+    /// Ripetizione ed eccezioni in JSON (assenti negli archivi precedenti).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recurrence: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recurrence_exceptions: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -986,6 +1174,8 @@ pub(crate) struct ArchiveReminder {
     local_time: String,
     status: String,
     last_triggered_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recurrence: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1029,7 +1219,8 @@ pub(crate) fn export_planner(connection: &Connection) -> Result<PlannerArchive, 
     let events = connection
         .prepare(&format!(
             "SELECT id, {ACTIVE_NOTE}, title, description, all_day, start_at, end_at,
-                    start_date, end_date, timezone, created_at, updated_at
+                    start_date, end_date, timezone, created_at, updated_at, recurrence,
+                    recurrence_exceptions
              FROM events
              WHERE deleted_at IS NULL
                -- Gli eventi esterni restano nel calendario d'origine.
@@ -1050,13 +1241,15 @@ pub(crate) fn export_planner(connection: &Connection) -> Result<PlannerArchive, 
                 timezone: row.get(9)?,
                 created_at: row.get(10)?,
                 updated_at: row.get(11)?,
+                recurrence: row.get(12)?,
+                recurrence_exceptions: row.get(13)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
     let reminders = connection
         .prepare(
             "SELECT id, entity_type, entity_id, remind_at, timezone, local_time, status,
-                    last_triggered_at
+                    last_triggered_at, recurrence
              FROM reminders AS r
              WHERE status != 'done'
                AND CASE entity_type
@@ -1079,6 +1272,7 @@ pub(crate) fn export_planner(connection: &Connection) -> Result<PlannerArchive, 
                 local_time: row.get(5)?,
                 status: row.get(6)?,
                 last_triggered_at: row.get(7)?,
+                recurrence: row.get(8)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1092,6 +1286,20 @@ pub(crate) fn export_planner(connection: &Connection) -> Result<PlannerArchive, 
 /// Esegue un inserimento ignorando le righe che violano i vincoli dello
 /// schema: un elemento non valido dell'archivio viene saltato, gli altri
 /// importati. Restituisce se la riga è stata inserita.
+/// Regola di un evento importato, solo se valida per la sua data d'inizio.
+fn archived_event_recurrence(event: &ArchiveEvent) -> Option<String> {
+    let rule = parse_recurrence(event.recurrence.as_deref())?;
+    let anchor = match (&event.start_date, &event.start_at) {
+        (Some(date), _) if event.all_day => time::parse_date(date).ok()?,
+        (_, Some(start)) => time::parse_utc(start)
+            .ok()?
+            .to_zoned(Zone::stored(&event.timezone).tz)
+            .date(),
+        _ => return None,
+    };
+    serde_json::to_string(&rule.validated(anchor).ok()?).ok()
+}
+
 /// Regola di un'attività importata, solo se valida per la sua scadenza.
 fn archived_recurrence(task: &ArchiveTask) -> Option<String> {
     let rule = parse_recurrence(task.recurrence.as_deref())?;
@@ -1161,8 +1369,10 @@ pub(crate) fn import_planner(
             connection,
             &format!(
                 "INSERT OR IGNORE INTO events (id, note_id, title, description, all_day,
-                     start_at, end_at, start_date, end_date, timezone, created_at, updated_at)
-                 VALUES (?1, {NOTE_IF_PRESENT}, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"
+                     start_at, end_at, start_date, end_date, timezone, created_at, updated_at,
+                     recurrence, recurrence_exceptions)
+                 VALUES (?1, {NOTE_IF_PRESENT}, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                         ?13, ?14)"
             ),
             params![
                 event.id,
@@ -1176,7 +1386,15 @@ pub(crate) fn import_planner(
                 event.end_date,
                 event.timezone,
                 event.created_at,
-                event.updated_at
+                event.updated_at,
+                archived_event_recurrence(event),
+                archived_event_recurrence(event).and(
+                    event
+                        .recurrence_exceptions
+                        .as_deref()
+                        .map(|value| serde_json::to_string(&parse_exceptions(Some(value))))
+                        .transpose()?
+                )
             ],
         )?;
         imported += u64::from(inserted);
@@ -1198,9 +1416,9 @@ pub(crate) fn import_planner(
         let inserted = insert_or_skip(
             connection,
             "INSERT OR IGNORE INTO reminders (id, entity_type, entity_id, remind_at, timezone,
-                 local_time, status, last_triggered_at)
+                 local_time, status, last_triggered_at, recurrence)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6,
-                     CASE WHEN ?7 = 'pending' AND ?4 <= ?9 THEN 'fired' ELSE ?7 END, ?8)",
+                     CASE WHEN ?7 = 'pending' AND ?4 <= ?9 THEN 'fired' ELSE ?7 END, ?8, ?10)",
             params![
                 reminder.id,
                 entity.as_str(),
@@ -1210,12 +1428,312 @@ pub(crate) fn import_planner(
                 reminder.local_time,
                 reminder.status,
                 reminder.last_triggered_at,
-                now_text
+                now_text,
+                // Solo le note hanno una ripetizione propria.
+                (entity == ReminderEntity::Note)
+                    .then(|| parse_recurrence(reminder.recurrence.as_deref()))
+                    .flatten()
+                    .and_then(|rule| serde_json::to_string(&rule).ok())
             ],
         )?;
         imported += u64::from(inserted);
     }
     Ok(imported)
+}
+
+fn insert_event(connection: &Connection, id: &str, event: &ValidEvent) -> Result<(), StorageError> {
+    connection.execute(
+        "INSERT INTO events (id, note_id, title, description, all_day, start_at, end_at,
+                             start_date, end_date, timezone, recurrence)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![
+            id,
+            event.note_id,
+            event.title,
+            event.description,
+            event.all_day,
+            event.start_at,
+            event.end_at,
+            event.start_date,
+            event.end_date,
+            event.timezone,
+            event.recurrence
+        ],
+    )?;
+    Ok(())
+}
+
+fn not_recurring() -> StorageError {
+    StorageError::InvalidEvent(crate::tr_str!(
+        "l'evento non si ripete",
+        "the event does not repeat"
+    ))
+}
+
+/// Evento ricorrente di Greatnote, modificabile.
+fn editable_series(connection: &Connection, id: &str) -> Result<CalendarEvent, StorageError> {
+    let event = get_event(connection, id)?;
+    if event.calendar_provider.is_some() || event.read_only {
+        return Err(StorageError::ExternalEvent);
+    }
+    if event.recurrence.is_none() {
+        return Err(not_recurring());
+    }
+    Ok(event)
+}
+
+/// Data d'inizio della serie nel fuso dell'evento.
+fn series_anchor(event: &CalendarEvent) -> Option<Date> {
+    match (&event.start_date, &event.start_at) {
+        (Some(date), _) => time::parse_date(date).ok(),
+        (None, Some(start)) => Some(
+            time::parse_utc(start)
+                .ok()?
+                .to_zoned(Zone::stored(&event.timezone).tz)
+                .date(),
+        ),
+        _ => None,
+    }
+}
+
+fn add_exception(
+    connection: &Connection,
+    event: &CalendarEvent,
+    date: &str,
+) -> Result<(), StorageError> {
+    let date = time::parse_date(date)?;
+    let (Some(rule), Some(anchor)) = (&event.recurrence, series_anchor(event)) else {
+        return Err(not_recurring());
+    };
+    if !rule.occurrences(anchor, date, date, 1).contains(&date) {
+        return Err(StorageError::InvalidEvent(crate::tr_str!(
+            "in quel giorno l'evento non si ripete",
+            "the event does not repeat on that day"
+        )));
+    }
+    let mut exceptions = event.recurrence_exceptions.clone();
+    let date = date.to_string();
+    if !exceptions.contains(&date) {
+        if exceptions.len() >= MAX_EXCEPTIONS {
+            return Err(StorageError::InvalidEvent(crate::tr_str!(
+                "troppe occorrenze tolte dalla serie",
+                "too many occurrences removed from the series"
+            )));
+        }
+        exceptions.push(date);
+        exceptions.sort();
+    }
+    connection.execute(
+        &format!(
+            "UPDATE events SET recurrence_exceptions = ?1, updated_at = {NOW_SQL} WHERE id = ?2"
+        ),
+        params![serde_json::to_string(&exceptions)?, event.id],
+    )?;
+    Ok(())
+}
+
+/// Inizio e fine di un'occorrenza (il giorno `date`) di un evento con
+/// orario: stessa ora locale del primo, nel fuso dell'evento, e stessa
+/// durata. Così l'ora legale non sposta l'evento.
+fn timed_occurrence(event: &CalendarEvent, date: Date) -> Option<(Timestamp, Timestamp)> {
+    let zone = Zone::stored(&event.timezone);
+    let start = time::parse_utc(event.start_at.as_deref()?).ok()?;
+    let end = time::parse_utc(event.end_at.as_deref()?).ok()?;
+    let local = start.to_zoned(zone.tz.clone()).datetime();
+    let wall = date.at(local.hour(), local.minute(), local.second(), 0);
+    let occurrence = time::local_to_zoned(wall, &zone).ok()?.timestamp();
+    let duration = end.as_second() - start.as_second();
+    let occurrence_end = Timestamp::from_second(occurrence.as_second() + duration).ok()?;
+    Some((occurrence, occurrence_end))
+}
+
+/// Occorrenze di una serie che intersecano i giorni `from..=to` (con
+/// gli istanti `range_start..range_end` per gli eventi con orario).
+fn expand_occurrences(
+    event: &CalendarEvent,
+    from: Date,
+    to: Date,
+    range_start: Timestamp,
+    range_end: Timestamp,
+) -> Vec<CalendarEvent> {
+    let (Some(rule), Some(anchor)) = (&event.recurrence, series_anchor(event)) else {
+        return Vec::new();
+    };
+    // Giorni coperti da un'occorrenza: le occorrenze iniziate prima
+    // dell'intervallo possono ancora intersecarlo.
+    let span_days = match (
+        &event.start_date,
+        &event.end_date,
+        &event.start_at,
+        &event.end_at,
+    ) {
+        (Some(start), Some(end), _, _) => match (time::parse_date(start), time::parse_date(end)) {
+            (Ok(start), Ok(end)) => (end - start).get_days().max(0),
+            _ => 0,
+        },
+        (_, _, Some(start), Some(end)) => match (time::parse_utc(start), time::parse_utc(end)) {
+            (Ok(start), Ok(end)) => ((end.as_second() - start.as_second()) / 86_400 + 1) as i32,
+            _ => 0,
+        },
+        _ => 0,
+    };
+    let Ok(earliest) = from.checked_sub(jiff::Span::new().days(i64::from(span_days) + 1)) else {
+        return Vec::new();
+    };
+    let Ok(latest) = to.checked_add(jiff::Span::new().days(1)) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for date in rule.occurrences(anchor, earliest, latest, 1000) {
+        let date_text = date.to_string();
+        if event.recurrence_exceptions.contains(&date_text) {
+            continue;
+        }
+        let mut occurrence = event.clone();
+        occurrence.occurrence_date = Some(date_text.clone());
+        if event.all_day {
+            let Ok(end) = date.checked_add(jiff::Span::new().days(i64::from(span_days))) else {
+                continue;
+            };
+            if date > to || end < from {
+                continue;
+            }
+            occurrence.start_date = Some(date_text);
+            occurrence.end_date = Some(end.to_string());
+        } else {
+            let Some((start, end)) = timed_occurrence(event, date) else {
+                continue;
+            };
+            if start >= range_end || (end <= range_start && start < range_start) {
+                continue;
+            }
+            occurrence.start_at = Some(time::format_utc(start));
+            occurrence.end_at = Some(time::format_utc(end));
+        }
+        found.push(occurrence);
+    }
+    found
+}
+
+/// Inizio della prima occorrenza di un evento ricorrente che comincia da
+/// `not_before` in poi, saltando le date escluse.
+fn next_occurrence_start(event: &CalendarEvent, not_before: Timestamp) -> Option<Timestamp> {
+    let rule = event.recurrence.as_ref()?;
+    let anchor = series_anchor(event)?;
+    let zone = Zone::stored(&event.timezone);
+    // Un giorno di margine: il giorno locale può precedere quello UTC.
+    let from = not_before
+        .to_zoned(zone.tz.clone())
+        .date()
+        .checked_sub(jiff::Span::new().days(1))
+        .ok()?;
+    let to = from.checked_add(jiff::Span::new().days(800)).ok()?;
+    rule.occurrences(anchor, from, to, 400)
+        .into_iter()
+        .filter(|date| !event.recurrence_exceptions.contains(&date.to_string()))
+        .find_map(|date| {
+            let start = if event.all_day {
+                time::day_start(date, &zone).ok()?
+            } else {
+                timed_occurrence(event, date)?.0
+            };
+            (start >= not_before).then_some(start)
+        })
+}
+
+/// Dopo che un promemoria è scattato, crea il successivo se si ripete: per
+/// una nota con la sua regola, alla stessa ora locale; per un evento
+/// ricorrente, con lo stesso anticipo sull'occorrenza seguente. L'id deriva
+/// da quello del promemoria, quindi due dispositivi non creano doppioni.
+fn schedule_next_reminder(
+    connection: &Connection,
+    reminder: &Reminder,
+    now: Timestamp,
+) -> Result<(), StorageError> {
+    let zone = Zone::stored(&reminder.timezone);
+    let current = time::parse_utc(&reminder.remind_at)?;
+    let next = match reminder.entity_type {
+        ReminderEntity::Note => {
+            let Some(rule) = &reminder.recurrence else {
+                return Ok(());
+            };
+            let Ok(local) = time::parse_local(&reminder.local_time) else {
+                return Ok(());
+            };
+            let anchor = local.date();
+            let today = time::today(now, &zone);
+            // Prima data utile da oggi in poi (le occorrenze perse non si
+            // ricreano), poi la prima con l'orario ancora da venire.
+            let mut date = rule.next_due(anchor, today);
+            let mut found = None;
+            for _ in 0..3 {
+                let Some(day) = date else { break };
+                let wall = day.at(local.hour(), local.minute(), 0, 0);
+                let at = time::local_to_zoned(wall, &zone)?.timestamp();
+                if at > now {
+                    found = Some((day, at));
+                    break;
+                }
+                date = rule.after(anchor, day);
+            }
+            let Some((day, at)) = found else {
+                return Ok(());
+            };
+            Some((occurrence_id(&reminder.id, day), at))
+        }
+        ReminderEntity::Event => {
+            let event = match get_event(connection, &reminder.entity_id) {
+                Ok(event) if event.recurrence.is_some() && event.calendar_provider.is_none() => {
+                    event
+                }
+                _ => return Ok(()),
+            };
+            // Occorrenza di questo promemoria: la prima che inizia dal suo
+            // orario in poi; l'anticipo resta lo stesso per la successiva.
+            let Some(this_start) = next_occurrence_start(&event, current) else {
+                return Ok(());
+            };
+            let lead = this_start.as_second() - current.as_second();
+            let mut after =
+                Timestamp::from_second(this_start.as_second() + 1).map_err(|_| not_recurring())?;
+            let mut found = None;
+            for _ in 0..400 {
+                let Some(start) = next_occurrence_start(&event, after) else {
+                    break;
+                };
+                let at = Timestamp::from_second(start.as_second() - lead)
+                    .map_err(|_| not_recurring())?;
+                if at > now {
+                    found = Some((start, at));
+                    break;
+                }
+                after =
+                    Timestamp::from_second(start.as_second() + 1).map_err(|_| not_recurring())?;
+            }
+            let Some((start, at)) = found else {
+                return Ok(());
+            };
+            let day = start.to_zoned(Zone::stored(&event.timezone).tz).date();
+            Some((occurrence_id(&reminder.id, day), at))
+        }
+        ReminderEntity::Task => None,
+    };
+    let Some((id, at)) = next else {
+        return Ok(());
+    };
+    connection.execute(
+        "INSERT OR IGNORE INTO reminders (id, entity_type, entity_id, remind_at, timezone,
+             local_time, recurrence)
+         SELECT ?1, entity_type, entity_id, ?2, timezone, ?3, recurrence
+         FROM reminders WHERE id = ?4",
+        params![
+            id,
+            time::format_utc(at),
+            time::local_wall(at, &zone),
+            reminder.id
+        ],
+    )?;
+    Ok(())
 }
 
 fn validate_range(from: Date, to: Date) -> Result<(), StorageError> {
@@ -1350,12 +1868,297 @@ mod tests {
         );
     }
 
+    fn recurring_event(title: &str, start: &str, end: &str, rule: &str) -> EventInput {
+        EventInput {
+            title: title.to_owned(),
+            description: String::new(),
+            all_day: !start.contains('T'),
+            start: start.to_owned(),
+            end: end.to_owned(),
+            timezone: Some("Europe/Rome".to_owned()),
+            note_id: None,
+            recurrence: (!rule.is_empty()).then(|| serde_json::from_str(rule).expect("rule")),
+        }
+    }
+
+    fn occurrence_starts(
+        database: &Database,
+        from: &str,
+        to: &str,
+    ) -> Vec<(Option<String>, Option<String>)> {
+        database
+            .list_events(date(from), date(to), &Zone::stored("Europe/Rome"))
+            .expect("events")
+            .into_iter()
+            .map(|event| (event.occurrence_date, event.start_at.or(event.start_date)))
+            .collect()
+    }
+
+    #[test]
+    fn recurring_events_keep_their_local_time_across_daylight_saving() {
+        let database = Database::in_memory().expect("database");
+        let series = database
+            .create_event(&recurring_event(
+                "Riunione",
+                "2026-03-23T09:00",
+                "2026-03-23T10:00",
+                r#"{"frequency":"weekly"}"#,
+            ))
+            .expect("event");
+        assert!(series.recurrence.is_some());
+        // Il 29 marzo inizia l'ora legale: sempre alle 9 locali.
+        assert_eq!(
+            occurrence_starts(&database, "2026-03-20", "2026-04-07"),
+            [
+                (
+                    Some("2026-03-23".to_owned()),
+                    Some("2026-03-23T08:00:00Z".to_owned())
+                ),
+                (
+                    Some("2026-03-30".to_owned()),
+                    Some("2026-03-30T07:00:00Z".to_owned())
+                ),
+                (
+                    Some("2026-04-06".to_owned()),
+                    Some("2026-04-06T07:00:00Z".to_owned())
+                ),
+            ]
+        );
+        // Prima dell'inizio della serie non c'è niente.
+        assert!(occurrence_starts(&database, "2026-03-01", "2026-03-22").is_empty());
+    }
+
+    #[test]
+    fn single_occurrences_can_be_skipped_detached_or_cut() {
+        let database = Database::in_memory().expect("database");
+        let series = database
+            .create_event(&recurring_event(
+                "Corso",
+                "2026-05-04T18:00",
+                "2026-05-04T19:30",
+                r#"{"frequency":"weekly"}"#,
+            ))
+            .expect("event");
+        // Un giorno che non fa parte della serie viene rifiutato.
+        assert!(matches!(
+            database.skip_event_occurrence(&series.id, "2026-05-05"),
+            Err(StorageError::InvalidEvent(_))
+        ));
+        database
+            .skip_event_occurrence(&series.id, "2026-05-11")
+            .expect("skip");
+        let mut changed =
+            recurring_event("Corso (aula 2)", "2026-05-18T19:00", "2026-05-18T20:00", "");
+        changed.recurrence = None;
+        let detached = database
+            .detach_event_occurrence(&series.id, "2026-05-18", &changed)
+            .expect("detach");
+        assert!(detached.recurrence.is_none());
+        // Ripetere lo stacco non crea un secondo evento.
+        assert!(
+            database
+                .detach_event_occurrence(&series.id, "2026-05-18", &changed)
+                .is_err()
+        );
+        let titles: Vec<_> = database
+            .list_events(
+                date("2026-05-01"),
+                date("2026-05-31"),
+                &Zone::stored("Europe/Rome"),
+            )
+            .expect("events")
+            .into_iter()
+            .map(|event| (event.title, event.occurrence_date))
+            .collect();
+        assert_eq!(
+            titles,
+            [
+                ("Corso".to_owned(), Some("2026-05-04".to_owned())),
+                ("Corso (aula 2)".to_owned(), None),
+                ("Corso".to_owned(), Some("2026-05-25".to_owned())),
+            ]
+        );
+        // «Questa e le successive»: la serie finisce il giorno prima.
+        let cut = database
+            .end_event_series_before(&series.id, "2026-05-25")
+            .expect("cut")
+            .expect("still exists");
+        assert_eq!(
+            cut.recurrence.and_then(|rule| rule.until).as_deref(),
+            Some("2026-05-24")
+        );
+        assert_eq!(
+            occurrence_starts(&database, "2026-05-20", "2026-06-30").len(),
+            0
+        );
+        // Dal primo giorno l'intera serie va nel cestino (lo fa il chiamante).
+        assert!(
+            database
+                .end_event_series_before(&series.id, "2026-05-04")
+                .expect("first")
+                .is_none()
+        );
+        // Tolta la ripetizione, spariscono anche le eccezioni.
+        let mut plain = recurring_event("Corso", "2026-05-04T18:00", "2026-05-04T19:30", "");
+        plain.recurrence = None;
+        let updated = database.update_event(&series.id, &plain).expect("update");
+        assert!(updated.recurrence_exceptions.is_empty());
+    }
+
+    #[test]
+    fn multi_day_recurring_events_overlap_the_range_start() {
+        let database = Database::in_memory().expect("database");
+        database
+            .create_event(&recurring_event(
+                "Fiera",
+                "2026-01-30",
+                "2026-02-02",
+                r#"{"frequency":"monthly"}"#,
+            ))
+            .expect("event");
+        // L'occorrenza di marzo (30/3–2/4) interseca aprile.
+        assert_eq!(
+            occurrence_starts(&database, "2026-04-01", "2026-04-29"),
+            [(Some("2026-03-30".to_owned()), Some("2026-03-30".to_owned()))]
+        );
+    }
+
+    #[test]
+    fn repeating_note_reminders_schedule_the_next_one_once() {
+        let database = Database::in_memory().expect("database");
+        let note = database
+            .create_note("Bilancio", &empty_document())
+            .expect("note");
+        let created_at = instant("2026-03-20T10:00:00Z");
+        let reminder = database
+            .create_repeating_reminder(
+                ReminderEntity::Note,
+                &note.id,
+                "2026-03-27T09:00",
+                Some("Europe/Rome"),
+                created_at,
+                Some(&weekly()),
+            )
+            .expect("reminder");
+        assert!(reminder.recurrence.is_some());
+        // Le attività hanno già la loro ripetizione.
+        let task = database
+            .create_task(&task("Pagare", Some("2026-03-27")))
+            .expect("task");
+        assert!(
+            database
+                .create_repeating_reminder(
+                    ReminderEntity::Task,
+                    &task.id,
+                    "2026-03-27T09:00",
+                    Some("Europe/Rome"),
+                    created_at,
+                    Some(&weekly()),
+                )
+                .is_err()
+        );
+        let fired = database
+            .take_due_reminders(instant("2026-03-27T08:00:00Z"))
+            .expect("take");
+        assert_eq!(fired.len(), 1);
+        let pending: Vec<_> = database
+            .list_entity_reminders(ReminderEntity::Note, &note.id)
+            .expect("list")
+            .into_iter()
+            .filter(|item| item.status == ReminderStatus::Pending)
+            .collect();
+        // Una settimana dopo, alle 9 locali anche con l'ora legale.
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].remind_at, "2026-04-03T07:00:00Z");
+        assert_eq!(pending[0].local_time, "2026-04-03T09:00");
+        assert!(pending[0].recurrence.is_some());
+        // Ripristinato e riscattato, non crea un doppione.
+        database
+            .connection()
+            .expect("connection")
+            .execute(
+                "UPDATE reminders SET status = 'pending' WHERE id = ?1",
+                [&reminder.id],
+            )
+            .expect("reset");
+        database
+            .take_due_reminders(instant("2026-03-27T08:01:00Z"))
+            .expect("take again");
+        let count = database
+            .list_entity_reminders(ReminderEntity::Note, &note.id)
+            .expect("list")
+            .len();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn reminders_of_recurring_events_follow_the_next_occurrence() {
+        let database = Database::in_memory().expect("database");
+        let series = database
+            .create_event(&recurring_event(
+                "Allenamento",
+                "2026-06-01T19:00",
+                "2026-06-01T20:00",
+                r#"{"frequency":"weekly"}"#,
+            ))
+            .expect("event");
+        database
+            .skip_event_occurrence(&series.id, "2026-06-08")
+            .expect("skip");
+        let reminder = database
+            .create_reminder(
+                ReminderEntity::Event,
+                &series.id,
+                "2026-06-01T18:45",
+                Some("Europe/Rome"),
+                instant("2026-05-30T10:00:00Z"),
+            )
+            .expect("reminder");
+        assert!(reminder.repeats_with_event);
+        database
+            .take_due_reminders(instant("2026-06-01T16:46:00Z"))
+            .expect("take");
+        let next: Vec<_> = database
+            .list_entity_reminders(ReminderEntity::Event, &series.id)
+            .expect("list")
+            .into_iter()
+            .filter(|item| item.status == ReminderStatus::Pending)
+            .map(|item| item.local_time)
+            .collect();
+        // L'8 giugno è stato tolto: 15 minuti prima di quella del 15.
+        assert_eq!(next, ["2026-06-15T18:45"]);
+    }
+
     #[test]
     fn recurrence_survives_the_full_archive() {
         let source = Database::in_memory().expect("database");
         let mut input = task("Affitto", Some("2026-11-01"));
         input.recurrence = Some(serde_json::from_str(r#"{"frequency":"monthly"}"#).expect("rule"));
         let created = source.create_task(&input).expect("task");
+        let series = source
+            .create_event(&recurring_event(
+                "Coro",
+                "2026-11-03T21:00",
+                "2026-11-03T22:30",
+                r#"{"frequency":"weekly","until":"2026-12-29"}"#,
+            ))
+            .expect("event");
+        source
+            .skip_event_occurrence(&series.id, "2026-11-10")
+            .expect("skip");
+        let note = source
+            .create_note("Diario", &empty_document())
+            .expect("note");
+        source
+            .create_repeating_reminder(
+                ReminderEntity::Note,
+                &note.id,
+                "2030-01-01T08:00",
+                Some("Europe/Rome"),
+                time::now(),
+                Some(&weekly()),
+            )
+            .expect("reminder");
         let archive =
             super::export_planner(&source.connection().expect("connection")).expect("export");
         // Una regola alterata nell'archivio viene scartata, l'attività no.
@@ -1370,6 +2173,17 @@ mod tests {
         .expect("import");
         let imported = target.get_task(&created.id).expect("task");
         assert_eq!(imported.recurrence, created.recurrence);
+        let event = target.get_event(&series.id).expect("event");
+        assert_eq!(event.recurrence, series.recurrence);
+        assert_eq!(event.recurrence_exceptions, ["2026-11-10"]);
+        // Il promemoria della nota non è importato senza la nota: qui si
+        // controlla solo che la regola viaggi nell'archivio.
+        assert!(
+            archive
+                .reminders
+                .iter()
+                .any(|item| item.recurrence.is_some())
+        );
         let other = Database::in_memory().expect("database");
         super::import_planner(
             &other.connection().expect("connection"),
@@ -1789,6 +2603,7 @@ mod tests {
             end: end.to_owned(),
             timezone: Some("Europe/Rome".to_owned()),
             note_id: None,
+            recurrence: None,
         };
         // 00:30 locali del 15 = 22:30 UTC del 14: appartiene al 15 a Roma.
         let late = database
@@ -1940,6 +2755,7 @@ mod tests {
                     end: "2026-10-14".to_owned(),
                     timezone: Some("Europe/Rome".to_owned()),
                     note_id: None,
+                    recurrence: None,
                 })
                 .expect("event");
         }

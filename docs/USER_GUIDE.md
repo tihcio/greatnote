@@ -272,13 +272,29 @@ bordo, poi frecce sinistra/destra (con Maiusc a passi più grandi).
   quelli chiusi completando un'attività), con l'orario previsto e il momento
   in cui sono stati gestiti. Dallo storico puoi aprire l'elemento o eliminare
   i promemoria, singolarmente o con **Svuota storico**.
-- **App chiusa:** i promemoria scattano solo mentre Greatnote è aperta. Se
-  l'app era chiusa o il computer sospeso, al successivo avvio ricevi la
-  notifica "Scaduto alle …: perso mentre l'app era chiusa" e il promemoria
-  resta tra quelli da gestire. Se all'avvio ci sono promemoria non ancora
-  gestiti di sessioni precedenti, una notifica li riepiloga. Le notifiche
-  restano visibili finché non le chiudi. Non c'è un servizio in
-  background.
+- **Promemoria che si ripetono:** per una nota, accanto all'orario scegli
+  **Ogni giorno**, **Ogni settimana**, **Ogni mese** o **Ogni anno**: quando
+  scatta compare il successivo alla stessa ora locale (nell'elenco «↻ ogni
+  settimana»). Per smettere elimina il promemoria programmato. I promemoria
+  di un evento che si ripete si ripetono con l'evento («↻ si ripete con
+  l'evento»), con lo stesso anticipo; quelli delle attività seguono la
+  ripetizione dell'attività.
+- **App chiusa:** sul computer i promemoria partono da Greatnote. Per
+  riceverli anche a finestra chiusa attiva in **Impostazioni › Generali ›
+  In background** «Resta attivo nell'area di notifica quando chiudi la
+  finestra»: chiudendo la finestra Greatnote resta attivo con un'icona
+  nell'area di notifica (clic per riaprirlo; dal suo menu «Esci da
+  Greatnote»). Con «Avvia all'accesso al computer» parte da solo, con la
+  finestra nascosta (non disponibile nella versione del Microsoft Store).
+  Aprire di nuovo Greatnote mostra la finestra già attiva. Su Linux serve la
+  libreria `libayatana-appindicator` (installata con i pacchetti `.deb` e
+  `.rpm`); su GNOME l'icona richiede un'estensione per l'area di notifica.
+  Se l'app era chiusa o il computer spento o sospeso, al successivo avvio
+  ricevi la notifica "Scaduto alle …: perso mentre l'app era chiusa" e il
+  promemoria resta tra quelli da gestire. Se all'avvio ci sono promemoria
+  non ancora gestiti di sessioni precedenti, una notifica li riepiloga. Le
+  notifiche restano visibili finché non le chiudi. Su Android i promemoria
+  arrivano anche ad app chiusa.
 - **Calendario:** vista **Mese**, **Settimana** o **Giorno**, con i pulsanti
   ‹ › e Oggi. Settimana e Giorno mostrano una griglia oraria: un clic su uno
   spazio vuoto propone un evento di 30 minuti a quell'orario (allineato
@@ -294,6 +310,14 @@ bordo, poi frecce sinistra/destra (con Maiusc a passi più grandi).
   sistema, indicato sotto il titolo. Gli eventi dei calendari Google e
   Microsoft collegati hanno il colore del loro calendario (vedi
   [Calendari esterni](#calendari-esterni-google-e-microsoft)).
+- **Eventi che si ripetono:** nel dialog dell'evento scegli **Ripeti** (ogni
+  giorno, settimana, mese o anno, con intervallo, giorni della settimana e
+  data di fine facoltativa). Le occorrenze hanno il simbolo ↻ e mantengono
+  l'ora locale anche con il cambio dell'ora. Aprendo un'occorrenza, **Salva**
+  chiede se applicare le modifiche **Solo a questa occorrenza** (diventa un
+  evento a sé) o a **Tutta la serie**; **Sposta nel cestino** chiede se
+  eliminare **Solo questa occorrenza**, **Questa e le successive** o **Tutta
+  la serie**. Lo stesso dal menu contestuale dell'occorrenza.
 - **Fusi orari e ora legale:** le scadenze sono date (non orari) e non
   cambiano con il fuso. Promemoria ed eventi sono istanti precisi: se cambi
   fuso vengono mostrati all'ora locale corrispondente. Un orario che non
@@ -322,7 +346,10 @@ giusta.
   archivio Greatnote. Viene mostrata un'anteprima con note nuove, duplicate e con
   errori: nulla cambia finché non confermi. Per i file la destinazione
   predefinita è un nuovo taccuino "Importazione AAAA-MM-GG"; l'archivio Greatnote
-  ripristina spazi, taccuini, tag, collegamenti e allegati. L'importazione è
+  ripristina spazi, taccuini, tag, collegamenti, allegati, modelli e
+  cronologia delle revisioni. Tabelle e checklist di Markdown (`| a | b |`,
+  `- [x]`) e HTML (`<table>`, elenchi con caselle di spunta) diventano
+  tabelle e checklist modificabili, con celle unite e intestazioni. L'importazione è
   tutto-o-niente: se si verifica un errore imprevisto non viene importato
   nulla. Gli allegati elencati nel front matter Markdown vengono importati se
   si trovano dentro la cartella scelta. HTML importato: script, stili,
@@ -384,7 +411,8 @@ in un nuovo spazio (puoi cambiarne il nome o toglierlo); le cartelle
 annidate diventano taccuini come «Lavoro › Progetti». In alternativa puoi
 mettere tutto in un solo taccuino.
 
-Vengono mantenuti titoli, testo e formattazione, tag (anche i `#tag` e il
+Vengono mantenuti titoli, testo e formattazione (comprese tabelle e
+checklist, anche le caselle di Evernote), tag (anche i `#tag` e il
 front matter di Obsidian), date di creazione e modifica, allegati e
 collegamenti tra note (pannello Collegamenti). Immagini e PDF incorporati
 diventano allegati della nota e nel testo resta «📎 nome» dove si trovavano.

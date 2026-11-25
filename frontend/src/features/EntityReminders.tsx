@@ -6,7 +6,7 @@ import BackgroundNotice from "./BackgroundNotice";
 import { ensureNotificationPermission } from "../lib/notificationPermission";
 import { suggestedReminder } from "../lib/dates";
 import { errorMessage, formatDateTime } from "../lib/format";
-import type { Reminder, ReminderEntity } from "../types";
+import type { Recurrence, RecurrenceFrequency, Reminder, ReminderEntity } from "../types";
 import DateTimeField from "./DateTimeField";
 
 interface EntityRemindersProps {
@@ -29,6 +29,8 @@ export default function EntityReminders({
   const [localTime, setLocalTime] = useState(suggestedReminder);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Solo le note hanno una ripetizione propria del promemoria. */
+  const [repeat, setRepeat] = useState<RecurrenceFrequency | "">("");
 
   const load = useCallback(async () => {
     try {
@@ -48,7 +50,9 @@ export default function EntityReminders({
     if (!localTime) return;
     setBusy(true);
     try {
-      await invoke<Reminder>("create_reminder", { entityType, entityId, localTime });
+      const recurrence: Recurrence | null =
+        entityType === "note" && repeat ? { frequency: repeat, interval: 1 } : null;
+      await invoke<Reminder>("create_reminder", { entityType, entityId, localTime, recurrence });
       setError(null);
       // Su mobile il promemoria è una notifica di sistema: al primo si chiede
       // il permesso; se manca, il promemoria resta salvato ma va detto.
@@ -59,6 +63,7 @@ export default function EntityReminders({
         }
       }
       setLocalTime(suggestedReminder());
+      setRepeat("");
       await load();
       onChanged?.();
     } catch (cause) {
@@ -92,6 +97,15 @@ export default function EntityReminders({
               <span className="planner-mini-text">
                 {formatDateTime(reminder.remind_at)}
                 {reminder.status === "fired" && <small> · {t.firedReminders}</small>}
+                {reminder.recurrence && (
+                  <small className="reminder-repeat">
+                    {" "}
+                    · ↻ {t.repeatEvery(reminder.recurrence.frequency, reminder.recurrence.interval).toLowerCase()}
+                  </small>
+                )}
+                {reminder.repeats_with_event && (
+                  <small className="reminder-repeat"> · ↻ {t.reminderRepeatsWithEvent}</small>
+                )}
               </span>
               <button
                 aria-label={`${t.deleteReminder}: ${formatDateTime(reminder.remind_at)}`}
@@ -115,6 +129,20 @@ export default function EntityReminders({
           onEnter={() => void add()}
           value={localTime}
         />
+        {entityType === "note" && (
+          <select
+            aria-label={t.reminderRepeatLabel}
+            onChange={(event) => setRepeat(event.target.value as RecurrenceFrequency | "")}
+            title={t.reminderRepeatLabel}
+            value={repeat}
+          >
+            <option value="">{t.reminderRepeatOnce}</option>
+            <option value="daily">{t.repeatDaily}</option>
+            <option value="weekly">{t.repeatWeekly}</option>
+            <option value="monthly">{t.repeatMonthly}</option>
+            <option value="yearly">{t.repeatYearly}</option>
+          </select>
+        )}
         <button
           className="subtle-action"
           disabled={busy || localTime.length !== 16}

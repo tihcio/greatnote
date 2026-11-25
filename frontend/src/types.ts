@@ -273,6 +273,10 @@ export interface Reminder {
   note_id: string | null;
   /** Per un promemoria gestito, il momento della gestione. */
   updated_at: string;
+  /** Ripetizione propria (solo promemoria delle note). */
+  recurrence: Recurrence | null;
+  /** Si ripete con il suo evento ricorrente. */
+  repeats_with_event: boolean;
 }
 
 export interface CalendarEvent {
@@ -297,6 +301,12 @@ export interface CalendarEvent {
   web_link: string | null;
   /** Abbonamento iCal d'origine. */
   subscription_id: string | null;
+  /** Ripetizione: la serie parte dalla data d'inizio. */
+  recurrence: Recurrence | null;
+  /** Date (AAAA-MM-GG) tolte dalla serie. */
+  recurrence_exceptions: string[];
+  /** Occorrenza di un evento ricorrente: data d'inizio (l'id è della serie). */
+  occurrence_date: string | null;
 }
 
 export interface EventInput {
@@ -308,6 +318,7 @@ export interface EventInput {
   end: string;
   timezone: string | null;
   note_id: string | null;
+  recurrence?: Recurrence | null;
 }
 
 export type Workspace =

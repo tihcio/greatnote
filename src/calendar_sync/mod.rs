@@ -1095,6 +1095,7 @@ mod tests {
             end: "2026-10-21T10:00".to_owned(),
             timezone: Some("Europe/Rome".to_owned()),
             note_id,
+            recurrence: None,
         }
     }
 

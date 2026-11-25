@@ -182,7 +182,7 @@ export default function HomeView(props: HomeViewProps) {
           ) : (
             <ul className="home-list">
               {events.map((event) => (
-                <li key={event.id}>
+                <li key={`${event.id}:${event.occurrence_date ?? ""}`}>
                   <small>
                     {event.all_day
                       ? formatDay(event.start_date ?? today)

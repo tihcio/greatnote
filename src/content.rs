@@ -3,7 +3,7 @@
 //! schema: l'HTML non viene mai conservato, quindi script, attributi e stili
 //! sono scartati per costruzione.
 
-use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use scraper::{ElementRef, Html, Node};
 use serde_json::{Map, Value, json};
 
@@ -942,6 +942,9 @@ struct DocumentBuilder {
     stack: Vec<Frame>,
     marks: Vec<Value>,
     collapse_whitespace: bool,
+    /// La casella iniziale di una voce di checklist HTML è già nello stato
+    /// della voce: non va ripetuta come testo.
+    skip_checkbox: bool,
 }
 
 fn is_textblock(kind: &str) -> bool {
@@ -950,6 +953,34 @@ fn is_textblock(kind: &str) -> bool {
 
 fn is_list(kind: &str) -> bool {
     matches!(kind, "bulletList" | "orderedList")
+}
+
+fn is_table_cell(kind: &str) -> bool {
+    matches!(kind, "tableCell" | "tableHeader")
+}
+
+/// Contenitori da aprire perché `kind` sia un figlio valido di `parent`
+/// (per esempio una cella fuori da una riga, o un paragrafo dentro una
+/// tabella): così il documento resta conforme allo schema dell'editor
+/// anche con HTML o Markdown malformati.
+fn wrappers(parent: &str, kind: &str) -> &'static [&'static str] {
+    match parent {
+        "bulletList" | "orderedList" if kind == "listItem" => &[],
+        "bulletList" | "orderedList" => &["listItem"],
+        "taskList" if kind == "taskItem" => &[],
+        "taskList" => &["taskItem"],
+        "table" if kind == "tableRow" => &[],
+        "table" if is_table_cell(kind) => &["tableRow"],
+        "table" => &["tableRow", "tableCell"],
+        "tableRow" if is_table_cell(kind) => &[],
+        "tableRow" if kind == "tableRow" => &["tableCell", "table"],
+        "tableRow" => &["tableCell"],
+        _ if kind == "listItem" => &["bulletList"],
+        _ if kind == "taskItem" => &["taskList"],
+        _ if kind == "tableRow" => &["table"],
+        _ if is_table_cell(kind) => &["table", "tableRow"],
+        _ => &[],
+    }
 }
 
 impl DocumentBuilder {
@@ -962,6 +993,7 @@ impl DocumentBuilder {
             }],
             marks: Vec::new(),
             collapse_whitespace,
+            skip_checkbox: false,
         }
     }
 
@@ -984,20 +1016,52 @@ impl DocumentBuilder {
             self.end_top();
         }
         let level = self.stack.len();
-        let needs_item = is_list(self.top_kind()) && kind != "listItem";
-        let needs_list = kind == "listItem" && !is_list(self.top_kind());
-        let extra = usize::from(needs_item || needs_list);
-        if !is_textblock(kind) && kind != "horizontalRule" && level + extra >= MAX_BLOCK_STACK {
+        // Una voce semplice in una checklist diventa una voce da spuntare.
+        let (kind, attrs) = if kind == "listItem" && self.top_kind() == "taskList" {
+            ("taskItem", Some(json!({ "checked": false })))
+        } else {
+            (kind, attrs)
+        };
+        // Voci di checklist consecutive restano nella stessa checklist.
+        if kind == "taskItem" && self.top_kind() != "taskList" {
+            self.reopen_last_child("taskList");
+        }
+        let wrappers = wrappers(self.top_kind(), kind);
+        if !is_textblock(kind)
+            && kind != "horizontalRule"
+            && level + wrappers.len() >= MAX_BLOCK_STACK
+        {
             return None;
         }
-        if needs_item {
-            self.push_frame("listItem", None);
-        }
-        if needs_list {
-            self.push_frame("bulletList", None);
+        for wrapper in wrappers {
+            self.push_frame(wrapper, wrapper_attrs(wrapper));
         }
         self.push_frame(kind, attrs);
         Some(level)
+    }
+
+    /// Riapre l'ultimo blocco chiuso se è di tipo `kind`, per aggiungervi
+    /// altri figli.
+    fn reopen_last_child(&mut self, kind: &'static str) {
+        let Some(parent) = self.stack.last_mut() else {
+            return;
+        };
+        if parent.content.last().map(node_type) != Some(kind) {
+            return;
+        }
+        let Some(mut node) = parent.content.pop() else {
+            return;
+        };
+        let content = match node.get_mut("content").map(Value::take) {
+            Some(Value::Array(content)) => content,
+            _ => Vec::new(),
+        };
+        let attrs = node.get_mut("attrs").map(Value::take);
+        self.stack.push(Frame {
+            kind,
+            attrs,
+            content,
+        });
     }
 
     fn end_to(&mut self, level: usize) {
@@ -1024,10 +1088,32 @@ impl DocumentBuilder {
         if is_textblock(self.top_kind()) {
             return;
         }
-        if is_list(self.top_kind()) {
-            self.push_frame("listItem", None);
+        for wrapper in wrappers(self.top_kind(), "paragraph") {
+            self.push_frame(wrapper, wrapper_attrs(wrapper));
         }
         self.push_frame("paragraph", None);
+    }
+
+    /// Spunta di una checklist Markdown (`- [x]`): la voce aperta diventa
+    /// da spuntare e il suo elenco una checklist. Restituisce `false` se non
+    /// c'è una voce di elenco a cui applicarla.
+    fn mark_task_item(&mut self, checked: bool) -> bool {
+        let Some(index) = self
+            .stack
+            .iter()
+            .rposition(|frame| matches!(frame.kind, "listItem" | "taskItem"))
+        else {
+            return false;
+        };
+        let parent = self.stack[index.saturating_sub(1)].kind;
+        if index == 0 || !(is_list(parent) || parent == "taskList") {
+            return false;
+        }
+        self.stack[index - 1].kind = "taskList";
+        self.stack[index - 1].attrs = None;
+        self.stack[index].kind = "taskItem";
+        self.stack[index].attrs = Some(json!({ "checked": checked }));
+        true
     }
 
     fn add_text(&mut self, text: &str) {
@@ -1042,6 +1128,9 @@ impl DocumentBuilder {
         }
         if !is_textblock(self.top_kind()) && text.trim().is_empty() {
             return;
+        }
+        if !text.trim().is_empty() {
+            self.skip_checkbox = false;
         }
         self.ensure_inline_container();
         let Some(frame) = self.stack.last_mut() else {
@@ -1121,6 +1210,11 @@ impl DocumentBuilder {
         }
         json!({ "type": "doc", "content": content })
     }
+}
+
+/// Attributi dei contenitori aperti automaticamente.
+fn wrapper_attrs(kind: &str) -> Option<Value> {
+    (kind == "taskItem").then(|| json!({ "checked": false }))
 }
 
 fn collapse_whitespace(text: &str) -> String {
@@ -1238,13 +1332,27 @@ fn finish_frame(frame: Frame) -> Option<Value> {
                 }));
             }
         }
-        "listItem" => {
+        "listItem" | "taskItem" => {
             if content.first().map(node_type) != Some("paragraph") {
                 content.insert(0, json!({ "type": "paragraph" }));
             }
         }
-        "bulletList" | "orderedList" | "blockquote" if content.is_empty() => {
+        "tableCell" | "tableHeader" if content.is_empty() => {
+            content.push(json!({ "type": "paragraph" }));
+        }
+        "bulletList" | "orderedList" | "blockquote" | "taskList" | "table" | "tableRow"
+            if content.is_empty() =>
+        {
             return None;
+        }
+        "taskList" => {
+            // Voci semplici chiuse prima che l'elenco diventasse una checklist.
+            for item in &mut content {
+                if node_type(item) == "listItem" {
+                    item["type"] = json!("taskItem");
+                    item["attrs"] = json!({ "checked": false });
+                }
+            }
         }
         _ => {}
     }
@@ -1317,6 +1425,7 @@ pub fn markdown_to_document(markdown: &str) -> ParsedDocument {
     let mut html_block = String::new();
     let mut in_metadata = false;
     let mut in_html_block = false;
+    let mut in_table_head = false;
 
     for event in Parser::new_ext(markdown, options) {
         match event {
@@ -1352,17 +1461,19 @@ pub fn markdown_to_document(markdown: &str) -> ParsedDocument {
                         MarkdownEntry::Block(builder.start_block("bulletList", None))
                     }
                     Tag::Item => MarkdownEntry::Block(builder.start_block("listItem", None)),
-                    Tag::TableHead | Tag::TableRow => {
-                        MarkdownEntry::Block(builder.start_block("paragraph", None))
+                    Tag::Table(_) => MarkdownEntry::Block(builder.start_block("table", None)),
+                    Tag::TableHead => {
+                        in_table_head = true;
+                        MarkdownEntry::Block(builder.start_block("tableRow", None))
                     }
+                    Tag::TableRow => MarkdownEntry::Block(builder.start_block("tableRow", None)),
                     Tag::TableCell => {
-                        let has_content = builder.stack.last().is_some_and(|frame| {
-                            frame.kind == "paragraph" && !frame.content.is_empty()
-                        });
-                        if has_content {
-                            builder.add_text(" | ");
-                        }
-                        MarkdownEntry::Transparent
+                        let kind = if in_table_head {
+                            "tableHeader"
+                        } else {
+                            "tableCell"
+                        };
+                        MarkdownEntry::Block(builder.start_block(kind, None))
                     }
                     Tag::Emphasis => {
                         builder.push_mark(json!({ "type": "italic" }));
@@ -1393,7 +1504,10 @@ pub fn markdown_to_document(markdown: &str) -> ParsedDocument {
                 };
                 entries.push(entry);
             }
-            Event::End(_) => {
+            Event::End(end) => {
+                if end == TagEnd::TableHead {
+                    in_table_head = false;
+                }
                 let entry = entries.pop().unwrap_or(MarkdownEntry::Transparent);
                 match entry {
                     MarkdownEntry::Block(Some(level)) => builder.end_to(level),
@@ -1445,7 +1559,9 @@ pub fn markdown_to_document(markdown: &str) -> ParsedDocument {
             Event::HardBreak => builder.hard_break(),
             Event::Rule => builder.rule(),
             Event::TaskListMarker(checked) => {
-                builder.add_text(if checked { "☑ " } else { "☐ " })
+                if !builder.mark_task_item(checked) {
+                    builder.add_text(if checked { "☑ " } else { "☐ " });
+                }
             }
             Event::InlineMath(text) | Event::DisplayMath(text) => builder.add_text(&text),
             Event::FootnoteReference(label) => builder.add_text(&format!("[^{label}]")),
@@ -1610,6 +1726,158 @@ fn html_text_align(element: ElementRef<'_>) -> Option<&'static str> {
         .find(|align| *align == declared.as_str())
 }
 
+/// Contenitore neutro: chiude il paragrafo implicito corrente prima e dopo.
+fn html_neutral(element: ElementRef<'_>, builder: &mut DocumentBuilder, depth: usize) {
+    close_paragraph(builder);
+    walk_html_children(element, builder, depth);
+    close_paragraph(builder);
+}
+
+fn close_paragraph(builder: &mut DocumentBuilder) {
+    while builder.top_kind() == "paragraph" {
+        let level = builder.stack.len() - 1;
+        builder.end_to(level);
+    }
+}
+
+// I rami delle tabelle e delle checklist stanno in funzioni proprie: la
+// conversione è ricorsiva e il frame di `walk_html_element` deve restare
+// piccolo per reggere la profondità massima.
+
+#[inline(never)]
+fn html_table(element: ElementRef<'_>, builder: &mut DocumentBuilder, depth: usize) {
+    // La tabella è un blocco a sé.
+    close_paragraph(builder);
+    // La didascalia diventa un paragrafo prima della tabella.
+    for caption in element
+        .children()
+        .filter_map(ElementRef::wrap)
+        .filter(|child| child.value().name() == "caption")
+    {
+        if let Some(level) = builder.start_block("paragraph", None) {
+            walk_html_children(caption, builder, depth + 1);
+            builder.end_to(level);
+        }
+    }
+    let level = builder.start_block("table", None);
+    walk_html_children(element, builder, depth);
+    if let Some(level) = level {
+        builder.end_to(level);
+    }
+}
+
+/// Tipo e attributi (`colspan`/`rowspan`) di una cella `td`/`th`.
+#[inline(never)]
+fn html_cell(element: ElementRef<'_>) -> (&'static str, Option<Value>) {
+    let mut attrs = Map::new();
+    for name in ["colspan", "rowspan"] {
+        let span = element
+            .value()
+            .attr(name)
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .filter(|span| *span > 1)
+            .map(|span| span.min(MAX_IMPORTED_SPAN));
+        if let Some(span) = span {
+            attrs.insert(name.to_owned(), json!(span));
+        }
+    }
+    let kind = if element.value().name().eq_ignore_ascii_case("th") {
+        "tableHeader"
+    } else {
+        "tableCell"
+    };
+    (kind, (!attrs.is_empty()).then_some(Value::Object(attrs)))
+}
+
+#[inline(never)]
+fn html_task_checked(item: ElementRef<'_>) -> bool {
+    item.value().attr("data-checked") == Some("true")
+        || html_checkbox(item).is_some_and(|input| input.value().attr("checked").is_some())
+}
+
+#[inline(never)]
+fn html_task_item(
+    element: ElementRef<'_>,
+    builder: &mut DocumentBuilder,
+    depth: usize,
+    checked: bool,
+) {
+    builder.skip_checkbox = true;
+    let level = builder.start_block("taskItem", Some(json!({ "checked": checked })));
+    walk_html_children(element, builder, depth);
+    if let Some(level) = level {
+        builder.end_to(level);
+    }
+    builder.skip_checkbox = false;
+}
+
+/// Una casella fuori posizione resta come simbolo ☑/☐; quella iniziale di
+/// una voce di checklist è già nello stato della voce.
+#[inline(never)]
+fn html_input(element: ElementRef<'_>, builder: &mut DocumentBuilder) {
+    let checkbox = element
+        .value()
+        .attr("type")
+        .is_some_and(|kind| kind.eq_ignore_ascii_case("checkbox"));
+    if checkbox && !std::mem::take(&mut builder.skip_checkbox) {
+        let checked = element.value().attr("checked").is_some();
+        builder.add_text(if checked { "☑ " } else { "☐ " });
+    }
+}
+
+/// Righe o colonne massime coperte da una cella importata.
+const MAX_IMPORTED_SPAN: u64 = 100;
+
+/// Prima casella di spunta di una voce (anche dentro `<label>` o `<p>`).
+fn html_checkbox(item: ElementRef<'_>) -> Option<ElementRef<'_>> {
+    item.descendants()
+        .filter_map(ElementRef::wrap)
+        .find(|element| {
+            element.value().name() == "input"
+                && element
+                    .value()
+                    .attr("type")
+                    .is_some_and(|kind| kind.eq_ignore_ascii_case("checkbox"))
+        })
+}
+
+/// Stato della casella con cui inizia un blocco, se inizia con una casella.
+fn html_leading_checkbox(element: ElementRef<'_>) -> Option<bool> {
+    for child in element.children() {
+        match child.value() {
+            Node::Text(text) if text.trim().is_empty() => continue,
+            Node::Element(value) => {
+                let is_checkbox = value.name() == "input"
+                    && value
+                        .attr("type")
+                        .is_some_and(|kind| kind.eq_ignore_ascii_case("checkbox"));
+                return is_checkbox.then(|| value.attr("checked").is_some());
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// Elenco da importare come checklist: dichiarato tale (dall'app, da Tiptap
+/// o in stile GitHub) o con una casella di spunta in ogni voce.
+fn is_html_task_list(list: ElementRef<'_>) -> bool {
+    let value = list.value();
+    if value.attr("data-type") == Some("taskList")
+        || value
+            .classes()
+            .any(|class| matches!(class, "checklist" | "contains-task-list"))
+    {
+        return true;
+    }
+    let mut items = list
+        .children()
+        .filter_map(ElementRef::wrap)
+        .filter(|child| child.value().name() == "li")
+        .peekable();
+    items.peek().is_some() && items.all(|item| html_checkbox(item).is_some())
+}
+
 fn walk_html_element(element: ElementRef<'_>, builder: &mut DocumentBuilder, depth: usize) {
     if depth > MAX_HTML_DEPTH {
         // Oltre il limite il sottoalbero viene appiattito senza ricorsione.
@@ -1632,13 +1900,9 @@ fn walk_html_element(element: ElementRef<'_>, builder: &mut DocumentBuilder, dep
     };
     match name.as_str() {
         "script" | "style" | "template" | "noscript" | "iframe" | "object" | "embed" | "svg"
-        | "math" | "head" | "title" | "meta" | "link" | "base" | "input" | "select"
-        | "textarea" | "button" | "canvas" | "audio" | "video" | "source" | "track" | "frame"
-        | "frameset" | "applet" | "dialog" => {}
-        "p" => {
-            let attrs = html_text_align(element).map(|align| json!({ "textAlign": align }));
-            block(builder, "paragraph", attrs);
-        }
+        | "math" | "head" | "title" | "meta" | "link" | "base" | "select" | "textarea"
+        | "button" | "canvas" | "audio" | "video" | "source" | "track" | "frame" | "frameset"
+        | "applet" | "dialog" => {}
         "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
             let level = name[1..].parse::<u8>().unwrap_or(1);
             let mut attrs = json!({ "level": level });
@@ -1647,6 +1911,7 @@ fn walk_html_element(element: ElementRef<'_>, builder: &mut DocumentBuilder, dep
             }
             block(builder, "heading", Some(attrs));
         }
+        "ul" | "menu" if is_html_task_list(element) => block(builder, "taskList", None),
         "ul" | "menu" => block(builder, "bulletList", None),
         "ol" => {
             let start = element
@@ -1657,6 +1922,27 @@ fn walk_html_element(element: ElementRef<'_>, builder: &mut DocumentBuilder, dep
                 .unwrap_or(1);
             block(builder, "orderedList", Some(json!({ "start": start })));
         }
+        "li" if builder.top_kind() == "taskList" => {
+            let checked = html_task_checked(element);
+            html_task_item(element, builder, depth, checked);
+        }
+        // Una riga che inizia con una casella (come le note di Evernote) è
+        // una voce di checklist, se non è già dentro un elenco.
+        "p" | "div" if !matches!(builder.top_kind(), "listItem" | "taskItem") => {
+            match html_leading_checkbox(element) {
+                Some(checked) => html_task_item(element, builder, depth, checked),
+                None if name == "p" => {
+                    let attrs = html_text_align(element).map(|align| json!({ "textAlign": align }));
+                    block(builder, "paragraph", attrs);
+                }
+                None => html_neutral(element, builder, depth),
+            }
+        }
+        "p" => {
+            let attrs = html_text_align(element).map(|align| json!({ "textAlign": align }));
+            block(builder, "paragraph", attrs);
+        }
+        "input" => html_input(element, builder),
         "li" => block(builder, "listItem", None),
         "blockquote" => block(builder, "blockquote", None),
         "pre" => {
@@ -1710,32 +1996,17 @@ fn walk_html_element(element: ElementRef<'_>, builder: &mut DocumentBuilder, dep
                 builder.add_text(&format!(" [{}] ", alt.trim()));
             }
         }
-        "tr" => block(builder, "paragraph", None),
+        "table" => html_table(element, builder, depth),
+        "caption" => {}
+        "tr" => block(builder, "tableRow", None),
         "td" | "th" => {
-            let has_content = builder
-                .stack
-                .last()
-                .is_some_and(|frame| frame.kind == "paragraph" && !frame.content.is_empty());
-            if has_content {
-                builder.add_text(" | ");
-            }
-            walk_html_children(element, builder, depth);
+            let (kind, attrs) = html_cell(element);
+            block(builder, kind, attrs);
         }
         "div" | "section" | "article" | "main" | "header" | "footer" | "nav" | "aside"
         | "figure" | "figcaption" | "address" | "details" | "summary" | "dl" | "dt" | "dd"
-        | "table" | "thead" | "tbody" | "tfoot" | "caption" | "fieldset" | "legend" | "form"
-        | "center" | "hgroup" | "body" | "html" => {
-            // Contenitori neutri: chiudono il paragrafo implicito corrente.
-            while is_textblock(builder.top_kind()) && builder.top_kind() == "paragraph" {
-                let level = builder.stack.len() - 1;
-                builder.end_to(level);
-            }
-            walk_html_children(element, builder, depth);
-            while builder.top_kind() == "paragraph" {
-                let level = builder.stack.len() - 1;
-                builder.end_to(level);
-            }
-        }
+        | "thead" | "tbody" | "tfoot" | "fieldset" | "legend" | "form" | "center" | "hgroup"
+        | "body" | "html" => html_neutral(element, builder, depth),
         _ => walk_html_children(element, builder, depth),
     }
 }
@@ -2001,10 +2272,107 @@ mod tests {
         );
         assert_eq!(parsed.title.as_deref(), Some("Spesa"));
         validate_document(&parsed.document).expect("valid document");
-        let text = to_plain_text(&parsed.document);
-        assert!(text.contains("- latte"), "{text}");
-        assert!(text.contains("☑ pane"), "{text}");
-        assert!(text.contains("1 | 2"), "{text}");
+        // Un elenco con almeno una spunta diventa una checklist.
+        assert_eq!(
+            parsed.document["content"][0],
+            json!({ "type": "taskList", "content": [
+                { "type": "taskItem", "attrs": { "checked": false }, "content": [paragraph("latte")] },
+                { "type": "taskItem", "attrs": { "checked": true }, "content": [paragraph("pane")] }
+            ]})
+        );
+        assert_eq!(
+            parsed.document["content"][1],
+            json!({ "type": "table", "content": [
+                { "type": "tableRow", "content": [
+                    { "type": "tableHeader", "content": [paragraph("a")] },
+                    { "type": "tableHeader", "content": [paragraph("b")] }
+                ]},
+                { "type": "tableRow", "content": [
+                    { "type": "tableCell", "content": [paragraph("1")] },
+                    { "type": "tableCell", "content": [paragraph("2")] }
+                ]}
+            ]})
+        );
+    }
+
+    #[test]
+    fn checklists_and_tables_survive_markdown_and_html_round_trips() {
+        let document = json!({ "type": "doc", "content": [
+            { "type": "taskList", "content": [
+                { "type": "taskItem", "attrs": { "checked": true }, "content": [paragraph("Fatto")] },
+                { "type": "taskItem", "attrs": { "checked": false }, "content": [paragraph("Da fare")] }
+            ]},
+            { "type": "table", "content": [
+                { "type": "tableRow", "content": [
+                    { "type": "tableHeader", "content": [paragraph("Nome")] },
+                    { "type": "tableHeader", "content": [paragraph("Valore")] }
+                ]},
+                { "type": "tableRow", "content": [
+                    { "type": "tableCell", "content": [paragraph("a")] },
+                    { "type": "tableCell", "content": [{ "type": "paragraph" }] }
+                ]}
+            ]}
+        ]});
+        let markdown = to_markdown("Prova", &document, &FrontMatter::default());
+        let from_markdown = markdown_to_document(&markdown).document;
+        validate_document(&from_markdown).expect("valid markdown import");
+        assert_eq!(from_markdown, document, "markdown:\n{markdown}");
+        let html = to_html("Prova", &document, "it");
+        let from_html = html_to_document(&html).document;
+        validate_document(&from_html).expect("valid html import");
+        assert_eq!(from_html, document, "html:\n{html}");
+    }
+
+    #[test]
+    fn html_tables_and_checklists_are_imported_as_native_nodes() {
+        let parsed = html_to_document(
+            r#"<table><caption>Didascalia</caption><thead><tr><th colspan="2">Titolo</th></tr></thead>
+               <tbody><tr><td rowspan="9999">A</td><td><p>B</p><ul><li>uno</li></ul></td></tr></tbody></table>
+               <ul data-type="taskList"><li data-type="taskItem" data-checked="true"><p>Tiptap</p></li></ul>
+               <ul class="contains-task-list"><li class="task-list-item"><input type="checkbox" checked> GitHub</li></ul>
+               <ul><li><label><input type="checkbox"> solo caselle</label></li></ul>
+               <ul><li>normale</li><li><input type="checkbox"> misto</li></ul>"#,
+        );
+        let document = parsed.document;
+        validate_document(&document).expect("valid document");
+        let blocks = document["content"].as_array().expect("blocks");
+        // La didascalia diventa un paragrafo prima della tabella.
+        assert_eq!(blocks[0], paragraph("Didascalia"));
+        let table = &blocks[1];
+        assert_eq!(table["type"], "table");
+        assert_eq!(table["content"][0]["content"][0]["type"], "tableHeader");
+        assert_eq!(table["content"][0]["content"][0]["attrs"]["colspan"], 2);
+        let cell = &table["content"][1]["content"][0];
+        assert_eq!(cell["attrs"]["rowspan"], MAX_IMPORTED_SPAN);
+        assert_eq!(
+            table["content"][1]["content"][1]["content"][1]["type"],
+            "bulletList"
+        );
+        let task = |index: usize| {
+            (
+                blocks[index]["type"].clone(),
+                blocks[index]["content"][0]["attrs"]["checked"].clone(),
+            )
+        };
+        assert_eq!(task(2), (json!("taskList"), json!(true)));
+        assert_eq!(task(3), (json!("taskList"), json!(true)));
+        assert_eq!(task(4), (json!("taskList"), json!(false)));
+        assert_eq!(blocks[5]["type"], "bulletList");
+    }
+
+    #[test]
+    fn malformed_table_markup_still_produces_a_valid_document() {
+        for source in [
+            "<td>cella sola</td><tr><td>riga sola</td></tr>",
+            "<table>testo diretto<p>paragrafo</p><tr>riga<td>x</td></tr></table>",
+            "<table><tr><td><table><tr><td>annidata</td></tr></table></td></tr></table>",
+            "<table></table><table><tr></tr></table><p>dopo</p>",
+            "<ul class=\"checklist\"><li></li><li><ul><li>sotto</li></ul></li></ul>",
+        ] {
+            let parsed = html_to_document(source);
+            validate_document(&parsed.document).unwrap_or_else(|error| panic!("{source}: {error}"));
+            assert!(!to_plain_text(&parsed.document).contains("<"), "{source}");
+        }
     }
 
     #[test]

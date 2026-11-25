@@ -539,6 +539,7 @@ mod tests {
                 end: "2026-10-14".to_owned(),
                 timezone: Some("Europe/Rome".to_owned()),
                 note_id: None,
+                recurrence: None,
             })
             .expect("event");
 

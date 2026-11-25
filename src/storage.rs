@@ -46,7 +46,8 @@ const MIGRATION_12: &str = include_str!("../migrations/0012_external_calendars.s
 const MIGRATION_13: &str = include_str!("../migrations/0013_calendar_subscriptions.sql");
 const MIGRATION_14: &str = include_str!("../migrations/0014_sync.sql");
 const MIGRATION_15: &str = include_str!("../migrations/0015_task_recurrence.sql");
-pub const CURRENT_SCHEMA_VERSION: u32 = 15;
+const MIGRATION_16: &str = include_str!("../migrations/0016_event_recurrence.sql");
+pub const CURRENT_SCHEMA_VERSION: u32 = 16;
 const MAX_TITLE_LENGTH: usize = 512;
 const MAX_ORGANIZATION_NAME_LENGTH: usize = 200;
 const MAX_TAG_NAME_LENGTH: usize = 100;
@@ -1688,6 +1689,10 @@ fn migrate(connection: &Connection) -> Result<(), StorageError> {
     if version == 14 {
         connection.execute_batch(MIGRATION_15)?;
         version = 15;
+    }
+    if version == 15 {
+        connection.execute_batch(MIGRATION_16)?;
+        version = 16;
     }
     if version == CURRENT_SCHEMA_VERSION {
         repair_ai_index_schema(connection)?;

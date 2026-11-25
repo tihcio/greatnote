@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod background;
 pub mod backup;
 pub mod calendar_sync;
 pub mod content;

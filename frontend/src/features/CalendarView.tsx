@@ -251,6 +251,15 @@ export default function CalendarView({
     }
   };
 
+  const skipOccurrence = async (event: CalendarEvent, date: string) => {
+    try {
+      await invoke("skip_event_occurrence", { id: event.id, date });
+      changed();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
   const eventMenu = (pointer: ReactMouseEvent, event: CalendarEvent) => {
     const local = !event.calendar_provider;
     const items: MenuEntry[] = [
@@ -264,7 +273,24 @@ export default function CalendarView({
         },
       },
     ];
-    if (local) {
+    if (local && event.recurrence && event.occurrence_date) {
+      // Occorrenza di una serie: la scelta completa è nel dialog.
+      const date = event.occurrence_date;
+      items.push(
+        separator,
+        {
+          id: "ctx-skip",
+          label: t.occurrenceDeleteOnlyThis,
+          run: () => void skipOccurrence(event, date),
+        },
+        {
+          id: "ctx-delete",
+          label: t.occurrenceDeleteSeries,
+          destructive: true,
+          run: () => void trashEvent(event),
+        },
+      );
+    } else if (local) {
       items.push(separator, {
         id: "ctx-delete",
         label: t.actionMoveToTrash,
@@ -277,7 +303,7 @@ export default function CalendarView({
 
   const renderItem = (item: DayItem) =>
     item.kind === "event" ? (
-      <li key={`e-${item.event.id}`}>
+      <li key={`e-${item.event.id}:${item.event.occurrence_date ?? ""}`}>
         <button
           className={`calendar-item event${item.event.all_day ? " all-day" : ""}${item.event.calendar_provider ? " external" : ""}`}
           onClick={() => setEventDialog({ event: item.event, day: anchor })}
@@ -292,6 +318,11 @@ export default function CalendarView({
         >
           {!item.event.all_day && item.event.start_at && (
             <span className="calendar-time">{formatTime(item.event.start_at)}</span>
+          )}
+          {item.event.recurrence && (
+            <span aria-label={t.eventRepeats} className="event-repeat" role="img">
+              ↻{" "}
+            </span>
           )}
           {item.event.title}
           {item.event.calendar_provider && <span className="visually-hidden"> ({calendarLabel(item.event)})</span>}

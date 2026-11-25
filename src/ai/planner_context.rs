@@ -1319,6 +1319,7 @@ mod tests {
                 end: end.to_owned(),
                 timezone: Some("Europe/Rome".to_owned()),
                 note_id: None,
+                recurrence: None,
             })
             .expect("event")
     }

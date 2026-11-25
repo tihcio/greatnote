@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n";
-import { toLocalInput } from "../lib/dates";
+import { addDays, toLocalInput } from "../lib/dates";
 import { errorMessage } from "../lib/format";
 import { askConfirmation } from "../lib/confirm";
-import type { CalendarEvent, EventInput } from "../types";
+import type { CalendarEvent, EventInput, Recurrence } from "../types";
 import { calendarApi } from "./calendar/calendarApi";
 import type { CalendarInfo, CalendarSubscription } from "./calendar/calendarApi";
 import { providerName } from "./calendar/CalendarIntegrations";
 import DateTimeField from "./DateTimeField";
 import EntityReminders from "./EntityReminders";
 import PlannerDialog from "./PlannerDialog";
+import RecurrenceFields from "./RecurrenceFields";
 
 interface EventDialogProps {
   /** Evento esistente, oppure giorno (AAAA-MM-GG) per un evento nuovo. */
@@ -26,6 +27,28 @@ interface EventDialogProps {
   calendars?: Map<string, CalendarInfo>;
   /** Abbonamenti iCal (id → abbonamento). */
   subscriptions?: Map<string, CalendarSubscription>;
+}
+
+/** Giorni da `from` a `to` (date AAAA-MM-GG). */
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(to.slice(0, 10)) - Date.parse(from.slice(0, 10))) / 86_400_000);
+}
+
+/**
+ * Dati della serie quando si modifica tutta la serie partendo da
+ * un'occorrenza: lo spostamento in giorni e l'orario scelti valgono dal
+ * primo giorno della serie, non da quello dell'occorrenza.
+ */
+function seriesInput(series: CalendarEvent, occurrenceDate: string, input: EventInput): EventInput {
+  const shift = daysBetween(occurrenceDate, input.start);
+  if (input.all_day) {
+    const first = addDays(series.start_date ?? occurrenceDate, shift);
+    return { ...input, start: first, end: addDays(first, daysBetween(input.start, input.end)) };
+  }
+  const seriesDay = toLocalInput(series.start_at ?? input.start).slice(0, 10);
+  const start = `${addDays(seriesDay, shift)}${input.start.slice(10)}`;
+  const duration = new Date(input.end).getTime() - new Date(input.start).getTime();
+  return { ...input, start, end: toLocalInput(new Date(new Date(start).getTime() + duration)) };
 }
 
 /** Durata proposta per un evento creato con un clic sulla griglia oraria. */
@@ -68,8 +91,15 @@ export default function EventDialog({
   const initial = initialRange(event, day, startTime);
   const [start, setStart] = useState(initial.start);
   const [end, setEnd] = useState(initial.end);
+  const [repeat, setRepeat] = useState<Recurrence | null>(event?.recurrence ?? null);
+  /** Occorrenza aperta dal calendario: data d'inizio nella serie. */
+  const occurrence = event?.recurrence ? event.occurrence_date : null;
+  /** Scelta in attesa per un'occorrenza: a cosa applicare salva/elimina. */
+  const [scope, setScope] = useState<"save" | "delete" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** La ripetizione vale solo per gli eventi di Greatnote. */
+  const canRepeat = !isExternal && !readOnly && !target;
 
   /** Spostando l'inizio, la fine conserva la durata (o diventa +1 ora se
    * precedeva l'inizio). */
@@ -96,19 +126,85 @@ export default function EventDialog({
     }
   };
 
-  const save = async () => {
-    const input: EventInput = {
-      title,
-      description,
-      all_day: allDay,
-      start,
-      end,
-      timezone: null,
-      note_id: event?.note_id ?? null,
-    };
+  const currentInput = (): EventInput => ({
+    title,
+    description,
+    all_day: allDay,
+    start,
+    end,
+    timezone: null,
+    note_id: event?.note_id ?? null,
+    recurrence: canRepeat ? repeat : null,
+  });
+
+  const run = async (task: () => Promise<unknown>) => {
     setBusy(true);
     try {
-      if (event && isExternal) {
+      await task();
+      onChanged();
+      onClose();
+    } catch (cause) {
+      setError(errorMessage(cause));
+      setScope(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Salva tutta la serie; da un'occorrenza, rispetto al suo primo giorno. */
+  const saveSeries = async (input: EventInput) => {
+    if (!event) return;
+    const data = occurrence
+      ? seriesInput(await invoke<CalendarEvent>("get_event", { id: event.id }), occurrence, input)
+      : input;
+    await invoke<CalendarEvent>("update_event", { id: event.id, input: data });
+  };
+
+  const saveScoped = (which: "this" | "all") =>
+    void run(async () => {
+      if (!event || !occurrence) return;
+      const input = currentInput();
+      if (which === "this") {
+        await invoke<CalendarEvent>("detach_event_occurrence", {
+          id: event.id,
+          date: occurrence,
+          input: { ...input, recurrence: null },
+        });
+      } else {
+        await saveSeries(input);
+      }
+    });
+
+  const removeScoped = (which: "this" | "following" | "all") =>
+    void run(async () => {
+      if (!event || !occurrence) return;
+      if (which === "this") {
+        await invoke("skip_event_occurrence", { id: event.id, date: occurrence });
+      } else if (which === "following") {
+        const rest = await invoke<CalendarEvent | null>("end_event_series_before", {
+          id: event.id,
+          date: occurrence,
+        });
+        // Dalla prima occorrenza non resta niente: tutta la serie nel cestino.
+        if (!rest) await invoke("move_item_to_trash", { kind: "event", id: event.id });
+      } else {
+        await invoke("move_item_to_trash", { kind: "event", id: event.id });
+      }
+    });
+
+  const save = async () => {
+    const input = currentInput();
+    // Un'occorrenza: si chiede se cambiare solo questa o tutta la serie (se
+    // cambia la ripetizione, riguarda per forza tutta la serie).
+    if (occurrence && JSON.stringify(repeat) === JSON.stringify(event?.recurrence ?? null)) {
+      setScope("save");
+      return;
+    }
+    setBusy(true);
+    try {
+      if (event && occurrence) {
+        await saveSeries(input);
+      } else if (event && isExternal) {
         await calendarApi.updateEvent(event.id, input);
       } else if (event) {
         await invoke<CalendarEvent>("update_event", { id: event.id, input });
@@ -128,6 +224,10 @@ export default function EventDialog({
 
   const remove = async () => {
     if (!event) return;
+    if (occurrence) {
+      setScope("delete");
+      return;
+    }
     const provider = event.calendar_provider ? providerName(event.calendar_provider) : null;
     const confirmed = await askConfirmation(
       provider
@@ -253,6 +353,15 @@ export default function EventDialog({
             </div>
           </>
         )}
+        {canRepeat && (
+          <RecurrenceFields
+            daysLabel={t.eventRepeatDays}
+            hint={t.eventRepeatHint}
+            onChange={setRepeat}
+            startDate={start.slice(0, 10)}
+            value={repeat}
+          />
+        )}
         <label className="dialog-field">
           <span>{t.eventDescription}</span>
           <textarea
@@ -288,6 +397,48 @@ export default function EventDialog({
           <p className="dialog-error" role="alert">
             {error}
           </p>
+        )}
+        {scope && (
+          <div className="occurrence-scope" role="group" aria-label={t.occurrenceScopeLabel}>
+            <p>{scope === "save" ? t.occurrenceSaveQuestion : t.occurrenceDeleteQuestion}</p>
+            <div className="occurrence-scope-actions">
+              {scope === "save" ? (
+                <>
+                  <button className="subtle-action" disabled={busy} onClick={() => saveScoped("this")} type="button">
+                    {t.occurrenceOnlyThis}
+                  </button>
+                  <button className="subtle-action" disabled={busy} onClick={() => saveScoped("all")} type="button">
+                    {t.occurrenceWholeSeries}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="subtle-action" disabled={busy} onClick={() => removeScoped("this")} type="button">
+                    {t.occurrenceOnlyThis}
+                  </button>
+                  <button
+                    className="subtle-action"
+                    disabled={busy}
+                    onClick={() => removeScoped("following")}
+                    type="button"
+                  >
+                    {t.occurrenceThisAndFollowing}
+                  </button>
+                  <button
+                    className="subtle-action destructive-text"
+                    disabled={busy}
+                    onClick={() => removeScoped("all")}
+                    type="button"
+                  >
+                    {t.occurrenceWholeSeries}
+                  </button>
+                </>
+              )}
+              <button className="text-button" disabled={busy} onClick={() => setScope(null)} type="button">
+                {t.cancel}
+              </button>
+            </div>
+          </div>
         )}
         <footer className="organization-dialog-actions">
           {event && readOnly ? (

@@ -217,7 +217,7 @@ export default function TimeGrid({
                 <button
                   aria-label={`${event.title}, ${range}${source}`}
                   className={`time-grid-event${event.calendar_provider ? " external" : ""}`}
-                  key={event.id}
+                  key={`${event.id}:${event.occurrence_date ?? ""}`}
                   onClick={() => onOpenEvent(event)}
                   onContextMenu={(pointer) => onEventMenu(pointer, event)}
                   style={{
@@ -230,7 +230,14 @@ export default function TimeGrid({
                   title={`${event.title} · ${range}${source}`}
                   type="button"
                 >
-                  <span className="time-grid-event-title">{event.title}</span>
+                  <span className="time-grid-event-title">
+                    {event.recurrence && (
+                      <span aria-label={t.eventRepeats} className="event-repeat" role="img">
+                        ↻{" "}
+                      </span>
+                    )}
+                    {event.title}
+                  </span>
                   <span className="calendar-time">{range}</span>
                 </button>
               );

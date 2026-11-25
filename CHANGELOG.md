@@ -4,6 +4,34 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.13 — 2026-11-25
+
+- **Promemoria anche a finestra chiusa sul computer.** In Impostazioni ›
+  Generali › In background Greatnote può restare attivo nell'area di
+  notifica quando chiudi la finestra, e avviarsi all'accesso con la finestra
+  nascosta. Aprire di nuovo Greatnote mostra la finestra già attiva invece
+  di avviarne una seconda copia. Su Linux i pacchetti richiedono ora
+  `libayatana-appindicator`.
+
+- **Eventi che si ripetono.** Nel dialog dell'evento c'è **Ripeti** (ogni
+  giorno, settimana, mese o anno, con intervallo, giorni e data di fine).
+  Le occorrenze mantengono l'ora locale con il cambio dell'ora; una singola
+  occorrenza si può modificare o eliminare da sola, con le successive o con
+  tutta la serie.
+- **Promemoria che si ripetono.** I promemoria di una nota possono
+  ripetersi ogni giorno, settimana, mese o anno; quelli di un evento che si
+  ripete seguono l'evento con lo stesso anticipo.
+
+- **Tabelle e checklist importate come tali.** Importando Markdown, HTML o
+  note da Evernote, Joplin e Obsidian, tabelle e checklist diventano
+  tabelle e checklist modificabili (prima erano righe di testo con «|» o
+  simboli ☑/☐). Restano celle unite, intestazioni e stato delle spunte.
+
+- **L'archivio completo include modelli e cronologia delle revisioni.**
+  Esportando e reimportando l'archivio completo si ritrovano i modelli
+  creati e le versioni precedenti di ogni nota; gli archivi delle versioni
+  precedenti restano importabili.
+
 ## 0.2.12 — 2026-11-20
 
 - **Tabelle: righe e colonne a scelta e comandi a portata di mano.**

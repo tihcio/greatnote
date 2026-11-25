@@ -1,7 +1,7 @@
-//! Ricorrenza delle attività: regola e calcolo della prossima scadenza.
+//! Ricorrenza di attività, eventi e promemoria: regola e calcolo delle date.
 //!
-//! Sottoinsieme semplice di RRULE (RFC 5545), salvato come JSON nella
-//! colonna `tasks.recurrence`:
+//! Sottoinsieme semplice di RRULE (RFC 5545), salvato come JSON nelle
+//! colonne `tasks.recurrence`, `events.recurrence` e `reminders.recurrence`:
 //!
 //! - `daily`, `weekly`, `monthly`, `yearly` con `interval` (ogni N);
 //! - `weekly` con `weekdays` facoltativi (1 = lunedì … 7 = domenica);
@@ -18,6 +18,11 @@ use serde::{Deserialize, Serialize};
 pub const MAX_INTERVAL: u16 = 99;
 /// Limite di sicurezza per regole che non producono più date utili.
 const MAX_STEPS: u32 = 10_000;
+/// Passi massimi per elencare le occorrenze di una serie (un evento
+/// giornaliero per oltre 500 anni).
+const MAX_OCCURRENCE_STEPS: u32 = 200_000;
+/// Distanza massima tra due occorrenze (ogni 99 anni, con margine).
+const MAX_GAP_DAYS: i64 = 36_600;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -141,6 +146,38 @@ impl Recurrence {
         }
     }
 
+    /// Occorrenze della serie che parte da `anchor` (la prima occorrenza)
+    /// comprese tra `from` e `to`, al massimo `limit`.
+    pub fn occurrences(&self, anchor: Date, from: Date, to: Date, limit: usize) -> Vec<Date> {
+        let until = self.until_date();
+        let mut found = Vec::new();
+        let mut candidate = anchor;
+        for _ in 0..MAX_OCCURRENCE_STEPS {
+            if candidate > to || until.is_some_and(|until| candidate > until) {
+                break;
+            }
+            if candidate >= from {
+                found.push(candidate);
+                if found.len() >= limit {
+                    break;
+                }
+            }
+            match self.step(anchor, candidate) {
+                Some(next) => candidate = next,
+                None => break,
+            }
+        }
+        found
+    }
+
+    /// Prima occorrenza della serie (da `anchor`) strettamente dopo `current`,
+    /// entro la data di fine. `None` se la serie è finita.
+    pub fn after(&self, anchor: Date, current: Date) -> Option<Date> {
+        let next = current.checked_add(1.day()).ok()?;
+        let far = next.checked_add(MAX_GAP_DAYS.days()).ok()?;
+        self.occurrences(anchor, next, far, 1).into_iter().next()
+    }
+
     /// Occorrenza successiva a `current` nella serie che parte da `anchor`.
     fn step(&self, anchor: Date, current: Date) -> Option<Date> {
         let interval = i64::from(self.interval);
@@ -190,6 +227,72 @@ impl Recurrence {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn occurrences_in_a_range_follow_the_rule_and_end() {
+        let mut weekly = rule(Frequency::Weekly, 2);
+        weekly.weekdays = vec![1, 3];
+        let weekly = weekly.validated(date("2026-03-02")).expect("valid");
+        assert_eq!(
+            weekly.occurrences(
+                date("2026-03-02"),
+                date("2026-03-01"),
+                date("2026-03-31"),
+                50
+            ),
+            [
+                date("2026-03-02"),
+                date("2026-03-04"),
+                date("2026-03-16"),
+                date("2026-03-18"),
+                date("2026-03-30")
+            ]
+        );
+        let mut monthly = rule(Frequency::Monthly, 1)
+            .validated(date("2026-01-31"))
+            .expect("valid");
+        monthly.until = Some("2026-04-30".to_owned());
+        assert_eq!(
+            monthly.occurrences(
+                date("2026-01-31"),
+                date("2026-02-01"),
+                date("2026-12-31"),
+                50
+            ),
+            [date("2026-02-28"), date("2026-03-31"), date("2026-04-30")]
+        );
+        assert_eq!(
+            monthly.after(date("2026-01-31"), date("2026-03-31")),
+            Some(date("2026-04-30"))
+        );
+        assert_eq!(monthly.after(date("2026-01-31"), date("2026-04-30")), None);
+        // Serie vecchia di anni: le occorrenze di oggi si trovano comunque.
+        let daily = rule(Frequency::Daily, 1)
+            .validated(date("2000-01-01"))
+            .expect("valid");
+        assert_eq!(
+            daily
+                .occurrences(
+                    date("2000-01-01"),
+                    date("2026-06-01"),
+                    date("2026-06-03"),
+                    50
+                )
+                .len(),
+            3
+        );
+        assert_eq!(
+            daily
+                .occurrences(
+                    date("2000-01-01"),
+                    date("2026-06-01"),
+                    date("2026-06-30"),
+                    5
+                )
+                .len(),
+            5
+        );
+    }
 
     fn date(value: &str) -> Date {
         value.parse().expect("date")

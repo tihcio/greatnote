@@ -414,6 +414,25 @@ locali.
   Play limita questo permesso alle app che ne hanno bisogno per la loro
   funzione principale.
 
+## Modalità in background (desktop)
+
+Vedi ADR 0031.
+
+- Spenta per impostazione predefinita. Attiva, Greatnote resta in
+  esecuzione con un'icona nell'area di notifica: i dati sono gli stessi
+  dell'app aperta, nessun servizio separato o porta di rete.
+- L'avvio all'accesso scrive solo nella configurazione dell'utente
+  (`~/.config/autostart/dev.greatnote.notes.desktop` su Linux, valore
+  `Greatnote` in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+  su Windows), con il percorso dell'eseguibile tra virgolette ed escape
+  secondo la specifica dei file `.desktop`. Disattivandolo la voce viene
+  rimossa; disinstallando l'app su Linux il file resta (punta a un
+  eseguibile che non c'è più e non ha effetti).
+- Una sola istanza (plugin single-instance): su Linux il plugin usa un nome
+  sul bus D-Bus di sessione, su Windows un mutex con nome; una seconda
+  copia trasmette solo i suoi argomenti alla prima, che li usa unicamente
+  per decidere se mostrare la finestra.
+
 ## Android (in sviluppo)
 
 La versione Android non è ancora distribuita; queste sono le scelte già

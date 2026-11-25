@@ -923,6 +923,44 @@ try {
     if (!options.some((text) => text.includes("anna@example.com"))) throw new Error(`calendari: ${options}`);
     await page.keyboard.press("Escape");
   });
+  await step("calendario-evento-ricorrente", async () => {
+    await page.keyboard.press("Escape");
+    await clickText(".navigation-item", "Calendario");
+    await pause(400);
+    await clickText(".calendar-controls .segment", "Settimana");
+    await pause(300);
+    // L'occorrenza ha il simbolo della ripetizione.
+    await expectVisible(".time-grid-event .event-repeat");
+    await clickText(".time-grid-event", "Palestra");
+    await pause(300);
+    const weekly = await page.$$eval(".planner-dialog .chip", (chips) =>
+      chips.filter((chip) => chip.getAttribute("aria-pressed") === "true").map((chip) => chip.textContent),
+    );
+    if (!weekly.includes("Ogni settimana")) throw new Error(`ripetizione mostrata: ${weekly}`);
+    // Eliminare un'occorrenza chiede cosa eliminare.
+    await page.evaluate(() => {
+      window.__SMOKE_LOG__.length = 0;
+    });
+    await clickText(".planner-dialog .dialog-cancel-button", "Sposta nel cestino");
+    await expectVisible(".occurrence-scope");
+    await clickText(".occurrence-scope button", "Solo questa occorrenza");
+    await pause(300);
+    let log = await page.evaluate(() => window.__SMOKE_LOG__.join("\n"));
+    if (!log.includes("skip_event_occurrence")) throw new Error(`occorrenza non tolta: ${log}`);
+    if (log.includes("move_item_to_trash")) throw new Error("serie spostata nel cestino");
+    // Nuovo evento ricorrente.
+    await clickText(".calendar-controls .primary-action", "Nuovo evento");
+    await pause(300);
+    await page.type(".planner-dialog input[maxlength='512']", "Corso di inglese");
+    await clickText(".planner-dialog .chip", "Ogni settimana");
+    await page.screenshot({ path: `${output}/evento-ricorrente.png` });
+    await clickText(".planner-dialog .dialog-submit-button", "Salva");
+    await pause(300);
+    log = await page.evaluate(() => window.__SMOKE_LOG__.join("\n"));
+    if (!log.includes('create_event:{"frequency":"weekly"')) throw new Error(`regola non inviata: ${log}`);
+    await clickText(".calendar-controls .segment", "Mese");
+    await pause(200);
+  });
   await step("impostazioni-calendari-esterni", async () => {
     await keys("Control", "Comma");
     await clickText(".settings-nav-item", "Integrazioni");
@@ -1137,6 +1175,21 @@ try {
     // L'importazione si apre dentro le impostazioni, nella sezione "Dati".
     const current = await page.$eval(".settings-nav-item.selected", (element) => element.textContent ?? "");
     if (current !== "Dati") throw new Error(`sezione selezionata: ${current}`);
+  });
+  await step("impostazioni-in-background", async () => {
+    await clickText(".settings-nav-item", "Generali");
+    await pause(200);
+    await expectVisible(".background-settings");
+    const autostart = () =>
+      page.$$eval(".background-settings input", (inputs) => inputs.map((input) => input.disabled));
+    // L'avvio all'accesso si sceglie solo con la modalità attiva.
+    if (!(await autostart())[1]) throw new Error("avvio all'accesso attivo senza modalità in background");
+    await clickText(".background-settings .checkbox-field", "Resta attivo");
+    await pause(200);
+    await clickText(".background-settings .checkbox-field", "Avvia all'accesso");
+    await pause(200);
+    const log = await page.evaluate(() => window.__SMOKE_LOG__.join("\n"));
+    if (!log.includes('background:{"enabled":true,"autostart":true}')) throw new Error(`preferenze: ${log}`);
   });
   await step("impostazioni-dati-integrate", async () => {
     await clickText(".settings-nav-item", "Generali");

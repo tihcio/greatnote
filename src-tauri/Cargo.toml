@@ -1,6 +1,6 @@
 [package]
 name = "greatnote-desktop"
-version = "0.2.12"
+version = "0.2.13"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "Tauri desktop shell for Greatnote"
@@ -18,7 +18,8 @@ greatnote-core = { path = ".." }
 # Chiave API dei provider AI nel portachiavi di sistema (Secret Service su
 # Linux, Credential Manager su Windows), mai su file.
 keyring = { version = "4.2", default-features = false, features = ["v1"] }
-tauri = { version = "2", features = [] }
+# `tray-icon`: icona nell'area di notifica della modalità in background.
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
@@ -53,13 +54,17 @@ dirs = "7"
 # aggiornamenti sono installer .exe/.msi o AppImage non compressi, e
 # l'estrazione di archivi (zip 4.x, RUSTSEC-2026-0367/0368/0369) resta fuori.
 tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
+# Modalità in background (src/background.rs): una sola istanza, così aprire
+# di nuovo Greatnote mostra la finestra di quella già attiva invece di
+# avviare un secondo processo sullo stesso database.
+tauri-plugin-single-instance = "2"
 
 # Pacchetto MSIX del Microsoft Store (ADR 0029): identità del pacchetto e
 # notifiche con il suo AppUserModelID (notify-rust è già usato dal plugin
 # delle notifiche su Windows).
 [target.'cfg(windows)'.dependencies]
 notify-rust = "4.18"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_Packaging_Appx"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_Packaging_Appx", "Win32_System_Registry"] }
 # Esportazione PDF con `PrintToPdf` di WebView2 (src/pdf_export.rs), alle
 # stesse versioni già usate da wry.
 webview2-com = "0.39"

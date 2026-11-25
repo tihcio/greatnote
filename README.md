@@ -108,7 +108,9 @@ Prima della build viene eseguito `scripts/fetch-llama.sh`, che scarica una
 volta la build di llama.cpp prevista, ne verifica lo SHA-256 e la prepara in
 `src-tauri/resources/llama/` (in cache in `target/llama-dist/`).
 L'RPM installa il motore in `/usr/lib/Greatnote/llama/` e richiede
-`vulkan-loader` e `openssl-libs`. I modelli scaricati restano nella cartella
+`vulkan-loader`, `openssl-libs` e `libayatana-appindicator-gtk3` (icona
+nell'area di notifica della modalità in background; il `.deb` richiede
+`libayatana-appindicator3-1`). I modelli scaricati restano nella cartella
 dati locale anche dopo la disinstallazione.
 
 ### Windows

@@ -102,6 +102,7 @@ fn library_round_trip_is_complete_and_idempotent() {
             end: "2026-10-23".to_owned(),
             timezone: Some("Europe/Rome".to_owned()),
             note_id: Some(note.id.clone()),
+            recurrence: None,
         })
         .expect("event");
     let now = "2026-10-20T10:00:00Z".parse().expect("now");

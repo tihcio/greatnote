@@ -6881,24 +6881,24 @@ button.time-grid-day-name:hover {
   color: var(--soft-ink);
 }
 
-.task-form .repeat-options {
+.repeat-options {
   display: grid;
   gap: 8px;
   margin-top: 6px;
 }
 
-.task-form .repeat-interval {
+.repeat-interval {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.task-form .repeat-interval input {
+.repeat-interval input {
   width: 4.5em;
 }
 
-.task-form .repeat-days small,
-.task-form .repeat-options .dialog-field small {
+.repeat-days small,
+.repeat-options .dialog-field small {
   color: var(--muted);
 }
 
@@ -7066,4 +7066,34 @@ button.time-grid-day-name:hover {
 
 .table-size-dialog .checkbox-field {
   font-size: 13px;
+}
+
+/* Occorrenze di eventi ricorrenti. */
+.event-repeat {
+  opacity: 0.75;
+}
+
+.occurrence-scope {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ground);
+}
+
+.occurrence-scope p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.occurrence-scope-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.reminder-repeat {
+  color: var(--muted);
 }
