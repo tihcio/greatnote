@@ -1072,11 +1072,15 @@ fn library_files(shared: &Path) -> Vec<(String, Vec<u8>)> {
             if path.is_dir() {
                 walk(root, &path, files);
             } else {
+                // Sempre con `/`, come i percorsi della libreria, anche su
+                // Windows.
                 let relative = path
                     .strip_prefix(root)
                     .expect("relative")
-                    .display()
-                    .to_string();
+                    .components()
+                    .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/");
                 files.push((relative, fs::read(&path).expect("read")));
             }
         }
