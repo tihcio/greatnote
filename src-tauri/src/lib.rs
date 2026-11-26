@@ -5,6 +5,7 @@ mod calendar_commands;
 mod data_commands;
 mod file_access;
 mod mcp_commands;
+mod meeting_commands;
 mod msix;
 mod pdf_export;
 mod planner_commands;
@@ -555,7 +556,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_notification::init());
+        .plugin(tauri_plugin_notification::init())
+        // Microfono solo per la registrazione chiesta dall'utente, mai la
+        // fotocamera (ADR 0035).
+        .on_permission_request(meeting_commands::permission);
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     // Lettura e scrittura dei documenti scelti dall'utente (content URI).
@@ -589,6 +593,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             ai_commands::spawn_auto_indexer(app.handle());
             calendar_commands::spawn_calendar_sync(app.handle());
             sync_commands::spawn_sync_loop(app.handle());
+            meeting_commands::enable_media_stream(app.handle());
             #[cfg(desktop)]
             mcp_commands::spawn_request_watcher(app.handle());
             // Desktop: plugin updater (ADR 0023). Android: APK della release
@@ -759,6 +764,13 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             mcp_commands::set_mcp_enabled,
             mcp_commands::set_mcp_allow_write,
             mcp_commands::set_mcp_allow_destructive,
+            meeting_commands::allow_microphone,
+            meeting_commands::start_recording,
+            meeting_commands::append_recording,
+            meeting_commands::list_recordings,
+            meeting_commands::delete_recording,
+            meeting_commands::export_recording,
+            ai_commands::transcribe_recording,
             mcp_commands::list_mcp_requests,
             mcp_commands::approve_mcp_request,
             mcp_commands::reject_mcp_request,

@@ -10,6 +10,7 @@ pub mod l10n;
 pub mod library;
 pub mod mcp;
 pub mod mcp_requests;
+pub mod meeting;
 pub mod ocr;
 pub mod planner;
 pub mod search;

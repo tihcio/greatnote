@@ -76,6 +76,7 @@ export interface MenuContext {
   runBlockCommand: (command: BlockCommand) => void;
   noteInfo: () => void;
   noteHistory: () => void;
+  recordMeeting: () => void;
   saveAsTemplate: () => void;
   trashNote: () => void;
 
@@ -170,6 +171,7 @@ export function noteItems(context: MenuContext): MenuEntry[] {
       enabled: note && editable,
     }),
     item("note-history", t.menuNoteHistory, context.noteHistory, { enabled: note && editable }),
+    item("record-meeting", t.menuRecordMeeting, context.recordMeeting, { enabled: !note || editable }),
     separator,
     item("trash-note", t.moveToTrash, context.trashNote, {
       accelerator: "Del",

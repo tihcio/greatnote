@@ -99,6 +99,23 @@ pub trait AiProvider: Send + Sync {
             "this provider cannot read images"
         )))
     }
+
+    /// Trascrive un tratto di audio (WAV) con un modello che capisce
+    /// l'audio. `instructions` sono le istruzioni di sistema, `request` la
+    /// richiesta.
+    fn transcribe_audio(
+        &self,
+        _model: &str,
+        _instructions: &str,
+        _request: &str,
+        _wav: &[u8],
+        _cancel: &AtomicBool,
+    ) -> Result<String, AiError> {
+        Err(AiError::NotConfigured(crate::tr_str!(
+            "questo provider non può trascrivere l'audio",
+            "this provider cannot transcribe audio"
+        )))
+    }
 }
 
 /// Chiave API in memoria: non compare in `Debug` né nei log.
@@ -287,31 +304,28 @@ fn read_json(mut response: ureq::http::Response<ureq::Body>) -> Result<Value, Ai
     })
 }
 
-impl AiProvider for OpenAiCompatible {
-    fn read_image(
+impl OpenAiCompatible {
+    /// Richiesta non in streaming con un contenuto multimodale; restituisce
+    /// il testo della risposta (il ragionamento separato dal server non
+    /// viene letto).
+    fn multimodal(
         &self,
         model: &str,
         instructions: &str,
         request: &str,
-        image: &[u8],
-        mime: &str,
+        part: Value,
         cancel: &AtomicBool,
     ) -> Result<String, AiError> {
-        use base64::Engine as _;
         if cancel.load(Ordering::Relaxed) {
             return Err(AiError::Cancelled);
         }
-        let data = base64::engine::general_purpose::STANDARD.encode(image);
         let body = json!({
             "model": model,
             "temperature": 0,
             "stream": false,
             "messages": [
                 { "role": "system", "content": instructions },
-                { "role": "user", "content": [
-                    { "type": "text", "text": request },
-                    { "type": "image_url", "image_url": { "url": format!("data:{mime};base64,{data}") } }
-                ] }
+                { "role": "user", "content": [ { "type": "text", "text": request }, part ] }
             ],
         });
         let value = read_json(self.post("chat/completions", &body)?)?;
@@ -330,6 +344,47 @@ impl AiProvider for OpenAiCompatible {
         let mut output = OutputFilter::default();
         output.push(content, &mut |_| {})?;
         output.finish()
+    }
+}
+
+impl AiProvider for OpenAiCompatible {
+    fn transcribe_audio(
+        &self,
+        model: &str,
+        instructions: &str,
+        request: &str,
+        wav: &[u8],
+        cancel: &AtomicBool,
+    ) -> Result<String, AiError> {
+        use base64::Engine as _;
+        let data = base64::engine::general_purpose::STANDARD.encode(wav);
+        self.multimodal(
+            model,
+            instructions,
+            request,
+            json!({ "type": "input_audio", "input_audio": { "data": data, "format": "wav" } }),
+            cancel,
+        )
+    }
+
+    fn read_image(
+        &self,
+        model: &str,
+        instructions: &str,
+        request: &str,
+        image: &[u8],
+        mime: &str,
+        cancel: &AtomicBool,
+    ) -> Result<String, AiError> {
+        use base64::Engine as _;
+        let data = base64::engine::general_purpose::STANDARD.encode(image);
+        self.multimodal(
+            model,
+            instructions,
+            request,
+            json!({ "type": "image_url", "image_url": { "url": format!("data:{mime};base64,{data}") } }),
+            cancel,
+        )
     }
 
     fn provenance(&self, model: &str) -> Provenance {
@@ -803,6 +858,37 @@ mod tests {
             .as_str()
             .expect("url");
         assert!(url.starts_with("data:image/png;base64,"));
+    }
+
+    #[test]
+    fn audio_is_sent_as_input_audio_and_reasoning_is_ignored() {
+        let server = respond_with(vec![(
+            200,
+            "application/json",
+            r#"{"choices":[{"message":{"content":"Buongiorno a tutti.","reasoning_content":"The user wants a transcription"}}]}"#.to_owned(),
+        )]);
+        let provider = provider(&server.base_url, None);
+        let text = provider
+            .transcribe_audio(
+                "audio",
+                "istruzioni",
+                "trascrivi",
+                b"RIFF\0\0\0\0WAVE",
+                &AtomicBool::new(false),
+            )
+            .expect("transcribe");
+        assert_eq!(text, "Buongiorno a tutti.");
+        let body: Value =
+            serde_json::from_str(&server.requests.lock().expect("lock")[0].body).expect("json");
+        assert_eq!(body["model"], "audio");
+        let part = &body["messages"][1]["content"][1];
+        assert_eq!(part["type"], "input_audio");
+        assert_eq!(part["input_audio"]["format"], "wav");
+        assert_eq!(part["input_audio"]["data"], "UklGRgAAAABXQVZF");
+        assert!(matches!(
+            provider.transcribe_audio("audio", "", "", b"x", &AtomicBool::new(true)),
+            Err(AiError::Cancelled)
+        ));
     }
 
     #[test]

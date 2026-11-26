@@ -7109,3 +7109,113 @@ button.time-grid-day-name:hover {
 .reminder-repeat {
   color: var(--muted);
 }
+
+/* Registrazione delle riunioni (ADR 0035): in basso a sinistra, non copre
+   l'editor né i promemoria. */
+.meeting-recorder {
+  position: fixed;
+  z-index: 17;
+  left: 18px;
+  bottom: 18px;
+  display: grid;
+  width: min(380px, calc(100vw - 36px));
+  gap: 10px;
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--paper);
+  box-shadow: 0 16px 40px rgb(14 20 13 / 22%);
+  color: var(--ink);
+}
+
+.meeting-recorder.live {
+  border-color: color-mix(in srgb, var(--error) 55%, var(--line));
+}
+
+.meeting-recorder header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.recording-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--error);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.recording-badge.footer {
+  font-size: 12px;
+}
+
+.recording-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--error);
+  animation: recording-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recording-dot {
+    animation: none;
+  }
+}
+
+.recorder-level {
+  overflow: hidden;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--hover);
+}
+
+.recorder-level span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 80ms linear;
+}
+
+.meeting-recorder progress {
+  width: 100%;
+}
+
+.recorder-preview {
+  max-height: 140px;
+  overflow: auto;
+  font-size: 12.5px;
+}
+
+.recorder-preview p {
+  margin: 0 0 6px;
+}
+
+.recorder-time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.recorder-saved ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+}
+
+.recorder-saved li {
+  display: grid;
+  gap: 2px;
+}

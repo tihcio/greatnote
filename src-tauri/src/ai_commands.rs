@@ -1458,3 +1458,98 @@ mod tests {
         assert!(matches!(entry.get_password(), Err(keyring::Error::NoEntry)));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Trascrizione delle riunioni (ADR 0035)
+
+/// Avanzamento della trascrizione: tratti fatti su quelli da fare e
+/// l'ultimo tratto con testo.
+#[derive(Debug, Clone, Serialize)]
+pub struct TranscriptionProgress {
+    pub done: usize,
+    pub total: usize,
+    pub segment: Option<greatnote_core::meeting::TranscriptSegment>,
+}
+
+/// Modello per l'audio secondo il provider: quello scelto per l'audio; con
+/// i server compatibili OpenAI, se manca, quello della chat.
+fn audio_model(settings: &AiSettings) -> CommandResult<String> {
+    match settings.provider {
+        ProviderKind::ClaudeCode => Err(message(AiError::NotConfigured(greatnote_core::tr_str!(
+            "Claude Code non trascrive l'audio: usa il motore integrato o un server compatibile OpenAI",
+            "Claude Code does not transcribe audio: use the built-in engine or an OpenAI-compatible server"
+        )))),
+        ProviderKind::Builtin if settings.audio_model.is_empty() => {
+            Err(message(AiError::NotConfigured(greatnote_core::tr_str!(
+                "scegli e scarica un modello per l'audio nelle impostazioni AI",
+                "choose and download a model for audio in AI settings"
+            ))))
+        }
+        _ if !settings.audio_model.is_empty() => Ok(settings.audio_model.clone()),
+        _ => settings
+            .ensure_chat_model()
+            .map(str::to_owned)
+            .map_err(message),
+    }
+}
+
+/// Trascrive una registrazione con il provider AI configurato. L'audio non
+/// esce dal dispositivo con il motore integrato o un server locale; per un
+/// server remoto serve il consenso delle impostazioni AI, e una nota di un
+/// taccuino escluso non viene mai trascritta.
+#[tauri::command]
+pub async fn transcribe_recording(
+    app: AppHandle,
+    request_id: String,
+    id: String,
+    on_progress: Channel<TranscriptionProgress>,
+) -> CommandResult<Vec<greatnote_core::meeting::TranscriptSegment>> {
+    blocking(app, move |app| {
+        let jobs = app.state::<AiJobs>();
+        let guard = jobs.begin(&request_id)?;
+        let database = app.state::<Database>();
+        let settings = database.ai_settings().map_err(message)?;
+        let endpoint = settings.ensure_usable().map_err(message)?;
+        let directory = data_directory(&database)?;
+        let recording = greatnote_core::meeting::list(&directory)
+            .map_err(message)?
+            .into_iter()
+            .find(|recording| recording.id == id)
+            .ok_or_else(|| message(greatnote_core::meeting::MeetingError::NotFound))?;
+        if let Some(note_id) = &recording.note_id
+            && let Ok(note) = database.get_note(note_id)
+            && settings.is_excluded(note.notebook_id.as_deref())
+        {
+            return Err(message(AiError::ExcludedNote));
+        }
+        let model = audio_model(&settings)?;
+        let provider = provider_for(&settings, endpoint)?;
+        let english = language(app) == Language::En;
+        let started = std::time::Instant::now();
+        let result = greatnote_core::meeting::transcribe(
+            &directory,
+            &id,
+            provider.as_ref(),
+            &model,
+            english,
+            &guard.cancel,
+            &mut |done, total, segment| {
+                let _ = on_progress.send(TranscriptionProgress {
+                    done,
+                    total,
+                    segment: segment.cloned(),
+                });
+            },
+        );
+        match &result {
+            Ok(segments) => tracing::info!(
+                segments = segments.len(),
+                seconds = started.elapsed().as_secs(),
+                "registrazione trascritta"
+            ),
+            Err(error) => tracing::warn!("trascrizione non riuscita: {error}"),
+        }
+        result.map_err(message)
+    })
+    .await
+}

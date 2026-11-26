@@ -16,6 +16,8 @@ export interface AiSettings {
   ocr_engine: "ai" | "tesseract";
   ocr_on_attach: boolean;
   vision_model: string;
+  /** Modello per trascrivere le registrazioni. */
+  audio_model: string;
   vision_max_side: number;
   use_api_key: boolean;
   remote_consent: boolean;
@@ -197,7 +199,7 @@ export const IMAGE_TEXT_FINISHED_EVENT = "image-text-finished";
 export const INDEX_PROGRESS_EVENT = "ai-index-progress";
 export const INDEX_FINISHED_EVENT = "ai-index-finished";
 
-export type BuiltinRole = "chat" | "embedding" | "vision";
+export type BuiltinRole = "chat" | "embedding" | "vision" | "audio";
 
 /** Modello del catalogo del motore integrato (ADR 0020). */
 export interface BuiltinModel {

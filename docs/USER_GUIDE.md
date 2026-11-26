@@ -673,6 +673,60 @@ richieste e si disattiva o si cancella nelle impostazioni AI.
 L'AI non modifica mai le note da sola e può sbagliare: controlla i risultati
 e usa le fonti citate per verificarli.
 
+## Registrare e trascrivere una riunione
+
+Greatnote può registrare una riunione e scriverne la trascrizione nella nota,
+con un modello AI che capisce l'audio.
+
+**Prima volta.** In **Impostazioni › Intelligenza artificiale**, con il
+motore integrato, scegli un modello per **Audio (trascrizione delle
+riunioni)**. Gemma 4 E2B è consigliato e usa gli stessi file del modello per
+le immagini: se l'hai già scaricato non serve altro. Con un server
+compatibile OpenAI serve un modello che accetti l'audio. Claude Code non
+trascrive l'audio.
+
+1. Apri la nota della riunione e scegli **Nota › Registra riunione…**. Senza
+   una nota aperta ne viene creata una nuova.
+2. Nel pannello in basso a sinistra scegli il **microfono** e controlla che
+   la barra del livello si muova quando parli. La prima volta il sistema può
+   chiedere il permesso di usare il microfono.
+3. Conferma di **aver informato i partecipanti** e premi **Avvia la
+   registrazione**. Finché registra vedi un punto rosso con il tempo, nel
+   pannello e in basso nella nota. Puoi continuare a scrivere nella nota e
+   usare **Pausa** e **Riprendi**.
+4. Premi **Termina e trascrivi**. Il pannello mostra l'avanzamento; alla fine
+   la trascrizione compare in fondo alla nota, con l'ora di ogni tratto
+   (`[00:22]`).
+5. Con **Riassumi** o **Estrai decisioni e azioni** l'assistente lavora solo
+   sulla trascrizione e ti mostra il risultato prima di inserirlo.
+
+**L'audio:**
+- resta sul dispositivo, nella cartella dati di Greatnote, finché non premi
+  **Elimina l'audio**. La trascrizione già inserita resta nella nota;
+- si può salvare in un file WAV con **Esporta l'audio…**;
+- non entra nei backup né nella sincronizzazione;
+- con il motore integrato non lascia il computer. Con un server remoto valgono
+  le stesse regole e lo stesso consenso delle altre funzioni AI, e le note
+  dei taccuini esclusi non vengono trascritte.
+
+**Se qualcosa va storto.** L'audio viene salvato ogni pochi secondi: se l'app
+si chiude durante la registrazione, o la trascrizione non riesce, lo ritrovi
+in **Registrazioni salvate** nel pannello, da trascrivere, esportare o
+eliminare.
+
+**Da sapere:**
+- **Consenso dei partecipanti.** Registrare una conversazione può richiedere
+  il loro consenso. Informali sempre prima di iniziare.
+- **Qualità.** La trascrizione è buona ma non perfetta: controlla nomi
+  propri, cifre e date. Il supporto audio del motore integrato è ancora
+  sperimentale, e senza scheda video la trascrizione richiede più tempo
+  della durata della riunione.
+- **Parlanti.** La trascrizione non distingue chi parla.
+- **Durata.** Al massimo 4 ore per registrazione.
+- **Linux.** Il microfono passa da GStreamer: se non funziona, installa i
+  plugin per PipeWire o PulseAudio (su Fedora `gstreamer1-plugins-good` e
+  `pipewire-gstreamer`).
+
 ## Calendari iCal (Google, Outlook e altri, in sola lettura)
 
 Puoi vedere nel calendario di Greatnote gli appuntamenti di Google Calendar,

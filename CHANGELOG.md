@@ -34,6 +34,14 @@ Le modifiche rilevanti sono registrate per rilascio.
   invece di tenerne una e mettere l'altra nella cronologia. Lo stesso
   paragrafo cambiato su entrambi resta un conflitto da controllare, come
   prima.
+- **Registrazione e trascrizione delle riunioni.** Nota › Registra
+  riunione… apre un pannello: scegli e provi il microfono, confermi di aver
+  informato i partecipanti e registri mentre continui a scrivere nella nota.
+  Alla fine la trascrizione, con l'ora di ogni tratto, entra in fondo alla
+  nota, e l'assistente può riassumerla o estrarne decisioni e azioni. Con il
+  motore integrato tutto resta sul computer: basta Gemma 4 E2B, lo stesso
+  modello delle immagini. L'audio resta sul dispositivo finché non lo
+  elimini, ed è salvato ogni pochi secondi.
 - Test dell'interfaccia: il clic sulla griglia oraria evita la barra di
   scorrimento (falliva a certe ore del giorno).
 

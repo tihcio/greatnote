@@ -32,17 +32,31 @@ pub enum ModelRole {
     Embedding,
     /// Lettura del testo nelle immagini.
     Vision,
+    /// Trascrizione delle registrazioni (riunioni).
+    Audio,
 }
 
 impl ModelRole {
-    pub const ALL: [ModelRole; 3] = [ModelRole::Chat, ModelRole::Embedding, ModelRole::Vision];
+    pub const ALL: [ModelRole; 4] = [
+        ModelRole::Chat,
+        ModelRole::Embedding,
+        ModelRole::Vision,
+        ModelRole::Audio,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
             ModelRole::Chat => "chat",
             ModelRole::Embedding => "embedding",
             ModelRole::Vision => "vision",
+            ModelRole::Audio => "audio",
         }
+    }
+
+    /// Immagini e audio arrivano al modello tramite il proiettore
+    /// multimodale.
+    pub fn needs_projector(self) -> bool {
+        matches!(self, ModelRole::Vision | ModelRole::Audio)
     }
 
     pub fn parse(value: &str) -> Option<Self> {
@@ -107,7 +121,7 @@ pub struct CatalogModel {
     /// Parti successive di un modello diviso (`-00002-of-00003.gguf`...).
     #[serde(default)]
     pub parts: Vec<ModelFile>,
-    /// Proiettore multimodale (solo per i modelli con visione).
+    /// Proiettore multimodale (solo per visione e audio).
     pub projector: Option<ModelFile>,
     pub source: ModelSource,
 }
@@ -129,7 +143,7 @@ impl CatalogModel {
 
     /// Coerenza di un modello letto dal disco o costruito dai dati di
     /// Hugging Face: id del ruolo giusto, file validi e proiettore solo per
-    /// la visione.
+    /// visione e audio.
     pub fn is_valid(&self) -> bool {
         let id_ok = match &self.source {
             ModelSource::Curated => true,
@@ -145,7 +159,7 @@ impl CatalogModel {
             && self.name.chars().count() <= 200
             && self.license.chars().count() <= 60
             && self.parts.len() <= 64
-            && self.projector.is_some() == (self.role == ModelRole::Vision)
+            && self.projector.is_some() == self.role.needs_projector()
             && self.files().all(ModelFile::is_valid)
     }
 }
@@ -367,6 +381,19 @@ static CURATED: LazyLock<Vec<CatalogModel>> = LazyLock::new(|| {
             "Apache 2.0",
             4.5,
             false,
+            gemma4_e2b.clone(),
+            Some(gemma4_e2b_projector.clone()),
+        ),
+        // Gemma 4 E2B capisce anche l'audio, con lo stesso proiettore: chi
+        // usa già il modello per chat o immagini non scarica nulla.
+        // Provato con llama.cpp b11397 (ADR 0035).
+        curated_model(
+            "gemma-4-e2b-audio",
+            ModelRole::Audio,
+            "Gemma 4 E2B",
+            "Apache 2.0",
+            4.5,
+            true,
             gemma4_e2b,
             Some(gemma4_e2b_projector),
         ),

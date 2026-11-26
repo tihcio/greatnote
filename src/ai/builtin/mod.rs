@@ -33,10 +33,11 @@ pub const BUILTIN_HOST: &str = "Greatnote (integrato)";
 pub struct BuiltinProvider {
     runtime: Arc<BuiltinRuntime>,
     chat_context_tokens: u32,
-    /// Modello per le immagini scelto nelle impostazioni: se usa lo stesso
-    /// file della chat, la chat usa lo stesso processo (con il proiettore)
-    /// invece di caricare il modello due volte.
+    /// Modelli per immagini e audio scelti nelle impostazioni: se usano lo
+    /// stesso file della chat (o tra loro), un solo processo con il
+    /// proiettore li serve tutti invece di caricare il modello più volte.
     vision_model: Option<CatalogModel>,
+    audio_model: Option<CatalogModel>,
     timeout: Duration,
 }
 
@@ -45,10 +46,14 @@ impl BuiltinProvider {
         let vision_model = runtime
             .store()
             .find_with_role(&settings.vision_model, ModelRole::Vision);
+        let audio_model = runtime
+            .store()
+            .find_with_role(&settings.audio_model, ModelRole::Audio);
         Self {
             runtime,
             chat_context_tokens: chat_context_tokens(settings.max_context_chars),
             vision_model,
+            audio_model,
             timeout,
         }
     }
@@ -70,12 +75,25 @@ impl BuiltinProvider {
                     "scegli un modello per leggere le immagini",
                     "choose a model for reading images"
                 ),
+                ModelRole::Audio => crate::tr_str!(
+                    "scegli e scarica un modello per trascrivere l'audio nelle impostazioni AI",
+                    "choose and download a model for transcribing audio in AI settings"
+                ),
             }))?;
-        let model = match &self.vision_model {
-            Some(vision) if role == ModelRole::Chat && vision.model == model.model => vision,
-            _ => &model,
-        };
-        Ok(ServerSpec::for_model(model, self.chat_context_tokens))
+        // Stesso file di un modello con proiettore già scelto: si usa la sua
+        // configurazione, quindi lo stesso processo (la visione per prima).
+        let shared = [&self.vision_model, &self.audio_model]
+            .into_iter()
+            .flatten()
+            .find(|candidate| {
+                role != ModelRole::Embedding
+                    && candidate.model == model.model
+                    && (model.projector.is_none() || candidate.projector == model.projector)
+            });
+        Ok(ServerSpec::for_model(
+            shared.unwrap_or(&model),
+            self.chat_context_tokens,
+        ))
     }
 
     fn client(
@@ -154,6 +172,19 @@ impl AiProvider for BuiltinProvider {
         let (_lease, client) = self.client(&spec, cancel)?;
         client.read_image(&spec.alias, instructions, request, image, mime, cancel)
     }
+
+    fn transcribe_audio(
+        &self,
+        model: &str,
+        instructions: &str,
+        request: &str,
+        wav: &[u8],
+        cancel: &AtomicBool,
+    ) -> Result<String, AiError> {
+        let spec = self.spec(model, ModelRole::Audio)?;
+        let (_lease, client) = self.client(&spec, cancel)?;
+        client.transcribe_audio(&spec.alias, instructions, request, wav, cancel)
+    }
 }
 
 #[cfg(test)]
@@ -185,6 +216,12 @@ mod tests {
         // Stessa configurazione: un solo processo per chat e immagini.
         assert!(chat.projector_file.is_some());
         assert_eq!(chat, vision);
+
+        // Audio e immagini con lo stesso modello: un solo processo.
+        let audio = shared
+            .spec("gemma-4-e2b-audio", ModelRole::Audio)
+            .expect("audio");
+        assert_eq!(audio, vision);
 
         let separate = provider("qwen3-vl-2b");
         let chat = separate.spec("gemma-4-e2b", ModelRole::Chat).expect("chat");

@@ -77,7 +77,7 @@ impl ServerSpec {
             context_tokens: match model.role {
                 ModelRole::Chat => chat_context_tokens,
                 ModelRole::Embedding => EMBEDDING_CONTEXT,
-                ModelRole::Vision => VISION_CONTEXT.max(chat_context_tokens),
+                ModelRole::Vision | ModelRole::Audio => VISION_CONTEXT.max(chat_context_tokens),
             },
             alias: model.id.clone(),
         }

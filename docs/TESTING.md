@@ -376,6 +376,31 @@ Verifica manuale nella finestra nativa: salvataggio e cancellazione della
 chiave nel portachiavi (KWallet/GNOME Keyring), indicizzazione con un
 modello di embedding reale, annullamento di una risposta lunga.
 
+## Registrazione e trascrizione delle riunioni
+
+- `src/meeting.rs`:
+  - registrazioni scritte, elencate, esportate in WAV (intestazione e
+    dimensione) ed eliminate;
+  - blocchi dispari, id con percorsi o inesistenti rifiutati;
+  - tratti tagliati nella pausa e mai oltre 30 secondi;
+  - silenzio non inviato, risposte «[silenzio]» scartate, avanzamento,
+    registrazione segnata come trascritta;
+  - solo silenzio: errore senza richieste; annullamento.
+- `src/ai/provider.rs`: audio inviato come `input_audio` WAV in base64, con
+  il ragionamento ignorato e l'annullamento.
+- `src/ai/builtin`: un solo processo per audio, immagini e chat con lo
+  stesso file; un modello consigliato per ruolo nel catalogo.
+- Interfaccia (`registra-riunione`): avvio impossibile senza il consenso dei
+  partecipanti, indicatore nel pannello e nella barra di stato, trascrizione
+  con i tempi inserita nella nota, eliminazione dell'audio con conferma,
+  microfono rilasciato.
+- Prova reale (`tests/ai_live.rs`, `local_server_transcribes_a_recording`)
+  con llama-server b11397, Gemma 4 E2B e il suo proiettore, su 75 secondi di
+  voce sintetica italiana (espeak-ng): 4 tratti tagliati nelle pause,
+  trascritti in 20 secondi con la GPU; testo fedele salvo qualche nome
+  proprio. Da fare a mano: microfono reale nella finestra nativa su Linux,
+  Windows e Android.
+
 ## Sincronizzazione
 
 Test in `src/sync/` con più dispositivi simulati (database su file distinti e

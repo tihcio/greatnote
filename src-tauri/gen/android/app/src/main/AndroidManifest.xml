@@ -5,6 +5,11 @@
          i permessi del plugin (POST_NOTIFICATIONS e riavvio), elencati in
          docs/ANDROID_PORTING.md. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Registrazione delle riunioni (ADR 0035): il microfono si apre solo
+         dal pannello della registrazione; Android chiede il permesso la
+         prima volta. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Aggiornamenti dall'app (update_commands_mobile.rs): apre
          l'installatore di sistema con l'APK della release. Android chiede
          all'utente di consentirlo la prima volta. Google Play non ammette

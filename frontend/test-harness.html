@@ -11,6 +11,21 @@
       // Non fa parte della build: Vite include solo index.html. Le risposte
       // sono dati sintetici, mai dati dell'utente.
       window.__SMOKE_LOG__ = [];
+      // Microfono finto: un tono generato, mai un microfono reale.
+      if (navigator.mediaDevices) {
+        navigator.mediaDevices.getUserMedia = async () => {
+          const context = new AudioContext();
+          const oscillator = context.createOscillator();
+          const destination = context.createMediaStreamDestination();
+          oscillator.connect(destination);
+          oscillator.start();
+          return destination.stream;
+        };
+        navigator.mediaDevices.enumerateDevices = async () => [
+          { kind: "audioinput", deviceId: "mic-1", label: "Microfono di prova", groupId: "g" },
+        ];
+      }
+      const recordings = [];
       const now = new Date().toISOString();
       const doc = (text) => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] });
       const notes = [
@@ -29,7 +44,7 @@
       const visits = notes.map((note) => note.id);
       let aiSettings = {
         enabled: true, provider: "openai-compatible", claude_path: "", base_url: "http://localhost:11434/v1", chat_model: "modello-finto", embedding_model: "embed-finto",
-        auto_index: false, keep_history: true, ocr_engine: "ai", ocr_on_attach: false, vision_model: "", vision_max_side: 1024, use_api_key: false, remote_consent: false, confirm_remote_sends: true, excluded_notebook_ids: [], planner_context: true, max_context_chars: 12000, timeout_seconds: 120,
+        auto_index: false, keep_history: true, ocr_engine: "ai", ocr_on_attach: false, vision_model: "", audio_model: "", vision_max_side: 1024, use_api_key: false, remote_consent: false, confirm_remote_sends: true, excluded_notebook_ids: [], planner_context: true, max_context_chars: 12000, timeout_seconds: 120,
       };
       // Calendario esterno simulato (nessun account reale).
       const today = now.slice(0, 10);
@@ -228,6 +243,42 @@
           return syncView;
         },
         sync_now: () => (syncView = { ...syncView, last_sync_at: now }),
+        allow_microphone: (args) => {
+          window.__SMOKE_LOG__.push(`microphone:${args.allowed}`);
+          return null;
+        },
+        list_recordings: () => recordings,
+        start_recording: (args) => {
+          const recording = { id: `rec-${recordings.length + 1}`, note_id: args.noteId, started_at: now, duration_seconds: 0, transcribed: false };
+          recordings.push(recording);
+          window.__SMOKE_LOG__.push(`recording:${args.noteId}`);
+          return recording;
+        },
+        append_recording: (args) => {
+          const recording = recordings.find((item) => item.id === args.id);
+          recording.duration_seconds += atob(args.data).length / 32000;
+          return recording.duration_seconds;
+        },
+        transcribe_recording: (args) => {
+          const segments = [
+            { start_seconds: 0, end_seconds: 22.4, text: "Buongiorno a tutti, oggi decidiamo il budget." },
+            { start_seconds: 22.4, end_seconds: 40, text: "Marco prepara il verbale entro venerdì." },
+          ];
+          stream(args.onProgress, [
+            { done: 0, total: 2, segment: null },
+            { done: 1, total: 2, segment: segments[0] },
+            { done: 2, total: 2, segment: segments[1] },
+          ]);
+          recordings.find((item) => item.id === args.id).transcribed = true;
+          window.__SMOKE_LOG__.push(`transcribe:${args.id}`);
+          return segments;
+        },
+        delete_recording: (args) => {
+          recordings.splice(recordings.findIndex((item) => item.id === args.id), 1);
+          window.__SMOKE_LOG__.push(`delete_recording:${args.id}`);
+          return null;
+        },
+        export_recording: () => "riunione.wav",
         unlock_sync: (args) => {
           if (args.passphrase !== "passphrase giusta e lunga") throw "Passphrase errata";
           return (syncView = { ...syncView, encrypted: true, passphrase_required: false, last_error: null });

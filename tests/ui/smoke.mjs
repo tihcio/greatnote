@@ -1229,6 +1229,41 @@ try {
     if (!destructive.includes("replace_note")) throw new Error("richieste da confermare non mostrate");
     await page.keyboard.press("Escape");
   });
+  await step("registra-riunione", async () => {
+    await openNote();
+    await clickText(".menu-bar-item", "Nota");
+    await clickText(".menu-item", "Registra riunione");
+    await pause(400);
+    await expectVisible(".meeting-recorder");
+    const start = await page.$(".meeting-recorder .data-action.primary");
+    if (!(await start.evaluate((button) => button.disabled))) throw new Error("avvio senza consenso dei partecipanti");
+    await clickText(".meeting-recorder .checkbox-field", "Ho informato");
+    await clickText(".meeting-recorder .data-action.primary", "Avvia la registrazione");
+    await pause(1200);
+    await expectVisible(".meeting-recorder.live .recording-badge");
+    await expectVisible(".editor-footer .recording-badge");
+    // Si scrive nella nota mentre registra.
+    await page.click(".ProseMirror");
+    await clickText(".meeting-recorder .data-action.primary", "Termina e trascrivi");
+    await pause(900);
+    const editorText = await page.$eval(".ProseMirror", (element) => element.textContent ?? "");
+    if (!editorText.includes("Trascrizione della riunione") || !editorText.includes("decidiamo il budget"))
+      throw new Error(`trascrizione non inserita: ${editorText}`);
+    if (!editorText.includes("[00:22]")) throw new Error(`tempi mancanti: ${editorText}`);
+    const panel = await page.$eval(".meeting-recorder", (element) => element.textContent ?? "");
+    if (!panel.includes("Trascrizione inserita")) throw new Error(`pannello: ${panel}`);
+    if (await page.$(".editor-footer .recording-badge")) throw new Error("indicatore rimasto dopo la registrazione");
+    await clickText(".meeting-recorder .data-action", "Elimina l'audio");
+    await pause(200);
+    await clickText(".confirm-dialog .dialog-submit-button", "Elimina l'audio");
+    await pause(300);
+    const log = await page.evaluate(() => window.__SMOKE_LOG__.join("\n"));
+    for (const expected of ["microphone:true", "recording:", "transcribe:rec-1", "delete_recording:rec-1", "microphone:false"])
+      if (!log.includes(expected)) throw new Error(`manca ${expected}: ${log}`);
+    await page.click('.meeting-recorder button[aria-label="Chiudi"]');
+    await pause(200);
+    if (await page.$(".meeting-recorder")) throw new Error("pannello non chiuso");
+  });
   await step("mcp-richiesta-da-confermare", async () => {
     // Una riscrittura e uno spostamento nel cestino arrivati dal client MCP.
     await page.evaluate(() => {

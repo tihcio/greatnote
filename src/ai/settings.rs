@@ -73,6 +73,9 @@ pub struct AiSettings {
     /// Modello con visione per i server compatibili OpenAI; vuoto: quello
     /// della chat.
     pub vision_model: String,
+    /// Modello che capisce l'audio, per trascrivere le registrazioni; vuoto
+    /// con i server compatibili OpenAI: quello della chat.
+    pub audio_model: String,
     /// Lato lungo massimo (pixel) delle immagini inviate ai modelli con
     /// visione: meno pixel, meno token di contesto.
     pub vision_max_side: u32,
@@ -107,6 +110,7 @@ impl Default for AiSettings {
             ocr_engine: OcrEngine::Ai,
             ocr_on_attach: false,
             vision_model: String::new(),
+            audio_model: String::new(),
             vision_max_side: 1024,
             use_api_key: false,
             remote_consent: false,
@@ -127,6 +131,7 @@ impl AiSettings {
         self.chat_model = validate_model(&self.chat_model)?;
         self.embedding_model = validate_model(&self.embedding_model)?;
         self.vision_model = validate_model(&self.vision_model)?;
+        self.audio_model = validate_model(&self.audio_model)?;
         if !(VISION_SIDE_RANGE.0..=VISION_SIDE_RANGE.1).contains(&self.vision_max_side) {
             return Err(AiError::InvalidSettings(crate::tr_str!(
                 "risoluzione delle immagini fuori dall'intervallo consentito",
@@ -156,6 +161,7 @@ impl AiSettings {
                 (&self.chat_model, ModelRole::Chat),
                 (&self.embedding_model, ModelRole::Embedding),
                 (&self.vision_model, ModelRole::Vision),
+                (&self.audio_model, ModelRole::Audio),
             ] {
                 if !model.is_empty() && !is_valid_model_id(model, role) {
                     return Err(AiError::InvalidSettings(crate::tr_str!(

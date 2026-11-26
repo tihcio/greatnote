@@ -364,3 +364,52 @@ fn builtin_engine_answers_and_embeds() {
     runtime.stop_all();
     assert_eq!(runtime.running(), 0);
 }
+
+/// Trascrizione reale di un file WAV (16 kHz, mono, 16 bit) con un server
+/// che capisce l'audio, per esempio `llama-server` con Gemma 4 E2B e il suo
+/// proiettore (ADR 0035). Usa solo audio di prova, mai registrazioni reali.
+///
+/// ```text
+/// GREATNOTE_AUDIO_URL=http://127.0.0.1:18573/v1 \
+/// GREATNOTE_AUDIO_MODEL=gemma \
+/// GREATNOTE_AUDIO_WAV=/percorso/prova16k.wav \
+/// cargo test --test ai_live audio -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "richiede un server con un modello audio e un file WAV di prova"]
+fn local_server_transcribes_a_recording() {
+    let url = std::env::var("GREATNOTE_AUDIO_URL").expect("GREATNOTE_AUDIO_URL");
+    let model = std::env::var("GREATNOTE_AUDIO_MODEL").unwrap_or_else(|_| "gemma".into());
+    let wav = std::fs::read(std::env::var("GREATNOTE_AUDIO_WAV").expect("GREATNOTE_AUDIO_WAV"))
+        .expect("wav");
+    assert_eq!(&wav[..4], b"RIFF");
+    let data = wav
+        .windows(4)
+        .position(|window| window == b"data")
+        .expect("data chunk")
+        + 8;
+    let directory = tempfile::tempdir().expect("dir");
+    let recording = greatnote_core::meeting::start(directory.path(), None).expect("start");
+    greatnote_core::meeting::append(directory.path(), &recording.id, &wav[data..]).expect("append");
+    let provider = OpenAiCompatible::new(
+        Endpoint::parse(&url).expect("url"),
+        None,
+        Duration::from_secs(600),
+    );
+    let started = std::time::Instant::now();
+    let transcript = greatnote_core::meeting::transcribe(
+        directory.path(),
+        &recording.id,
+        &provider,
+        &model,
+        false,
+        &AtomicBool::new(false),
+        &mut |done, total, _| println!("tratto {done}/{total}"),
+    )
+    .expect("transcribe");
+    for segment in &transcript {
+        println!("[{:>6.1}s] {}", segment.start_seconds, segment.text);
+    }
+    println!("{:.1} s", started.elapsed().as_secs_f64());
+    assert!(!transcript.is_empty());
+}

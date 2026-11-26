@@ -195,6 +195,30 @@ locali.
   secondo le proprie condizioni; un modello può produrre informazioni errate
   (le fonti citate servono a verificarle).
 
+## Registrazione delle riunioni
+
+ADR 0035.
+
+- **Microfono:** solo dopo un'azione esplicita. Il gestore dei permessi
+  della webview concede il microfono alla sola finestra principale mentre il
+  pannello della registrazione è aperto; fotocamera e cattura dello schermo
+  sono sempre negate.
+- **Consenso e visibilità:** conferma obbligatoria di aver informato i
+  partecipanti, indicatore persistente nel pannello e nella barra di stato,
+  pannello non chiudibile durante la registrazione. Nessuna registrazione in
+  background.
+- **Audio:**
+  - PCM in `recordings/` nella cartella dati (0700), id UUID validati
+    (niente percorsi), blocchi limitati a 4 MB, durata massima 4 ore;
+  - fuori da backup, sincronizzazione ed esportazioni, salvo l'esportazione
+    WAV chiesta dall'utente;
+  - eliminabile in ogni momento.
+- **Invio:**
+  - con il motore integrato l'audio resta sul dispositivo;
+  - con un server compatibile OpenAI valgono `ensure_usable` (AI attiva e
+    consenso per i server remoti) e le esclusioni dei taccuini;
+  - i registri contengono solo numero di tratti e durata, mai testo o audio.
+
 ## Sincronizzazione tra dispositivi
 
 - **In chiaro per impostazione predefinita:** la cartella contiene lotti

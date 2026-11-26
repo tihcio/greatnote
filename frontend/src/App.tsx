@@ -31,7 +31,7 @@ import type {
 } from "./types";
 import { language, t } from "./i18n";
 import logoUrl from "./assets/logo.png";
-import { errorMessage, formatDate, formatFileSize, formatShortDate } from "./lib/format";
+import { errorMessage, formatDate, formatDateTime, formatFileSize, formatShortDate } from "./lib/format";
 import CalendarView from "./features/CalendarView";
 import type { DataTab } from "./features/DataPanel";
 import ConfirmHost from "./features/ConfirmHost";
@@ -39,6 +39,7 @@ import { askConfirmation } from "./lib/confirm";
 import NotePlanner from "./features/NotePlanner";
 import ReminderAlerts from "./features/ReminderAlerts";
 import McpRequests, { type McpRequest } from "./features/McpRequests";
+import MeetingRecorder, { clock, type TranscriptSegment } from "./features/MeetingRecorder";
 import RemindersView from "./features/RemindersView";
 import SyncStatusIndicator from "./features/SyncStatusIndicator";
 import { updatesApi, useUpdateStatus } from "./features/updates/updatesApi";
@@ -2481,6 +2482,50 @@ export default function App() {
     void aiApi.cancelIndexing().catch((cause: unknown) => setError(errorMessage(cause)));
   };
 
+  // Registrazione delle riunioni (ADR 0035): pannello non modale, nota di
+  // destinazione e tratto inserito (per riassunto e azioni).
+  const [recorder, setRecorder] = useState<{ noteId: string | null } | null>(null);
+  const [recordingSeconds, setRecordingSeconds] = useState<number | null>(null);
+  const transcriptRangeRef = useRef<{ from: number; to: number } | null>(null);
+
+  const openRecorder = async () => {
+    if (recorder) return;
+    if (!activeNoteRef.current || isTrashView) await createNote();
+    if (!activeNoteRef.current) return;
+    setRecorder({ noteId: activeNoteRef.current.id });
+  };
+
+  const insertTranscript = async (noteId: string | null, startedAt: string, segments: TranscriptSegment[]) => {
+    if (noteId && activeNoteRef.current?.id !== noteId) await openNoteById(noteId);
+    if (!editor || editor.isDestroyed || !activeNoteRef.current || (noteId && activeNoteRef.current.id !== noteId)) {
+      throw new Error(t.recorderNoteUnavailable);
+    }
+    const text = (value: string) => ({ type: "text", text: value });
+    const blocks: JSONContent[] = [
+      { type: "heading", attrs: { level: 2 }, content: [text(t.recorderHeading(formatDateTime(startedAt)))] },
+      ...(segments.length > 0
+        ? segments.map((segment) => ({
+            type: "paragraph",
+            content: [
+              { type: "text", text: `[${clock(segment.start_seconds)}] `, marks: [{ type: "bold" }] },
+              text(segment.text),
+            ],
+          }))
+        : [{ type: "paragraph", content: [text(t.recorderNoSpeech)] }]),
+    ];
+    const from = editor.state.doc.content.size;
+    editor.chain().insertContentAt(from, blocks).run();
+    transcriptRangeRef.current = { from, to: editor.state.doc.content.size };
+  };
+
+  const transcriptAi = (kind: "summarize" | "extract-actions") => {
+    const range = transcriptRangeRef.current;
+    if (!editor || editor.isDestroyed || !range) return;
+    const size = editor.state.doc.content.size;
+    editor.commands.setTextSelection({ from: Math.min(range.from, size), to: Math.min(range.to, size) });
+    startAiTransform({ kind }, kind === "summarize" ? t.aiSummarize : t.aiExtractActions);
+  };
+
   const startAiTransform = (action: TransformAction, label: string) => {
     if (!editor || !activeNote || isTrashView) return;
     const { from, to, empty } = editor.state.selection;
@@ -2614,6 +2659,7 @@ export default function App() {
     },
     noteInfo: () => setIsNoteInfoOpen(true),
     noteHistory: () => setIsHistoryOpen(true),
+    recordMeeting: () => void openRecorder(),
     saveAsTemplate: () => void saveAsTemplate(),
     trashNote: () => void trashActiveNote(),
     newTab: () => void openTab(),
@@ -2904,6 +2950,12 @@ export default function App() {
               >
                 {isTrashView ? t.inTrashStatus : saveLabel}
               </span>
+              {recordingSeconds !== null && (
+                <span className="recording-badge footer" role="status">
+                  <span aria-hidden="true" className="recording-dot" />
+                  {t.recorderRecording} {clock(recordingSeconds)}
+                </span>
+              )}
               {syncInfo.enabled && (
                 <button
                   className={`sync-indicator${syncInfo.error ? " error" : syncInfo.conflicts > 0 ? " warning" : ""}`}
@@ -4252,6 +4304,15 @@ export default function App() {
         onDecided={(request, approved) => void afterMcpDecision(request, approved)}
         requests={mcpRequests}
       />
+      {recorder && (
+        <MeetingRecorder
+          noteId={recorder.noteId}
+          onAi={transcriptAi}
+          onClose={() => setRecorder(null)}
+          onRecordingChange={setRecordingSeconds}
+          onTranscript={insertTranscript}
+        />
+      )}
       {workspace !== "reminders" && (
         <ReminderAlerts
           onChanged={() => void refreshPlanner()}

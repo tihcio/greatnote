@@ -19,23 +19,26 @@ interface BuiltinModelsProps {
   patch: (value: Partial<AiSettings>) => void;
 }
 
-type ModelField = "chat_model" | "embedding_model" | "vision_model";
+type ModelField = "chat_model" | "embedding_model" | "vision_model" | "audio_model";
 
 const ROLES: { role: BuiltinRole; field: ModelField; optional: boolean }[] = [
   { role: "chat", field: "chat_model", optional: false },
   { role: "embedding", field: "embedding_model", optional: true },
   { role: "vision", field: "vision_model", optional: true },
+  { role: "audio", field: "audio_model", optional: true },
 ];
 
 function roleLabel(role: BuiltinRole): string {
   if (role === "chat") return t.aiBuiltinRoleChat;
   if (role === "embedding") return t.aiBuiltinRoleEmbedding;
+  if (role === "audio") return t.aiBuiltinRoleAudio;
   return t.aiBuiltinRoleVision;
 }
 
 function roleHint(role: BuiltinRole): string {
   if (role === "chat") return t.aiBuiltinRoleChatHint;
   if (role === "embedding") return t.aiBuiltinRoleEmbeddingHint;
+  if (role === "audio") return t.aiBuiltinRoleAudioHint;
   return t.aiBuiltinRoleVisionHint;
 }
 

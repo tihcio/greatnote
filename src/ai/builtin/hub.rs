@@ -36,6 +36,7 @@ const MAX_VARIANT_BYTES: u64 = 256 * 1024 * 1024 * 1024;
 const MAX_VARIANTS: usize = 80;
 const EMBEDDING_PIPELINES: [&str; 2] = ["feature-extraction", "sentence-similarity"];
 const VISION_PIPELINES: [&str; 2] = ["image-text-to-text", "any-to-any"];
+const AUDIO_PIPELINES: [&str; 2] = ["audio-text-to-text", "any-to-any"];
 
 /// Risultato della ricerca.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -106,6 +107,7 @@ impl HubClient {
             ModelRole::Chat => &[],
             ModelRole::Embedding => &EMBEDDING_PIPELINES,
             ModelRole::Vision => &VISION_PIPELINES,
+            ModelRole::Audio => &AUDIO_PIPELINES,
         };
         let mut results = Vec::new();
         if pipelines.is_empty() {
@@ -541,7 +543,7 @@ pub fn build_details(
         .clone()
         .unwrap_or_else(|| crate::tr!("non indicata", "not specified"));
     let mut variants = Vec::new();
-    if role != ModelRole::Vision || has_projector {
+    if !role.needs_projector() || has_projector {
         for (stem, mut parts) in groups {
             parts.sort_by_key(|(index, _, _)| *index);
             let count = parts[0].1;
@@ -575,7 +577,7 @@ pub fn build_details(
                 recommended: false,
                 model: first,
                 parts: part_files.collect(),
-                projector: if role == ModelRole::Vision {
+                projector: if role.needs_projector() {
                     projector.clone()
                 } else {
                     None
