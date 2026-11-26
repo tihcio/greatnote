@@ -2484,15 +2484,26 @@ export default function App() {
 
   // Registrazione delle riunioni (ADR 0035): pannello non modale, nota di
   // destinazione e tratto inserito (per riassunto e azioni).
-  const [recorder, setRecorder] = useState<{ noteId: string | null } | null>(null);
+  const [recorder, setRecorder] = useState<{ noteId: string | null; key: number; attention: number } | null>(null);
+  const recorderBusyRef = useRef(false);
+  const setRecorderBusy = useCallback((busy: boolean) => {
+    recorderBusyRef.current = busy;
+  }, []);
   const [recordingSeconds, setRecordingSeconds] = useState<number | null>(null);
   const transcriptRangeRef = useRef<{ from: number; to: number } | null>(null);
 
   const openRecorder = async () => {
-    if (recorder) return;
+    // Registrazione o trascrizione in corso: il pannello resta com'è e
+    // viene messo in evidenza.
+    if (recorder && recorderBusyRef.current) {
+      setRecorder({ ...recorder, attention: recorder.attention + 1 });
+      return;
+    }
     if (!activeNoteRef.current || isTrashView) await createNote();
     if (!activeNoteRef.current) return;
-    setRecorder({ noteId: activeNoteRef.current.id });
+    // Pannello già aperto ma fermo (per esempio dopo una trascrizione):
+    // riparte da capo per la nota attuale.
+    setRecorder({ noteId: activeNoteRef.current.id, key: Date.now(), attention: 0 });
   };
 
   const insertTranscript = async (noteId: string | null, startedAt: string, segments: TranscriptSegment[]) => {
@@ -4306,9 +4317,15 @@ export default function App() {
       />
       {recorder && (
         <MeetingRecorder
+          attention={recorder.attention}
+          key={recorder.key}
           noteId={recorder.noteId}
+          onBusyChange={setRecorderBusy}
           onAi={transcriptAi}
-          onClose={() => setRecorder(null)}
+          onClose={() => {
+            recorderBusyRef.current = false;
+            setRecorder(null);
+          }}
           onRecordingChange={setRecordingSeconds}
           onTranscript={insertTranscript}
         />

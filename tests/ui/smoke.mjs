@@ -1260,6 +1260,13 @@ try {
     const log = await page.evaluate(() => window.__SMOKE_LOG__.join("\n"));
     for (const expected of ["microphone:true", "recording:", "transcribe:rec-1", "delete_recording:rec-1", "microphone:false"])
       if (!log.includes(expected)) throw new Error(`manca ${expected}: ${log}`);
+    // Dal menu, con il pannello ancora aperto, si riparte da capo.
+    await clickText(".menu-bar-item", "Nota");
+    await clickText(".menu-item", "Registra riunione");
+    await pause(400);
+    const reopened = await page.$eval(".meeting-recorder", (element) => element.textContent ?? "");
+    if (!reopened.includes("Avvia la registrazione") || reopened.includes("Trascrizione inserita"))
+      throw new Error(`pannello non riaperto: ${reopened}`);
     await page.click('.meeting-recorder button[aria-label="Chiudi"]');
     await pause(200);
     if (await page.$(".meeting-recorder")) throw new Error("pannello non chiuso");

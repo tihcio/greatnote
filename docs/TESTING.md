@@ -385,7 +385,9 @@ modello di embedding reale, annullamento di una risposta lunga.
   - tratti tagliati nella pausa e mai oltre 30 secondi;
   - silenzio non inviato, risposte «[silenzio]» scartate, avanzamento,
     registrazione segnata come trascritta;
-  - solo silenzio: errore senza richieste; annullamento.
+  - solo silenzio: errore senza richieste; annullamento;
+  - voce alternata a blocchi di zeri esatti, come registrava WebKitGTK: i
+    buchi vengono tolti e al modello arriva solo la voce.
 - `src/ai/provider.rs`: audio inviato come `input_audio` WAV in base64, con
   il ragionamento ignorato e l'annullamento.
 - `src/ai/builtin`: un solo processo per audio, immagini e chat con lo
@@ -398,8 +400,22 @@ modello di embedding reale, annullamento di una risposta lunga.
   con llama-server b11397, Gemma 4 E2B e il suo proiettore, su 75 secondi di
   voce sintetica italiana (espeak-ng): 4 tratti tagliati nelle pause,
   trascritti in 20 secondi con la GPU; testo fedele salvo qualche nome
-  proprio. Da fare a mano: microfono reale nella finestra nativa su Linux,
-  Windows e Android.
+  proprio.
+- Prima prova con il microfono reale su Linux (lettura di un testo noto):
+  - trascrizione piena di errori perché metà dell'audio era fatto di zeri
+    (vedi ADR 0035);
+  - dopo la correzione, la stessa registrazione è trascritta quasi
+    parola per parola.
+
+  Da verificare ancora a mano su Windows e Android.
+- Confronto dei modelli sulla stessa lettura:
+  - Gemma 4 E4B: meno errori di E2B;
+  - Voxtral Mini 3B tramite llama.cpp: rifiuti e testo inventato, escluso.
+
+  Vedi ADR 0035.
+- `ai/builtin/server.rs`, `engine_processes_end_with_the_app` (Linux):
+  un'«app» finta avvia un server finto e termina di colpo; il server viene
+  chiuso. Senza la protezione il test fallisce (verificato).
 
 ## Sincronizzazione
 

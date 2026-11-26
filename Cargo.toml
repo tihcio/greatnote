@@ -1,6 +1,6 @@
 [package]
 name = "greatnote-core"
-version = "0.2.15"
+version = "0.2.16"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "Local-first domain and SQLite storage for Greatnote"
@@ -42,7 +42,19 @@ zip = { version = "9", default-features = false, features = ["deflate-flate2-zli
 # RAM totale per indicare i modelli AI adatti al computer (già presente tra
 # le dipendenze di Tauri, qui con la sola API di sistema necessaria).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_SystemInformation"] }
+# Memoria totale per i modelli AI adatti al computer; job object che chiude
+# il motore AI insieme all'app.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
+
+# Il motore AI si chiude insieme all'app anche dopo un crash (prctl).
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

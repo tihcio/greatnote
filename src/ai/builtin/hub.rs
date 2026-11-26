@@ -36,7 +36,15 @@ const MAX_VARIANT_BYTES: u64 = 256 * 1024 * 1024 * 1024;
 const MAX_VARIANTS: usize = 80;
 const EMBEDDING_PIPELINES: [&str; 2] = ["feature-extraction", "sentence-similarity"];
 const VISION_PIPELINES: [&str; 2] = ["image-text-to-text", "any-to-any"];
-const AUDIO_PIPELINES: [&str; 2] = ["audio-text-to-text", "any-to-any"];
+/// I modelli per la trascrizione hanno etichette diverse (Voxtral Realtime è
+/// `automatic-speech-recognition`) o nessuna (il Voxtral di `ggml-org`):
+/// con una ricerca per nome si guarda anche senza filtro, e restano solo i
+/// repository con il proiettore audio.
+const AUDIO_PIPELINES: [&str; 3] = [
+    "audio-text-to-text",
+    "automatic-speech-recognition",
+    "any-to-any",
+];
 
 /// Risultato della ricerca.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -115,6 +123,9 @@ impl HubClient {
         } else {
             for pipeline in pipelines {
                 results.extend(self.search_once(&query, Some(pipeline))?);
+            }
+            if role == ModelRole::Audio && !query.is_empty() {
+                results.extend(self.search_once(&query, None)?);
             }
         }
         Ok(merge_results(results, role))
@@ -308,7 +319,7 @@ fn merge_results(results: Vec<HubRepo>, role: ModelRole) -> Vec<HubRepo> {
             .pipeline_tag
             .as_deref()
             .is_some_and(|tag| EMBEDDING_PIPELINES.contains(&tag));
-        if role == ModelRole::Chat && embedding_only {
+        if matches!(role, ModelRole::Chat | ModelRole::Audio) && embedding_only {
             continue;
         }
         unique.entry(repo.id.clone()).or_insert(repo);

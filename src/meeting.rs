@@ -41,6 +41,9 @@ const SEGMENT_MIN_SECONDS: usize = 20;
 const WINDOW_SAMPLES: usize = SAMPLE_RATE as usize / 10;
 /// Sotto questo livello medio (RMS su 16 bit) un tratto è silenzio.
 const SILENCE_RMS: f64 = 120.0;
+/// Tratti di zeri esatti più lunghi di così non sono audio ma buchi della
+/// cattura (128 ms): un microfono vero ha sempre un po' di rumore.
+const DROPOUT_SAMPLES: usize = 2048;
 
 #[derive(Debug, thiserror::Error)]
 pub enum MeetingError {
@@ -263,6 +266,30 @@ pub fn wav_bytes(samples: &[i16]) -> Vec<u8> {
     bytes
 }
 
+/// Toglie i tratti di zeri esatti lasciati dalla cattura. WebKitGTK, con il
+/// contesto audio a 16 kHz, alternava ogni 256 ms un blocco di voce e uno di
+/// zeri: la voce arrivava spezzettata e la trascrizione era piena di errori.
+/// Ripara anche le registrazioni fatte prima della correzione.
+pub fn remove_dropouts(samples: &[i16]) -> Vec<i16> {
+    let mut output = Vec::with_capacity(samples.len());
+    let mut index = 0;
+    while index < samples.len() {
+        if samples[index] == 0 {
+            let start = index;
+            while index < samples.len() && samples[index] == 0 {
+                index += 1;
+            }
+            if index - start < DROPOUT_SAMPLES {
+                output.extend_from_slice(&samples[start..index]);
+            }
+        } else {
+            output.push(samples[index]);
+            index += 1;
+        }
+    }
+    output
+}
+
 fn rms(samples: &[i16]) -> f64 {
     if samples.is_empty() {
         return 0.0;
@@ -349,7 +376,7 @@ pub fn transcribe(
     cancel: &AtomicBool,
     on_segment: &mut dyn FnMut(usize, usize, Option<&TranscriptSegment>),
 ) -> Result<Vec<TranscriptSegment>, MeetingError> {
-    let samples = samples(data_directory, id)?;
+    let samples = remove_dropouts(&samples(data_directory, id)?);
     let rate = f64::from(SAMPLE_RATE);
     let spoken: Vec<(usize, usize)> = segments(&samples)
         .into_iter()
@@ -455,6 +482,44 @@ mod tests {
                 format!("frase {}", calls.len())
             })
         }
+    }
+
+    #[test]
+    fn capture_dropouts_are_removed_before_transcribing() {
+        // Voce e blocchi di zeri esatti alternati ogni 4096 campioni, come
+        // registrava WebKitGTK; i brevi zeri dentro la voce restano.
+        let voice = tone(4.0);
+        let mut broken = Vec::new();
+        for chunk in voice.chunks(4096) {
+            broken.extend_from_slice(chunk);
+            broken.extend(std::iter::repeat_n(0, 4096));
+        }
+        let repaired = remove_dropouts(&broken);
+        assert_eq!(repaired, voice);
+        let short = [vec![100i16; 10], vec![0; 100], vec![100; 10]].concat();
+        assert_eq!(remove_dropouts(&short), short);
+
+        let directory = tempfile::tempdir().expect("dir");
+        let recording = start(directory.path(), None).expect("start");
+        append(directory.path(), &recording.id, &bytes(&broken)).expect("append");
+        let provider = FakeAudio {
+            calls: Mutex::new(Vec::new()),
+        };
+        transcribe(
+            directory.path(),
+            &recording.id,
+            &provider,
+            "audio",
+            false,
+            &AtomicBool::new(false),
+            &mut |_, _, _| {},
+        )
+        .expect("transcribe");
+        // Al modello arrivano solo i 4 secondi di voce, senza buchi.
+        assert_eq!(
+            provider.calls.lock().expect("lock")[0],
+            44 + voice.len() * 2
+        );
     }
 
     #[test]

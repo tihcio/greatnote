@@ -73,6 +73,10 @@ interface MeetingRecorderProps {
   /** Riassunto o azioni sulla trascrizione appena inserita. */
   onAi: (kind: "summarize" | "extract-actions") => void;
   onRecordingChange: (seconds: number | null) => void;
+  /** Registrazione o trascrizione in corso: il pannello non va riaperto. */
+  onBusyChange: (busy: boolean) => void;
+  /** Cambia quando l'utente richiama il pannello già aperto: lo evidenzia. */
+  attention: number;
   onClose: () => void;
 }
 
@@ -82,8 +86,30 @@ interface MeetingRecorderProps {
  * conferma di aver informato i partecipanti; l'indicatore resta visibile
  * finché la registrazione è in corso e il pannello non si chiude.
  */
-export default function MeetingRecorder({ noteId, onTranscript, onAi, onRecordingChange, onClose }: MeetingRecorderProps) {
+export default function MeetingRecorder({
+  noteId,
+  onTranscript,
+  onAi,
+  onRecordingChange,
+  onBusyChange,
+  attention,
+  onClose,
+}: MeetingRecorderProps) {
   const [phase, setPhase] = useState<Phase>("setup");
+  const panelRef = useRef<HTMLElement>(null);
+  const [highlight, setHighlight] = useState(false);
+
+  useEffect(() => {
+    onBusyChange(phase === "recording" || phase === "transcribing");
+  }, [onBusyChange, phase]);
+
+  useEffect(() => {
+    if (attention === 0) return;
+    panelRef.current?.focus();
+    setHighlight(true);
+    const timer = window.setTimeout(() => setHighlight(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, [attention]);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = useState("");
   const [level, setLevel] = useState(0);
@@ -159,6 +185,11 @@ export default function MeetingRecorder({ noteId, onTranscript, onAi, onRecordin
           const input = event.inputBuffer.getChannelData(0);
           let sum = 0;
           for (let index = 0; index < input.length; index += 1) sum += input[index] * input[index];
+          // WebKitGTK, con il contesto a 16 kHz, chiama questa funzione il
+          // doppio delle volte: un blocco con la voce e uno di zeri esatti.
+          // Un microfono vero ha sempre un po' di rumore, quindi un blocco
+          // tutto a zero non è audio: salvarlo spezzetterebbe la voce.
+          if (sum === 0) return;
           peak = Math.max(peak * 0.85, Math.sqrt(sum / input.length));
           if (recordingRef.current && !pausedRef.current) {
             pendingRef.current.push(convert(input, context.sampleRate));
@@ -333,7 +364,12 @@ export default function MeetingRecorder({ noteId, onTranscript, onAi, onRecordin
   const others = saved.filter((item) => item.id !== recording?.id);
 
   return (
-    <aside aria-label={t.recorderTitle} className={`meeting-recorder${recordingNow ? " live" : ""}`}>
+    <aside
+      aria-label={t.recorderTitle}
+      className={`meeting-recorder${recordingNow ? " live" : ""}${highlight ? " attention" : ""}`}
+      ref={panelRef}
+      tabIndex={-1}
+    >
       <header>
         <strong>
           {recordingNow ? (

@@ -288,6 +288,12 @@ static CURATED: LazyLock<Vec<CatalogModel>> = LazyLock::new(|| {
         4_590_807_392,
         "a555b900214b477d8880e7832e0b8925e139b0159640036b09fe472b6f2097f2",
     );
+    let gemma4_e4b_projector = curated_file(
+        "mmproj-gemma-4-E4B-it-Q8_0.gguf",
+        "ggml-org/gemma-4-E4B-it-GGUF/resolve/a69f018d7678a2b9f5e705f8903d6fb29b9b25dc",
+        559_874_816,
+        "197f49a93027f9843772bd24a6a9e0be2a32a788de5a3def330e9c585d86edd1",
+    );
     let bge_m3 = curated_file(
         "bge-m3-q8_0.gguf",
         "ggml-org/bge-m3-Q8_0-GGUF/resolve/9eba04c5d75ba5a1595e45de734d36bef4e5cb98",
@@ -340,7 +346,7 @@ static CURATED: LazyLock<Vec<CatalogModel>> = LazyLock::new(|| {
             "Apache 2.0",
             6.0,
             false,
-            gemma4_e4b,
+            gemma4_e4b.clone(),
             None,
         ),
         curated_model(
@@ -396,6 +402,19 @@ static CURATED: LazyLock<Vec<CatalogModel>> = LazyLock::new(|| {
             true,
             gemma4_e2b,
             Some(gemma4_e2b_projector),
+        ),
+        // Più preciso di E2B sulla stessa lettura (meno parole sbagliate),
+        // più lento e con più memoria. Voxtral Mini 3B, provato con la
+        // stessa build, rifiutava o inventava testo: escluso (ADR 0035).
+        curated_model(
+            "gemma-4-e4b-audio",
+            ModelRole::Audio,
+            "Gemma 4 E4B",
+            "Apache 2.0",
+            6.5,
+            false,
+            gemma4_e4b,
+            Some(gemma4_e4b_projector),
         ),
     ]
 });

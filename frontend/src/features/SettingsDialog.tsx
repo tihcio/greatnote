@@ -15,6 +15,8 @@ import IntegrationsSection from "./IntegrationsSection";
 import SyncSection from "./SyncSection";
 import type { AiStatus, IndexProgress } from "./ai/aiApi";
 import PlannerDialog from "./PlannerDialog";
+import Icon from "../components/Icon";
+import type { IconName } from "../components/Icon";
 
 export type SettingsSection =
   | "general"
@@ -80,17 +82,18 @@ export default function SettingsDialog({
   );
   // Durante import, backup o ripristino le impostazioni restano aperte.
   const [dataBusy, setDataBusy] = useState(false);
-  const allSections: { id: SettingsSection; label: string }[] = [
-    { id: "general", label: t.settingsGeneral },
-    { id: "sidebar", label: t.settingsSidebar },
-    { id: "notes", label: t.settingsNotes },
-    { id: "ai", label: t.settingsAi },
-    { id: "integrations", label: t.settingsIntegrations },
-    { id: "sync", label: t.settingsSync },
-    { id: "data", label: t.settingsData },
-    { id: "updates", label: t.updatesTitle },
+  const allSections: { id: SettingsSection; label: string; icon: IconName; hint: string }[] = [
+    { id: "general", label: t.settingsGeneral, icon: "settings", hint: t.settingsGeneralHint },
+    { id: "sidebar", label: t.settingsSidebar, icon: "sidebar", hint: t.settingsSidebarHint },
+    { id: "notes", label: t.settingsNotes, icon: "notes", hint: t.settingsNotesHint },
+    { id: "ai", label: t.settingsAi, icon: "sparkle", hint: t.settingsAiHint },
+    { id: "integrations", label: t.settingsIntegrations, icon: "plug", hint: t.settingsIntegrationsHint },
+    { id: "sync", label: t.settingsSync, icon: "sync", hint: t.settingsSyncHint },
+    { id: "data", label: t.settingsData, icon: "database", hint: t.settingsDataHint },
+    { id: "updates", label: t.updatesTitle, icon: "download", hint: t.settingsUpdatesHint },
   ];
   const sections = allSections.filter((item) => !hidden.includes(item.id));
+  const current = sections.find((item) => item.id === section) ?? sections[0];
   const toggle = (key: keyof UiPreferences, label: string) => (
     <label className="checkbox-field">
       <input
@@ -135,114 +138,126 @@ export default function SettingsDialog({
               onClick={() => setSection(item.id)}
               type="button"
             >
-              {item.label}
+              <Icon name={item.icon} size={17} />
+              <span>{item.label}</span>
             </button>
           ))}
         </nav>
-        <div className="settings-content">
-          {section === "general" && (
-            <>
-              {isMobile && <p className="data-hint">{t.mobileUnavailableHint}</p>}
+        <div className="settings-main">
+          <header className="settings-section-header">
+            <span aria-hidden="true" className="settings-section-icon">
+              <Icon name={current.icon} size={20} />
+            </span>
+            <div>
+              <h3>{current.label}</h3>
+              <p>{current.hint}</p>
+            </div>
+          </header>
+          <div className="settings-content">
+            {section === "general" && (
+              <>
+                {isMobile && <p className="data-hint">{t.mobileUnavailableHint}</p>}
+                <fieldset>
+                  <legend>{t.settingsAppearance}</legend>
+                  {radios<ThemePreference>("theme", preferences.theme, [
+                    { value: "system", label: t.themeSystem },
+                    { value: "light", label: t.themeLight },
+                    { value: "dark", label: t.themeDark },
+                  ], (theme) => onChange({ theme }))}
+                </fieldset>
+                <label className="dialog-field">
+                  <span>{t.settingsZoom}</span>
+                  <select
+                    onChange={(event) => onChange({ zoom: Number(event.target.value) })}
+                    value={preferences.zoom}
+                  >
+                    {ZOOM_STEPS.map((step) => (
+                      <option key={step} value={step}>
+                        {Math.round(step * 100)}%
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <fieldset>
+                  <legend>{t.settingsStartView}</legend>
+                  {radios<StartView>("start", preferences.startView, [
+                    { value: "home", label: t.homeNav },
+                    { value: "notes", label: t.allNotes },
+                  ], (startView) => onChange({ startView }))}
+                </fieldset>
+                {!isMobile && <BackgroundSection onChange={(enabled) => onBackgroundChange?.(enabled)} />}
+              </>
+            )}
+            {section === "sidebar" && (
               <fieldset>
-                <legend>{t.settingsAppearance}</legend>
-                {radios<ThemePreference>("theme", preferences.theme, [
-                  { value: "system", label: t.themeSystem },
-                  { value: "light", label: t.themeLight },
-                  { value: "dark", label: t.themeDark },
-                ], (theme) => onChange({ theme }))}
+                <legend>{t.settingsSidebar}</legend>
+                {toggle("sidebarHidden", t.hideSidebar)}
+                {toggle("showNoteCounts", t.showNoteCounts)}
+                {toggle("showRecentNotes", t.showRecentNotesInSidebar)}
+                {toggle("showCreateButtons", t.showCreateButtons)}
+                {toggle("groupInMore", t.groupInMore)}
+                {toggle("showNotebooksInSpaces", t.showNotebooksInSpaces)}
               </fieldset>
-              <label className="dialog-field">
-                <span>{t.settingsZoom}</span>
-                <select
-                  onChange={(event) => onChange({ zoom: Number(event.target.value) })}
-                  value={preferences.zoom}
-                >
-                  {ZOOM_STEPS.map((step) => (
-                    <option key={step} value={step}>
-                      {Math.round(step * 100)}%
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <fieldset>
-                <legend>{t.settingsStartView}</legend>
-                {radios<StartView>("start", preferences.startView, [
-                  { value: "home", label: t.homeNav },
-                  { value: "notes", label: t.allNotes },
-                ], (startView) => onChange({ startView }))}
-              </fieldset>
-              {!isMobile && <BackgroundSection onChange={(enabled) => onBackgroundChange?.(enabled)} />}
-            </>
-          )}
-          {section === "sidebar" && (
-            <fieldset>
-              <legend>{t.settingsSidebar}</legend>
-              {toggle("sidebarHidden", t.hideSidebar)}
-              {toggle("showNoteCounts", t.showNoteCounts)}
-              {toggle("showRecentNotes", t.showRecentNotesInSidebar)}
-              {toggle("showCreateButtons", t.showCreateButtons)}
-              {toggle("groupInMore", t.groupInMore)}
-              {toggle("showNotebooksInSpaces", t.showNotebooksInSpaces)}
-            </fieldset>
-          )}
-          {section === "notes" && (
-            <>
-              <fieldset>
-                <legend>{t.noteWidth}</legend>
-                {radios<NoteWidth>("width", preferences.noteWidth, [
-                  { value: "normal", label: t.noteWidthNormal },
-                  { value: "wide", label: t.noteWidthWide },
-                  { value: "full", label: t.noteWidthFull },
-                ], (noteWidth) => onChange({ noteWidth }))}
-              </fieldset>
-              <fieldset>
-                <legend>{t.slashCommands}</legend>
-                {toggle("slashCommands", t.enableSlashCommands)}
-                <p className="data-hint">{t.slashCommandsHint}</p>
-              </fieldset>
-              <button className="data-action" onClick={onShowShortcuts} type="button">
-                {t.keyboardShortcuts}
-              </button>
-            </>
-          )}
-          {section === "ai" && (
-            <AiSettingsSection
-              notebooks={notebooks}
-              onCancelIndexing={onCancelIndexing}
-              onStartIndexing={onStartIndexing}
-              onStatus={onAiStatus}
-              progress={aiProgress}
-              status={aiStatus}
-            />
-          )}
-          {section === "integrations" &&
-            (isMobile ? (
-              // Il server MCP si avvia da riga di comando: solo desktop.
-              <div className="ai-settings integrations-settings">
-                <CalendarIntegrations />
-              </div>
-            ) : (
-              <IntegrationsSection />
-            ))}
-          {section === "sync" && (
-            <SyncSection
-              onOpenNote={(noteId) => {
-                onClose();
-                onOpenNote(noteId);
-              }}
-            />
-          )}
-          {section === "updates" && (
-            <UpdatesSection onInstall={onInstallUpdate} onStatus={onUpdateStatus} status={updateStatus} />
-          )}
-          {section === "data" && (
-            <DataPanel
-              initialTab={initialDataTab}
-              notebooks={notebooks}
-              onBusyChange={setDataBusy}
-              onImported={onImported}
-            />
-          )}
+            )}
+            {section === "notes" && (
+              <>
+                <fieldset>
+                  <legend>{t.noteWidth}</legend>
+                  {radios<NoteWidth>("width", preferences.noteWidth, [
+                    { value: "normal", label: t.noteWidthNormal },
+                    { value: "wide", label: t.noteWidthWide },
+                    { value: "full", label: t.noteWidthFull },
+                  ], (noteWidth) => onChange({ noteWidth }))}
+                </fieldset>
+                <fieldset>
+                  <legend>{t.slashCommands}</legend>
+                  {toggle("slashCommands", t.enableSlashCommands)}
+                  <p className="data-hint">{t.slashCommandsHint}</p>
+                </fieldset>
+                <button className="data-action" onClick={onShowShortcuts} type="button">
+                  {t.keyboardShortcuts}
+                </button>
+              </>
+            )}
+            {section === "ai" && (
+              <AiSettingsSection
+                notebooks={notebooks}
+                onCancelIndexing={onCancelIndexing}
+                onStartIndexing={onStartIndexing}
+                onStatus={onAiStatus}
+                progress={aiProgress}
+                status={aiStatus}
+              />
+            )}
+            {section === "integrations" &&
+              (isMobile ? (
+                // Il server MCP si avvia da riga di comando: solo desktop.
+                <div className="ai-settings integrations-settings">
+                  <CalendarIntegrations />
+                </div>
+              ) : (
+                <IntegrationsSection />
+              ))}
+            {section === "sync" && (
+              <SyncSection
+                onOpenNote={(noteId) => {
+                  onClose();
+                  onOpenNote(noteId);
+                }}
+              />
+            )}
+            {section === "updates" && (
+              <UpdatesSection onInstall={onInstallUpdate} onStatus={onUpdateStatus} status={updateStatus} />
+            )}
+            {section === "data" && (
+              <DataPanel
+                initialTab={initialDataTab}
+                notebooks={notebooks}
+                onBusyChange={setDataBusy}
+                onImported={onImported}
+              />
+            )}
+          </div>
         </div>
       </div>
     </PlannerDialog>

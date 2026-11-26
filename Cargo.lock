@@ -1974,7 +1974,7 @@ dependencies = [
 
 [[package]]
 name = "greatnote-core"
-version = "0.2.15"
+version = "0.2.16"
 dependencies = [
  "age",
  "base64 0.22.1",
@@ -1982,6 +1982,7 @@ dependencies = [
  "hmac 0.12.1",
  "image",
  "jiff",
+ "libc",
  "md-5",
  "pulldown-cmark",
  "quick-xml 0.42.0",
@@ -2003,7 +2004,7 @@ dependencies = [
 
 [[package]]
 name = "greatnote-desktop"
-version = "0.2.15"
+version = "0.2.16"
 dependencies = [
  "android-native-keyring-store",
  "base64 0.22.1",

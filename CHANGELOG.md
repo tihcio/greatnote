@@ -4,6 +4,8 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.16 — 2026-11-26
+
 - **Android: condividere una pagina web salva l'articolo.** Prima la nota
   conteneva solo titolo e indirizzo; ora Greatnote scarica la pagina e ne
   tiene il contenuto principale (testo, titoli, elenchi, tabelle, link),
@@ -41,7 +43,19 @@ Le modifiche rilevanti sono registrate per rilascio.
   nota, e l'assistente può riassumerla o estrarne decisioni e azioni. Con il
   motore integrato tutto resta sul computer: basta Gemma 4 E2B, lo stesso
   modello delle immagini. L'audio resta sul dispositivo finché non lo
-  elimini, ed è salvato ogni pochi secondi.
+  elimini, ed è salvato ogni pochi secondi. Su Linux la cattura audio
+  spezzettava la voce (metà dei blocchi erano silenzio): corretto, e le
+  registrazioni già fatte si possono ritrascrivere. Per una trascrizione più
+  precisa c'è anche Gemma 4 E4B tra i modelli per l'audio.
+- **Il motore AI integrato si chiude con l'app**, anche dopo un crash o una
+  chiusura forzata. Prima poteva restare attivo in background e occupare la
+  memoria della scheda video, rallentando le richieste successive.
+- La ricerca dei modelli audio su Hugging Face trova anche i modelli per il
+  riconoscimento vocale (per esempio Voxtral).
+- **Impostazioni più chiare.** Ogni sezione ha la sua icona e
+  un'intestazione con una breve descrizione; la finestra ha una dimensione
+  fissa adatta a tutte le sezioni (scorre solo il contenuto, il menu resta
+  fermo), e su telefono le sezioni sono una fila di schede scorrevole.
 - Test dell'interfaccia: il clic sulla griglia oraria evita la barra di
   scorrimento (falliva a certe ore del giorno).
 

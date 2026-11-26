@@ -681,7 +681,10 @@ con un modello AI che capisce l'audio.
 **Prima volta.** In **Impostazioni › Intelligenza artificiale**, con il
 motore integrato, scegli un modello per **Audio (trascrizione delle
 riunioni)**. Gemma 4 E2B è consigliato e usa gli stessi file del modello per
-le immagini: se l'hai già scaricato non serve altro. Con un server
+le immagini: se l'hai già scaricato non serve altro. **Gemma 4 E4B** è più
+preciso, ma più lento e chiede più memoria (circa 6,5 GB). Se usi già E4B per
+la chat, aggiunge solo un file da 0,56 GB. Whisper non è disponibile nel
+motore integrato. Con un server
 compatibile OpenAI serve un modello che accetti l'audio. Claude Code non
 trascrive l'audio.
 

@@ -353,7 +353,7 @@ impl BuiltinRuntime {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             command.creation_flags(CREATE_NO_WINDOW);
         }
-        let child = command.spawn().map_err(|error| {
+        let child = supervised::spawn(command).map_err(|error| {
             AiError::Builtin(crate::tr!(
                 "avvio del motore AI non riuscito: {error}",
                 "AI engine startup failed: {error}"
@@ -498,6 +498,56 @@ fn log_tail(path: &Path) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    /// Un processo «app» avvia un server finto (`sleep`) e termina di colpo,
+    /// come in un crash: il server non deve restare orfano.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn engine_processes_end_with_the_app() {
+        use std::process::Command;
+        const CHILD: &str = "GREATNOTE_SUPERVISED_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let mut sleep = Command::new("sleep");
+            // Uscite staccate: altrimenti chi aspetta l'app finta aspetterebbe
+            // anche il server rimasto orfano.
+            sleep
+                .arg("30")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+            let child = super::supervised::spawn(sleep).expect("spawn");
+            println!("PID={}", child.id());
+            std::process::exit(0);
+        }
+        let output = Command::new(std::env::current_exe().expect("exe"))
+            .args([
+                "--exact",
+                "ai::builtin::server::tests::engine_processes_end_with_the_app",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .expect("app finta");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let pid: u32 = stdout
+            .lines()
+            .find_map(|line| line.strip_prefix("PID="))
+            .and_then(|pid| pid.trim().parse().ok())
+            .unwrap_or_else(|| panic!("pid non ricevuto: {stdout}"));
+        let alive = || {
+            std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+                stat.split(") ")
+                    .nth(1)
+                    .is_some_and(|rest| !rest.starts_with('Z'))
+            })
+        };
+        for _ in 0..50 {
+            if !alive() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        panic!("il server {pid} è rimasto attivo dopo la fine dell'app");
+    }
+
     use super::*;
     use crate::ai::builtin::catalog::find;
 
@@ -568,5 +618,127 @@ mod tests {
             Err(AiError::NotConfigured(_))
         ));
         assert_eq!(runtime.running(), 0);
+    }
+}
+
+/// Avvio dei processi del motore legato alla vita dell'app: se l'app termina
+/// in qualunque modo (anche per un crash o una chiusura forzata, come i
+/// riavvii di `tauri dev`), il sistema chiude anche i server. Prima
+/// restavano orfani e tenevano occupata la memoria della scheda video.
+mod supervised {
+    use std::{
+        io,
+        process::{Child, Command},
+    };
+
+    /// Linux: il figlio riceve SIGKILL quando muore il thread che l'ha
+    /// avviato (`PR_SET_PDEATHSIG`). I thread di lavoro dell'app vanno e
+    /// vengono, quindi l'avvio passa da un thread dedicato che vive quanto
+    /// l'app.
+    #[cfg(target_os = "linux")]
+    pub fn spawn(mut command: Command) -> io::Result<Child> {
+        use std::{
+            os::unix::process::CommandExt,
+            sync::{Mutex, OnceLock, mpsc},
+            thread,
+        };
+
+        type Job = (Command, mpsc::Sender<io::Result<Child>>);
+        static SPAWNER: OnceLock<Option<Mutex<mpsc::Sender<Job>>>> = OnceLock::new();
+
+        let parent = std::process::id();
+        // SAFETY: tra fork ed exec solo chiamate async-signal-safe (prctl,
+        // getppid, _exit), senza allocazioni.
+        unsafe {
+            command.pre_exec(move || {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                // L'app è già terminata prima di prctl: niente orfani.
+                if libc::getppid() as u32 != parent {
+                    libc::_exit(0);
+                }
+                Ok(())
+            });
+        }
+        let spawner = SPAWNER.get_or_init(|| {
+            let (sender, receiver) = mpsc::channel::<Job>();
+            thread::Builder::new()
+                .name("ai-engine-spawner".to_owned())
+                .spawn(move || {
+                    for (mut command, reply) in receiver {
+                        let _ = reply.send(command.spawn());
+                    }
+                })
+                .ok()
+                .map(|_| Mutex::new(sender))
+        });
+        let Some(spawner) = spawner else {
+            return command.spawn();
+        };
+        let (reply, result) = mpsc::channel();
+        spawner
+            .lock()
+            .map_err(|_| io::Error::other("avvio del motore non disponibile"))?
+            .send((command, reply))
+            .map_err(|_| io::Error::other("avvio del motore non disponibile"))?;
+        result
+            .recv()
+            .map_err(|_| io::Error::other("avvio del motore non disponibile"))?
+    }
+
+    /// Windows: i server entrano in un job object che il sistema chiude,
+    /// con i suoi processi, quando termina l'app che ne tiene l'handle.
+    #[cfg(windows)]
+    pub fn spawn(mut command: Command) -> io::Result<Child> {
+        use std::{os::windows::io::AsRawHandle, sync::OnceLock};
+
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            SetInformationJobObject,
+        };
+
+        /// Handle del job (come intero: i puntatori non sono `Sync`). Resta
+        /// aperto per tutta la vita dell'app.
+        static JOB: OnceLock<Option<usize>> = OnceLock::new();
+
+        let job = JOB.get_or_init(|| {
+            // SAFETY: chiamate Win32 documentate con argomenti validi; la
+            // struttura è inizializzata a zero come richiesto.
+            unsafe {
+                let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if job.is_null() {
+                    return None;
+                }
+                let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+                limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                let applied = SetInformationJobObject(
+                    job,
+                    JobObjectExtendedLimitInformation,
+                    (&raw const limits).cast(),
+                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                );
+                (applied != 0).then_some(job as usize)
+            }
+        });
+        let child = command.spawn()?;
+        if let Some(job) = job {
+            // SAFETY: handle del job valido e handle del processo appena
+            // creato, posseduto da `child`.
+            let assigned =
+                unsafe { AssignProcessToJobObject(*job as _, child.as_raw_handle() as _) };
+            if assigned == 0 {
+                tracing::warn!(
+                    "motore AI non legato all'app: resterà attivo se l'app si chiude in modo anomalo"
+                );
+            }
+        }
+        Ok(child)
+    }
+
+    #[cfg(not(any(target_os = "linux", windows)))]
+    pub fn spawn(mut command: Command) -> io::Result<Child> {
+        command.spawn()
     }
 }

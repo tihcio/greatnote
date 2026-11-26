@@ -100,6 +100,38 @@ requisiti:
   sulla sola trascrizione, con le azioni AI esistenti: anteprima e conferma
   prima di inserire.
 
+### Correzione dopo la prima prova reale (2026-11-26)
+
+- **Il difetto.** Con un microfono vero su Linux la trascrizione era piena di
+  errori. L'audio salvato alternava ogni 256 ms un blocco di voce e uno di
+  zeri esatti: con il contesto audio a 16 kHz, WebKitGTK chiama la funzione di
+  cattura il doppio delle volte. La voce arrivava spezzettata e la divisione
+  in tratti tagliava sempre a 20 secondi, nel blocco di zeri, a metà parola.
+- **Le correzioni:**
+  - la cattura scarta i blocchi tutti a zero, perché un microfono vero ha
+    sempre un po' di rumore;
+  - prima di dividere l'audio la trascrizione toglie i tratti di zeri esatti
+    più lunghi di 128 ms (`remove_dropouts`), riparando anche le
+    registrazioni già fatte.
+- **Il risultato.** Sulla stessa lettura di 63 secondi restano pochi errori su
+  parole rare (caldarroste, Montblanc), con i tagli nelle pause vere.
+
+### Modelli provati sulla stessa lettura reale (2026-11-26)
+
+| Modello | Esito |
+| --- | --- |
+| Gemma 4 E2B | Buono: sbaglia alcune parole rare (caldarroste, Montblanc, «saper scegliere»). Consigliato, perché gira ovunque (4,5 GB). |
+| Gemma 4 E4B | Migliore: corregge Montblanc, «saper scegliere» e gli accordi. Seconda scelta nel catalogo (6,5 GB, più lento); serve solo il proiettore da 0,56 GB oltre al modello della chat. |
+| Voxtral Mini 3B | Escluso: llama.cpp lo usa come chat, non nella sua modalità di trascrizione. A seconda della richiesta rifiutava («non posso trascrivere»), inventava testo o sbagliava più di Gemma. |
+
+- **Whisper.** Non è disponibile: è un modello per whisper.cpp, non per
+  llama.cpp. Integrarlo vorrebbe dire distribuire un altro eseguibile per
+  piattaforma.
+- **Ricerca su Hugging Face per l'audio.** Considera anche
+  `automatic-speech-recognition` e, con una ricerca per nome, i repository
+  senza etichetta (come il Voxtral di `ggml-org`). Restano mostrati solo i
+  modelli con il proiettore audio.
+
 ## Alternative scartate
 
 - **whisper.cpp:** altro eseguibile da distribuire e verificare per

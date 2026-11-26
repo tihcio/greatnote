@@ -3933,9 +3933,20 @@ button.time-grid-day-name:hover {
 }
 
 .planner-dialog:has(.history-dialog),
-.planner-dialog:has(.settings-layout),
 .planner-dialog:has(.shortcuts-dialog) {
   width: min(820px, 100%);
+}
+
+/* Impostazioni: dimensione fissa, adatta a tutte le sezioni. Il menu resta
+   fermo e scorre solo il contenuto, così la finestra non cambia altezza
+   passando da una sezione all'altra. */
+.planner-dialog:has(.settings-layout) {
+  display: flex;
+  width: min(900px, 100%);
+  height: min(88vh, 720px);
+  max-height: none;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .history-layout {
@@ -4235,39 +4246,121 @@ button.time-grid-day-name:hover {
 
 .settings-layout {
   display: grid;
-  min-height: 360px;
-  gap: 18px;
-  grid-template-columns: 170px minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+  gap: 22px;
+  grid-template-columns: 228px minmax(0, 1fr);
   margin-top: 16px;
 }
 
 .settings-nav {
   display: grid;
+  overflow-y: auto;
   align-content: start;
-  gap: 3px;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--sidebar);
 }
 
 .settings-nav-item {
-  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
   color: var(--soft-ink);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 13.5px;
   text-align: left;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.settings-nav-item .icon {
+  flex: none;
+  color: var(--muted);
+}
+
+/* Le voci restano su una riga anche in grassetto (voce selezionata). */
+.settings-nav-item span {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-nav-item:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.settings-nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .settings-nav-item.selected {
-  background: var(--selection);
+  background: var(--accent-soft);
   color: var(--accent);
   font-weight: 700;
 }
 
+.settings-nav-item.selected .icon {
+  color: var(--accent);
+}
+
+/* Intestazione della sezione sempre visibile, contenuto che scorre. */
+.settings-main {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
 .settings-content {
   display: grid;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
   align-content: start;
   gap: 16px;
+  padding: 16px 8px 4px 0;
+}
+
+.settings-section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-section-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.settings-section-header h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.settings-section-header p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
 }
 
 .settings-content fieldset {
@@ -4601,6 +4694,23 @@ button.time-grid-day-name:hover {
   .settings-layout,
   .history-layout {
     grid-template-columns: 1fr;
+  }
+
+  /* Finestra stretta: le sezioni diventano una fila scorrevole in alto. */
+  .settings-layout {
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .settings-nav {
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .settings-nav-item {
+    flex: none;
+    white-space: nowrap;
   }
 }
 
@@ -7130,6 +7240,17 @@ button.time-grid-day-name:hover {
 
 .meeting-recorder.live {
   border-color: color-mix(in srgb, var(--error) 55%, var(--line));
+}
+
+.meeting-recorder:focus {
+  outline: none;
+}
+
+/* Richiamato dal menu mentre registra: un breve richiamo visivo. */
+.meeting-recorder.attention {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent),
+    0 16px 40px rgb(14 20 13 / 22%);
 }
 
 .meeting-recorder header {

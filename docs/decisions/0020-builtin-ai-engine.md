@@ -3,6 +3,17 @@
 - **Stato:** accettata
 - **Data:** 2026-10-21
 
+> **Aggiornamento 2026-11-26.** I server del motore sono legati alla vita
+> dell'app:
+> - su Linux con `PR_SET_PDEATHSIG`, con l'avvio da un thread dedicato che
+>   vive quanto l'app;
+> - su Windows con un job object `KILL_ON_JOB_CLOSE`.
+>
+> Prima, un crash o una chiusura forzata (anche i riavvii di `tauri dev`)
+> lasciavano processi orfani che occupavano la memoria della scheda video e
+> rallentavano i server successivi. Un test su Linux simula il crash e
+> verifica che il server venga chiuso.
+
 ## Contesto
 
 Le funzioni AI (ADR 0010) richiedono un server compatibile OpenAI già
