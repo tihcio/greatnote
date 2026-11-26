@@ -150,8 +150,9 @@ versione locale è davvero concorrente.
 - **Ultimo timestamp:** gli orologi dei computer differiscono e le
   modifiche contemporanee andrebbero perse in silenzio.
 - **CRDT sul contenuto delle note** (fusione carattere per carattere):
-  molto più complesso. Oggi il perdente è conservato; si può aggiungere in
-  futuro sulla stessa struttura di versioni.
+  molto più complesso. Oggi il perdente è conservato; dalla 0.2.16 le
+  modifiche a blocchi diversi si fondono sulla stessa struttura di versioni
+  (ADR 0034).
 - **Server proprio:** richiede hosting e autenticazione dei dispositivi.
   Resta possibile in futuro con lo stesso formato dei lotti.
 
@@ -160,8 +161,9 @@ versione locale è davvero concorrente.
 - **File in chiaro per impostazione predefinita.** Il servizio che ospita
   la cartella (per esempio Dropbox) può leggerli. Dalla 0.2.16 c'è la
   cifratura con passphrase (ADR 0032).
-- **La cronologia dei lotti cresce.** Non c'è ancora una compattazione con
-  istantanee: un nuovo dispositivo rilegge tutti i lotti.
+- **La cronologia dei lotti cresce.** Dalla 0.2.16 un nuovo dispositivo
+  parte da un'istantanea e legge solo i lotti successivi (ADR 0033); i
+  lotti però restano tutti nella cartella.
 - **Cartella indispensabile.** La sincronizzazione funziona solo se il
   servizio della cartella è attivo. Greatnote mostra l'ultimo esito e i
   dispositivi visti.

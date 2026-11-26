@@ -427,6 +427,35 @@ cartella condivisa temporanea):
     fermate dal formato;
   - cambio di passphrase: chi ha la chiave continua, un nuovo dispositivo
     usa la passphrase nuova.
+- **Istantanee (`snapshot`, ADR 0033):** con soglie ridotte nei test, una
+  storia di molti lotti con taccuino, tag, allegato e nota eliminata
+  definitivamente produce istantanee (al massimo 2 per dispositivo). I
+  lotti coperti vengono tolti dalla cartella: un nuovo dispositivo arriva
+  comunque allo stesso stato (testo, tag, allegato verificato, nota
+  eliminata assente, nomi dei dispositivi) senza conflitti. Dopo l'ingresso
+  modifiche e conflitti contemporanei convergono su tre dispositivi. Stessa
+  prova su una libreria cifrata, senza testo in chiaro nei file. Parti
+  danneggiate: avviso e rilettura dei lotti. Dropbox: eliminazione delle
+  istantanee superate, già assenti ed errori.
+- Costruzione misurata una tantum in release: 20.000 note in 144 ms
+  (12 MB, 10 parti).
+- **Fusione (`merge` e `tests`, ADR 0034):**
+  - paragrafi diversi, eliminazione da una parte e modifica dall'altra,
+    stessa modifica da entrambe, voci diverse di un elenco, spunta e testo
+    della stessa attività, titolo da una parte e testo dall'altra uniti;
+  - stesso paragrafo, inserimenti nello stesso punto, aggiunta accanto a un
+    paragrafo modificato e titoli diversi non uniti;
+  - due dispositivi: testo unito uguale ovunque, nessun conflitto da
+    controllare, testo di prima nella cronologia, nessuna modifica in giro
+    dopo, un terzo dispositivo che arriva dopo vede lo stesso testo;
+  - stesso paragrafo: regola di sempre con il conflitto;
+  - tre dispositivi che modificano paragrafi diversi convergono (questa
+    prova ha trovato un testo fuso non ancora esportato sovrascritto da una
+    modifica remota);
+  - senza basi conservate vale la regola di sempre;
+  - modifiche casuali su tre dispositivi (25 giri, ordine di
+    sincronizzazione casuale): convergenza verificata con 40 semi
+    (`GREATNOTE_MERGE_SEED=<n> cargo test -p greatnote-core random_concurrent`).
 
 Dropbox (`src/sync/dropbox.rs`), con un server finto:
 

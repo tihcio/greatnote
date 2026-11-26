@@ -292,6 +292,21 @@ impl DropboxStore {
 }
 
 impl SyncStore for DropboxStore {
+    fn remove(&self, path: &str) -> Result<(), FolderError> {
+        if path.is_empty() {
+            return Err(FolderError::Invalid(path.to_owned()));
+        }
+        let (status, body) = self.rpc(
+            "files/delete_v2",
+            &json!({ "path": Self::full_path(path)? }),
+        )?;
+        match status {
+            200 => Ok(()),
+            409 if Self::summary(&body).contains("not_found") => Ok(()),
+            status => Err(Self::failure(status, &body)),
+        }
+    }
+
     fn read(&self, path: &str) -> Result<Option<Vec<u8>>, FolderError> {
         let argument = json!({ "path": Self::full_path(path)? }).to_string();
         let response = self.call(
@@ -513,5 +528,32 @@ mod tests {
         );
         assert!(requests[7].starts_with("POST /2/files/list_folder/continue "));
         assert!(requests[10].contains(r#""mode":"overwrite""#));
+    }
+
+    #[test]
+    fn old_snapshots_are_removed() {
+        let server = FakeServer::start(vec![
+            (200, json!({"metadata": {}}).to_string()),
+            (
+                409,
+                json!({"error_summary": "path_lookup/not_found/.."}).to_string(),
+            ),
+            (
+                409,
+                json!({"error_summary": "path_write/too_many_write_operations/"}).to_string(),
+            ),
+        ]);
+        let store = DropboxStore::new("tok").with_urls(&server.url, &server.url);
+        store
+            .remove("devices/d/snapshots/000000000007")
+            .expect("removed");
+        store
+            .remove("devices/d/snapshots/000000000007.json")
+            .expect("already gone");
+        assert!(store.remove("devices/d/snapshots/x").is_err());
+        assert!(store.remove("").is_err() && store.remove("../fuori").is_err());
+        let requests = server.finish();
+        assert!(requests[0].starts_with("POST /2/files/delete_v2 "));
+        assert!(requests[0].contains("/greatnote-sync/devices/d/snapshots/000000000007"));
     }
 }

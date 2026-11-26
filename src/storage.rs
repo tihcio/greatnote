@@ -51,7 +51,8 @@ const MIGRATION_15: &str = include_str!("../migrations/0015_task_recurrence.sql"
 const MIGRATION_16: &str = include_str!("../migrations/0016_event_recurrence.sql");
 const MIGRATION_17: &str = include_str!("../migrations/0017_search_row_map.sql");
 const MIGRATION_18: &str = include_str!("../migrations/0018_mcp_requests.sql");
-pub const CURRENT_SCHEMA_VERSION: u32 = 18;
+const MIGRATION_19: &str = include_str!("../migrations/0019_sync_note_bases.sql");
+pub const CURRENT_SCHEMA_VERSION: u32 = 19;
 const MAX_TITLE_LENGTH: usize = 512;
 const MAX_ORGANIZATION_NAME_LENGTH: usize = 200;
 const MAX_TAG_NAME_LENGTH: usize = 100;
@@ -1819,6 +1820,10 @@ fn migrate(connection: &Connection) -> Result<(), StorageError> {
         connection.execute_batch(MIGRATION_18)?;
         version = 18;
     }
+    if version == 18 {
+        connection.execute_batch(MIGRATION_19)?;
+        version = 19;
+    }
     if version == CURRENT_SCHEMA_VERSION {
         repair_ai_index_schema(connection)?;
     }
@@ -3071,6 +3076,7 @@ mod tests {
                      DROP TRIGGER attachments_search_delete;
                      DROP TABLE note_search_rows;
                      DROP TABLE mcp_requests;
+                     DROP TABLE sync_note_bases;
                      ALTER TABLE attachments DROP COLUMN ocr_text;
                      ALTER TABLE attachments DROP COLUMN ocr_status;
                      ALTER TABLE attachments DROP COLUMN ocr_engine;

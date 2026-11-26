@@ -70,6 +70,10 @@ pub trait SyncStore {
     fn exists(&self, path: &str) -> Result<bool, FolderError>;
     /// Voci di una cartella (nome, è cartella); vuoto se non esiste.
     fn list(&self, directory: &str) -> Result<Vec<(String, bool)>, FolderError>;
+    /// Elimina un file o una cartella con il suo contenuto; nulla se manca.
+    /// Usato solo per le istantanee superate del proprio dispositivo: i
+    /// lotti non vengono mai eliminati.
+    fn remove(&self, path: &str) -> Result<(), FolderError>;
 }
 
 /// Cartella locale (sincronizzata da Nextcloud, Syncthing, Dropbox…).
@@ -162,6 +166,23 @@ impl SyncStore for LocalStore {
             }
         }
         Ok(items)
+    }
+
+    fn remove(&self, path: &str) -> Result<(), FolderError> {
+        let target = self.path(path);
+        // Mai la radice della libreria.
+        if target == self.root {
+            return Err(FolderError::Invalid(path.to_owned()));
+        }
+        let result = match fs::symlink_metadata(&target) {
+            Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(&target),
+            Ok(_) => fs::remove_file(&target),
+            Err(error) => Err(error),
+        };
+        match result {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
+            _ => Ok(()),
+        }
     }
 }
 
@@ -557,6 +578,38 @@ impl SyncFolder {
 
     fn list_dir(&self, directory: &str) -> Result<Vec<(String, bool)>, FolderError> {
         self.store.list(&format!("{}{directory}", self.prefix))
+    }
+
+    /// File della libreria (cifrati se lo è la libreria), per le istantanee.
+    pub(crate) fn read_named(&self, path: &str) -> Result<Option<Vec<u8>>, FolderError> {
+        let bytes = self.read_file(path)?;
+        if bytes
+            .as_ref()
+            .is_some_and(|bytes| bytes.len() > MAX_BATCH_BYTES)
+        {
+            return Err(FolderError::Invalid(crate::tr!(
+                "{path} troppo grande",
+                "{path} too large"
+            )));
+        }
+        Ok(bytes)
+    }
+
+    pub(crate) fn write_named(
+        &self,
+        path: &str,
+        bytes: &[u8],
+        create_only: bool,
+    ) -> Result<(), FolderError> {
+        self.write_file(path, bytes, create_only)
+    }
+
+    pub(crate) fn list_named(&self, directory: &str) -> Result<Vec<(String, bool)>, FolderError> {
+        self.list_dir(directory)
+    }
+
+    pub(crate) fn remove_named(&self, path: &str) -> Result<(), FolderError> {
+        self.store.remove(&format!("{}{path}", self.prefix))
     }
 
     /// Percorso del blob di un allegato: con la cifratura il nome è un HMAC

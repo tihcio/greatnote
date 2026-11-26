@@ -6,6 +6,8 @@
 pub mod crypto;
 pub mod dropbox;
 pub mod folder;
+mod merge;
+mod snapshot;
 pub(crate) mod tables;
 
 use std::{
@@ -107,6 +109,8 @@ pub struct SyncReport {
     pub changed_notes: Vec<String>,
     /// Avvisi su dispositivi con file non validi.
     pub warnings: Vec<String>,
+    /// Note modificate in contemporanea in punti diversi e fuse.
+    pub merged: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -258,7 +262,8 @@ fn reset_protocol_state(connection: &Connection) -> Result<(), rusqlite::Error> 
          DELETE FROM sync_aliases;
          DELETE FROM sync_missing_blobs;
          DELETE FROM sync_outbox;
-         DELETE FROM sync_dirty;",
+         DELETE FROM sync_dirty;
+         DELETE FROM sync_note_bases;",
     )
 }
 
@@ -637,7 +642,21 @@ fn run(
             }
         }
     }
-    let prefetched = prefetch(database, &folder, &library, &device, &mut report)?;
+    // Primo ingresso: un'istantanea evita di rileggere tutta la storia.
+    let snapshot = if initialized {
+        None
+    } else {
+        snapshot::find(&folder, &library, &device, &mut report)?
+    };
+    let mut snapshot_notes = HashSet::new();
+    let prefetched = prefetch(
+        database,
+        &folder,
+        &library,
+        &device,
+        snapshot.as_ref().map(snapshot::Loaded::covers),
+        &mut report,
+    )?;
 
     {
         let mut connection = database.connection()?;
@@ -666,6 +685,17 @@ fn run(
         // Esportazione e importazione nello stesso blocco: nessuna modifica
         // locale può inserirsi tra le due.
         export(&mut connection, &library, &device, &mut report)?;
+        if let Some(snapshot) = &snapshot {
+            snapshot::apply(
+                &mut connection,
+                snapshot,
+                &device,
+                &prefetched.names,
+                data_directory,
+                &mut report,
+                &mut snapshot_notes,
+            )?;
+        }
         import(
             &mut connection,
             prefetched,
@@ -673,10 +703,28 @@ fn run(
             data_directory,
             &mut report,
         )?;
+        // Note fuse: partono subito invece che al prossimo giro.
+        if report.merged > 0 {
+            let exported = std::mem::take(&mut report.exported);
+            export(&mut connection, &library, &device, &mut report)?;
+            report.exported += exported;
+        }
     }
 
+    if !snapshot_notes.is_empty() {
+        report.changed_notes.extend(snapshot_notes);
+        report.changed_notes.sort();
+        report.changed_notes.dedup();
+        report.changed_notes.truncate(MAX_CHANGED_NOTES);
+    }
     flush_outbox(database, &folder, data_directory)?;
     fetch_missing_blobs(database, &folder, data_directory)?;
+    match snapshot::maybe_write(database, &folder, &library, &device) {
+        Ok(_) => {}
+        Err(error) => {
+            tracing::warn!(%error, "istantanea della libreria non scritta");
+        }
+    }
     Ok(report)
 }
 
@@ -807,6 +855,7 @@ fn prefetch(
     folder: &SyncFolder,
     library: &str,
     device: &str,
+    covers: Option<&BTreeMap<String, u64>>,
     report: &mut SyncReport,
 ) -> Result<Prefetched, SyncError> {
     let applied: BTreeMap<String, i64> = database
@@ -832,7 +881,12 @@ fn prefetch(
             name.clone()
         };
         prefetched.names.insert(remote.clone(), name);
-        let mut next = applied.get(&remote).copied().unwrap_or(0) as u64 + 1;
+        // Con un'istantanea si parte dopo i lotti che copre.
+        let covered = covers
+            .and_then(|covers| covers.get(&remote))
+            .copied()
+            .unwrap_or(0);
+        let mut next = (applied.get(&remote).copied().unwrap_or(0) as u64).max(covered) + 1;
         let mut batches = Vec::new();
         while batches.len() < MAX_PREFETCH {
             match folder.read_batch(&remote, next) {
@@ -889,6 +943,11 @@ fn export(
             lamport += 1;
             let version = Version(lamport, device.to_owned());
             set_version(&transaction, table.name, key, &version)?;
+            if table.name == "notes"
+                && let Some(row) = &data
+            {
+                merge::remember(&transaction, key, &version, base.as_ref(), row)?;
+            }
             ops.push(Operation {
                 entity: table.name.to_owned(),
                 key: key.clone(),
@@ -1188,7 +1247,15 @@ fn apply_batch(
     set_state(&transaction, "lamport", &lamport.to_string())?;
     transaction.execute("UPDATE sync_control SET applying = 0 WHERE id = 1", [])?;
     transaction.commit()?;
-    // File di allegati non più usati: rimossi dopo il commit.
+    remove_orphaned_files(connection, data_directory, orphaned_files)
+}
+
+/// File di allegati non più usati: rimossi dopo il commit.
+fn remove_orphaned_files(
+    connection: &Connection,
+    data_directory: &Path,
+    orphaned_files: Vec<String>,
+) -> Result<(), SyncError> {
     for stored in orphaned_files {
         let still_used: bool = connection.query_row(
             "SELECT EXISTS(SELECT 1 FROM attachments WHERE stored_filename = ?1 AND deleted_at IS NULL)",
@@ -1227,7 +1294,15 @@ fn apply_op(
     if local.as_ref() == Some(&op.version) {
         return Ok(());
     }
-    let fast_forward = local.is_none() || op.base == local;
+    // Una nota fusa in questo giro e non ancora esportata non è più la
+    // versione `local`: una modifica remota partita da lì è contemporanea.
+    let pending: bool = table.name == "notes"
+        && connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sync_dirty WHERE entity = 'notes' AND entity_key = ?1)",
+            [&key],
+            |row| row.get(0),
+        )?;
+    let fast_forward = (local.is_none() || op.base == local) && !pending;
     let current = tables::snapshot(connection, table, &key)?;
     let remote_wins = fast_forward
         || match (&op.data, &current) {
@@ -1244,7 +1319,30 @@ fn apply_op(
         && local
             .as_ref()
             .is_some_and(|local| local.1 != replay.this_device);
-    if !fast_forward && table.keep_conflicts && !old_remote_conflict {
+    // Modifiche contemporanee in punti diversi della stessa nota: si fondono
+    // (ADR 0034). Il testo fuso diventa una modifica di questo dispositivo,
+    // esportata come le altre.
+    let merged = match (&local, &op.base, &current, &op.data) {
+        (Some(local_version), Some(remote_base), Some(local_row), Some(remote_row))
+            if !fast_forward && table.name == "notes" && !old_remote_conflict =>
+        {
+            merge::try_merge(
+                connection,
+                &key,
+                local_version,
+                local_row,
+                remote_base,
+                remote_row,
+                remote_wins,
+            )?
+        }
+        _ => None,
+    };
+    if let Some(merge::Merged::Changed { .. }) = &merged {
+        // Il testo locale di prima resta nella cronologia.
+        crate::library::record_revision_now(connection, &key)?;
+    }
+    if merged.is_none() && !fast_forward && table.keep_conflicts && !old_remote_conflict {
         let (loser, loser_device) = if remote_wins {
             (current.clone(), String::new())
         } else {
@@ -1263,6 +1361,9 @@ fn apply_op(
         }
     }
     if !remote_wins {
+        if let Some(merge::Merged::Changed { title, content }) = merged {
+            apply_merged(connection, &key, &title, &content, report, changed_notes)?;
+        }
         return Ok(());
     }
     match &op.data {
@@ -1328,7 +1429,49 @@ fn apply_op(
         }
     }
     set_version(connection, table.name, &key, &op.version)?;
+    if table.name == "notes"
+        && let Some(row) = &op.data
+    {
+        merge::remember(connection, &key, &op.version, op.base.as_ref(), row)?;
+    }
+    if let Some(merge::Merged::Changed { title, content }) = merged {
+        apply_merged(connection, &key, &title, &content, report, changed_notes)?;
+    }
     report.imported += 1;
+    Ok(())
+}
+
+/// Salva il testo fuso come modifica di questo dispositivo, da esportare.
+fn apply_merged(
+    connection: &Connection,
+    key: &str,
+    title: &str,
+    content: &Value,
+    report: &mut SyncReport,
+    changed_notes: &mut HashSet<String>,
+) -> Result<(), StorageError> {
+    let content_json = serde_json::to_string(content)?;
+    connection.execute(
+        "UPDATE notes SET title = ?2, content_json = ?3,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE id = ?1",
+        params![key, title, content_json],
+    )?;
+    sync_search_index(connection, key, title, content)?;
+    // Durante l'applicazione i trigger sono spenti: la modifica si annota
+    // a mano, così parte con la prossima esportazione.
+    connection.execute(
+        "INSERT OR IGNORE INTO sync_dirty (entity, entity_key) VALUES ('notes', ?1)",
+        [key],
+    )?;
+    // Un editor aperto su questa nota non la sovrascrive in silenzio.
+    connection.execute(
+        "INSERT INTO sync_remote_edits (note_id, applied_at) VALUES (?1, ?2)
+         ON CONFLICT(note_id) DO UPDATE SET applied_at = excluded.applied_at",
+        params![key, now_utc()],
+    )?;
+    changed_notes.insert(key.to_owned());
+    report.merged += 1;
     Ok(())
 }
 

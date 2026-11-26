@@ -24,6 +24,16 @@ Le modifiche rilevanti sono registrate per rilascio.
   passphrase una volta, poi la chiave resta nel portachiavi. La passphrase
   si può cambiare senza disturbare gli altri dispositivi. Le versioni
   precedenti si fermano con un avviso invece di scrivere in chiaro.
+- **Nuovi dispositivi più rapidi da sincronizzare.** Quando la storia è
+  lunga un dispositivo salva nella cartella un'istantanea della libreria
+  (al massimo una volta al giorno). Chi si aggiunge parte da lì invece di
+  rileggere ogni modifica, che prima poteva richiedere ore.
+- **Modifiche contemporanee unite da sole.** Se la stessa nota viene
+  modificata su due dispositivi in parti diverse (paragrafi, voci di un
+  elenco, titolo e testo), la sincronizzazione unisce le due modifiche
+  invece di tenerne una e mettere l'altra nella cronologia. Lo stesso
+  paragrafo cambiato su entrambi resta un conflitto da controllare, come
+  prima.
 - Test dell'interfaccia: il clic sulla griglia oraria evita la barra di
   scorrimento (falliva a certe ore del giorno).
 

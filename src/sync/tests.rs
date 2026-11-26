@@ -756,6 +756,14 @@ impl folder::SyncStore for MemoryStore {
         }
         Ok(items)
     }
+    fn remove(&self, path: &str) -> Result<(), FolderError> {
+        let prefix = format!("{path}/");
+        self.0
+            .lock()
+            .expect("lock")
+            .retain(|key, _| key != path && !key.starts_with(&prefix));
+        Ok(())
+    }
 }
 
 fn remote_device(store: &MemoryStore, name: &str) -> Device {
@@ -877,6 +885,10 @@ impl folder::SyncStore for WatchingStore {
     fn list(&self, directory: &str) -> Result<Vec<(String, bool)>, FolderError> {
         self.check();
         self.inner.list(directory)
+    }
+    fn remove(&self, path: &str) -> Result<(), FolderError> {
+        self.check();
+        self.inner.remove(path)
     }
 }
 
@@ -1296,4 +1308,603 @@ fn passphrase_change_keeps_the_key_for_other_devices() {
     assert!(sync_with(&c, &mut unlock(PASSPHRASE)).is_err());
     sync_with(&c, &mut unlock("una passphrase nuova e lunga")).expect("sync");
     assert_eq!(titles(&c), vec!["Dopo", "Prima"]);
+}
+
+// ---------------------------------------------------------------------------
+// Istantanee per chi entra (ADR 0033)
+
+/// Stato confrontabile di un dispositivo: note con testo, tag e allegati.
+fn library_state(device: &Device) -> Vec<String> {
+    let mut state: Vec<String> = device
+        .database
+        .search_notes("", "all", None, 500, 0)
+        .expect("notes")
+        .into_iter()
+        .map(|result| {
+            let id = result.note.id;
+            let mut tags: Vec<String> = device
+                .database
+                .list_note_tags(&id)
+                .expect("tags")
+                .into_iter()
+                .map(|tag| tag.name)
+                .collect();
+            tags.sort();
+            let attachments: Vec<String> = device
+                .database
+                .list_attachments(&id)
+                .expect("attachments")
+                .into_iter()
+                .map(|attachment| attachment.sha256)
+                .collect();
+            format!(
+                "{} [{}] {:?}",
+                note_text(device, &id),
+                tags.join(","),
+                attachments
+            )
+        })
+        .collect();
+    state.sort();
+    state
+}
+
+fn snapshot_manifests(shared: &Path, device_id: &str, encrypted: bool) -> Vec<std::path::PathBuf> {
+    let mut path = shared.join(folder::ROOT);
+    if encrypted {
+        path = path.join("encrypted");
+    }
+    let directory = path.join("devices").join(device_id).join("snapshots");
+    let Ok(entries) = fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .collect()
+}
+
+fn device_id(device: &Device) -> String {
+    device
+        .database
+        .sync_status()
+        .expect("status")
+        .device_id
+        .expect("device id")
+}
+
+fn snapshot_scenario(encrypted: bool) {
+    let shared = tempfile::tempdir().expect("shared");
+    let a = device(shared.path(), "A");
+    let b = device(shared.path(), "B");
+    let mut access_a = folder::SyncAccess::default();
+    let mut access_b = folder::SyncAccess::default();
+    if encrypted {
+        set_encrypted(&a);
+        access_a.passphrase = Some(PASSPHRASE.to_owned());
+        access_b.passphrase = Some(PASSPHRASE.to_owned());
+    }
+    let run = |device: &Device, access: &mut folder::SyncAccess| {
+        let report = sync_with(device, access).expect("sync");
+        assert_eq!(report.rejected, 0, "{report:?}");
+        report
+    };
+
+    // Storia lunga: molte sincronizzazioni, ognuna con un lotto.
+    let notebook = a
+        .database
+        .create_notebook(None, "Lavoro", "")
+        .expect("notebook");
+    let tag = a.database.create_tag("urgente", None).expect("tag");
+    let kept = a
+        .database
+        .create_note_in_notebook("Verbale", &doc("prima versione"), Some(&notebook.id))
+        .expect("note");
+    a.database
+        .set_note_tags(&kept.id, std::slice::from_ref(&tag.id))
+        .expect("tags");
+    let data_a = a.database.data_directory().expect("dir").to_path_buf();
+    let attachment = a
+        .database
+        .add_attachment(&kept.id, "foto.txt", b"contenuto dell'allegato", &data_a)
+        .expect("attachment");
+    let gone = a
+        .database
+        .create_note("Da eliminare", &doc("x"))
+        .expect("note");
+    run(&a, &mut access_a);
+    run(&b, &mut access_b);
+    for round in 0..4 {
+        a.database
+            .update_note(&kept.id, "Verbale", &doc(&format!("versione {round}")))
+            .expect("edit");
+        run(&a, &mut access_a);
+        b.database
+            .create_note(&format!("Nota di B {round}"), &doc("b"))
+            .expect("note");
+        run(&b, &mut access_b);
+    }
+    a.database.trash_note(&gone.id).expect("trash");
+    a.database
+        .delete_note_permanently(&gone.id, &data_a)
+        .expect("delete");
+    run(&a, &mut access_a);
+    run(&b, &mut access_b);
+    run(&a, &mut access_a);
+
+    let (id_a, id_b) = (device_id(&a), device_id(&b));
+    let written = snapshot_manifests(shared.path(), &id_a, encrypted).len()
+        + snapshot_manifests(shared.path(), &id_b, encrypted).len();
+    assert!(written > 0, "nessuna istantanea scritta");
+    // Al massimo due per dispositivo.
+    assert!(snapshot_manifests(shared.path(), &id_a, encrypted).len() <= 2);
+
+    // Nella libreria in chiaro si tolgono i lotti coperti: il nuovo
+    // dispositivo può contare solo sull'istantanea.
+    if !encrypted {
+        let mut best: Option<Value> = None;
+        for path in snapshot_manifests(shared.path(), &id_a, false)
+            .into_iter()
+            .chain(snapshot_manifests(shared.path(), &id_b, false))
+        {
+            let manifest: Value =
+                serde_json::from_slice(&fs::read(path).expect("read")).expect("json");
+            let total = |m: &Value| -> u64 {
+                m["covers"]
+                    .as_object()
+                    .expect("covers")
+                    .values()
+                    .filter_map(Value::as_u64)
+                    .sum()
+            };
+            if best
+                .as_ref()
+                .is_none_or(|current| total(&manifest) > total(current))
+            {
+                best = Some(manifest);
+            }
+        }
+        let best = best.expect("manifest");
+        let mut removed = 0;
+        for (device, covered) in best["covers"].as_object().expect("covers") {
+            let covered = covered.as_u64().expect("seq");
+            let changes = shared
+                .path()
+                .join(folder::ROOT)
+                .join("devices")
+                .join(device)
+                .join("changes");
+            for seq in 1..=covered {
+                if fs::remove_file(changes.join(format!("{seq:012}.json"))).is_ok() {
+                    removed += 1;
+                }
+            }
+        }
+        assert!(removed >= 5, "lotti coperti tolti: {removed}");
+    }
+
+    // Un nuovo dispositivo arriva allo stesso stato, nota eliminata esclusa.
+    let c = device(shared.path(), "C");
+    let mut access_c = folder::SyncAccess::default();
+    if encrypted {
+        access_c.passphrase = Some(PASSPHRASE.to_owned());
+    }
+    run(&c, &mut access_c);
+    run(&c, &mut access_c);
+    assert_eq!(library_state(&c), library_state(&a));
+    assert!(c.database.get_note(&gone.id).is_err());
+    assert!(
+        library_state(&c)
+            .iter()
+            .any(|line| line.contains("versione 3") && line.contains("urgente"))
+    );
+    let data_c = c.database.data_directory().expect("dir").to_path_buf();
+    let path = c
+        .database
+        .verified_attachment_path(&kept.id, &attachment.id, &data_c)
+        .expect("allegato dall'istantanea");
+    assert_eq!(fs::read(path).expect("read"), b"contenuto dell'allegato");
+    assert!(
+        c.database
+            .sync_status()
+            .expect("status")
+            .conflicts
+            .is_empty()
+    );
+    // Gli altri dispositivi compaiono con il loro nome.
+    let names: Vec<String> = c
+        .database
+        .sync_status()
+        .expect("status")
+        .devices
+        .into_iter()
+        .map(|device| device.name)
+        .collect();
+    assert!(
+        names.contains(&"A".to_owned()) && names.contains(&"B".to_owned()),
+        "{names:?}"
+    );
+
+    // Dopo l'ingresso tutto continua come prima, conflitti compresi.
+    b.database
+        .create_note("Dopo l'istantanea", &doc("nuova"))
+        .expect("note");
+    run(&b, &mut access_b);
+    c.database
+        .update_note(&kept.id, "Verbale", &doc("versione di C"))
+        .expect("edit");
+    a.database
+        .update_note(&kept.id, "Verbale", &doc("versione di A"))
+        .expect("edit");
+    run(&c, &mut access_c);
+    run(&a, &mut access_a);
+    run(&b, &mut access_b);
+    run(&c, &mut access_c);
+    run(&a, &mut access_a);
+    assert_eq!(library_state(&a), library_state(&b));
+    assert_eq!(library_state(&a), library_state(&c));
+    assert!(titles(&c).contains(&"Dopo l'istantanea".to_owned()));
+    let conflicts = a.database.sync_status().expect("status").conflicts.len()
+        + c.database.sync_status().expect("status").conflicts.len();
+    assert_eq!(conflicts, 2, "ognuno conserva la versione dell'altro");
+
+    if encrypted {
+        for (path, bytes) in library_files(shared.path()) {
+            assert!(
+                !contains(&bytes, "Verbale") && !contains(&bytes, "urgente"),
+                "{path}"
+            );
+        }
+    }
+}
+
+#[test]
+fn new_devices_start_from_a_snapshot() {
+    snapshot_scenario(false);
+}
+
+#[test]
+fn snapshots_of_an_encrypted_library_are_encrypted() {
+    snapshot_scenario(true);
+}
+
+#[test]
+fn a_damaged_snapshot_falls_back_to_the_batches() {
+    let shared = tempfile::tempdir().expect("shared");
+    let a = device(shared.path(), "A");
+    for round in 0..5 {
+        a.database
+            .create_note(&format!("Nota {round}"), &doc("testo"))
+            .expect("note");
+        sync(&a);
+    }
+    sync(&a);
+    let manifests = snapshot_manifests(shared.path(), &device_id(&a), false);
+    assert!(!manifests.is_empty());
+    // Parti dell'istantanea danneggiate: si rileggono i lotti.
+    for manifest in &manifests {
+        let parts = manifest.with_extension("");
+        for entry in fs::read_dir(parts).expect("parts") {
+            fs::write(entry.expect("entry").path(), b"{rotto").expect("damage");
+        }
+    }
+    let b = device(shared.path(), "B");
+    let report = sync(&b);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("istantanea")),
+        "{report:?}"
+    );
+    assert_eq!(titles(&b), titles(&a));
+}
+
+// ---------------------------------------------------------------------------
+// Fusione di modifiche contemporanee (ADR 0034)
+
+fn paragraphs(texts: &[&str]) -> Value {
+    json!({"type": "doc", "content": texts.iter().map(|text| json!({
+        "type": "paragraph", "content": [{"type": "text", "text": text}]
+    })).collect::<Vec<_>>()})
+}
+
+fn revision_texts(device: &Device, note_id: &str) -> Vec<String> {
+    device
+        .database
+        .list_note_revisions(note_id)
+        .expect("revisions")
+        .iter()
+        .map(|revision| {
+            let detail = device
+                .database
+                .get_note_revision(&revision.id)
+                .expect("detail");
+            crate::content::to_plain_text(&detail.content)
+        })
+        .collect()
+}
+
+#[test]
+fn edits_to_different_paragraphs_are_merged_on_every_device() {
+    let shared = tempfile::tempdir().expect("shared");
+    let a = device(shared.path(), "A");
+    let b = device(shared.path(), "B");
+    let note = a
+        .database
+        .create_note(
+            "Verbale",
+            &paragraphs(&["Presenti: Anna", "Decisioni", "Prossimi passi"]),
+        )
+        .expect("note");
+    sync(&a);
+    sync(&b);
+
+    a.database
+        .update_note(
+            &note.id,
+            "Verbale",
+            &paragraphs(&["Presenti: Anna, Bruno", "Decisioni", "Prossimi passi"]),
+        )
+        .expect("a");
+    b.database
+        .update_note(
+            &note.id,
+            "Verbale del lunedì",
+            &paragraphs(&[
+                "Presenti: Anna",
+                "Decisioni",
+                "Prossimi passi",
+                "Chiamare il fornitore",
+            ]),
+        )
+        .expect("b");
+    let mut merged = 0;
+    for _ in 0..3 {
+        merged += sync(&a).merged;
+        merged += sync(&b).merged;
+    }
+    assert!(merged >= 1);
+    let expected = "Verbale del lunedì: Presenti: Anna, Bruno\n\nDecisioni\n\nProssimi passi\n\nChiamare il fornitore";
+    assert_eq!(note_text(&a, &note.id), expected);
+    assert_eq!(note_text(&b, &note.id), expected);
+    for device in [&a, &b] {
+        // Nessun conflitto da controllare; il testo di prima è nella cronologia.
+        assert!(
+            device
+                .database
+                .sync_status()
+                .expect("status")
+                .conflicts
+                .is_empty()
+        );
+    }
+    let history = [revision_texts(&a, &note.id), revision_texts(&b, &note.id)]
+        .concat()
+        .join(" | ");
+    assert!(
+        history.contains("Anna, Bruno") || history.contains("fornitore"),
+        "{history}"
+    );
+    // Convergenza stabile.
+    sync(&a);
+    sync(&b);
+    assert_eq!(sync(&a).imported + sync(&b).imported, 0);
+    // Un dispositivo che arriva dopo vede lo stesso testo.
+    let c = device(shared.path(), "C");
+    sync(&c);
+    sync(&c);
+    assert_eq!(note_text(&c, &note.id), expected);
+    assert!(
+        c.database
+            .sync_status()
+            .expect("status")
+            .conflicts
+            .is_empty()
+    );
+
+    // Stesso paragrafo cambiato su due dispositivi: nessuna fusione, resta
+    // la regola di sempre con il conflitto da controllare.
+    a.database
+        .update_note(
+            &note.id,
+            "Verbale del lunedì",
+            &paragraphs(&[
+                "Presenti: tutti",
+                "Decisioni",
+                "Prossimi passi",
+                "Chiamare il fornitore",
+            ]),
+        )
+        .expect("a");
+    c.database
+        .update_note(
+            &note.id,
+            "Verbale del lunedì",
+            &paragraphs(&[
+                "Presenti: nessuno",
+                "Decisioni",
+                "Prossimi passi",
+                "Chiamare il fornitore",
+            ]),
+        )
+        .expect("c");
+    let mut reports = Vec::new();
+    for _ in 0..2 {
+        reports.push(sync(&a));
+        reports.push(sync(&c));
+        reports.push(sync(&b));
+    }
+    assert_eq!(reports.iter().map(|report| report.merged).sum::<usize>(), 0);
+    assert!(reports.iter().map(|report| report.conflicts).sum::<usize>() >= 2);
+    assert_eq!(note_text(&a, &note.id), note_text(&c, &note.id));
+    assert_eq!(note_text(&a, &note.id), note_text(&b, &note.id));
+}
+
+#[test]
+fn three_devices_editing_different_paragraphs_converge() {
+    let shared = tempfile::tempdir().expect("shared");
+    let devices: Vec<Device> = ["A", "B", "C"]
+        .iter()
+        .map(|name| device(shared.path(), name))
+        .collect();
+    let note = devices[0]
+        .database
+        .create_note("Lista", &paragraphs(&["uno", "due", "tre", "quattro"]))
+        .expect("note");
+    for device in &devices {
+        sync(device);
+    }
+    for device in &devices {
+        sync(device);
+    }
+    let edits = [
+        ["UNO", "due", "tre", "quattro"],
+        ["uno", "due", "TRE", "quattro"],
+        ["uno", "due", "tre", "quattro"],
+    ];
+    for (device, texts) in devices.iter().zip(edits) {
+        let mut texts: Vec<&str> = texts.to_vec();
+        if device
+            .database
+            .sync_status()
+            .expect("status")
+            .settings
+            .device_name
+            == "C"
+        {
+            texts.push("cinque");
+        }
+        device
+            .database
+            .update_note(&note.id, "Lista", &paragraphs(&texts))
+            .expect("edit");
+    }
+    for _ in 0..4 {
+        for device in &devices {
+            sync(device);
+        }
+    }
+    let expected = "Lista: UNO\n\ndue\n\nTRE\n\nquattro\n\ncinque";
+    for device in &devices {
+        assert_eq!(note_text(device, &note.id), expected);
+    }
+    // Fermi: nessuna altra modifica in giro.
+    let imported: usize = devices.iter().map(|device| sync(device).imported).sum();
+    assert_eq!(imported, 0);
+}
+
+#[test]
+fn without_a_known_base_the_usual_rule_applies() {
+    let shared = tempfile::tempdir().expect("shared");
+    let a = device(shared.path(), "A");
+    let b = device(shared.path(), "B");
+    let note = a
+        .database
+        .create_note("Nota", &paragraphs(&["uno", "due"]))
+        .expect("note");
+    sync(&a);
+    sync(&b);
+    // Come dopo l'aggiornamento da una versione senza basi conservate.
+    for device in [&a, &b] {
+        device
+            .database
+            .connection()
+            .expect("connection")
+            .execute("DELETE FROM sync_note_bases", [])
+            .expect("clear");
+    }
+    a.database
+        .update_note(&note.id, "Nota", &paragraphs(&["UNO", "due"]))
+        .expect("a");
+    b.database
+        .update_note(&note.id, "Nota", &paragraphs(&["uno", "DUE"]))
+        .expect("b");
+    let mut merged = 0;
+    let mut conflicts = 0;
+    for _ in 0..2 {
+        for device in [&a, &b] {
+            let report = sync(device);
+            merged += report.merged;
+            conflicts += report.conflicts;
+        }
+    }
+    assert_eq!(merged, 0);
+    assert_eq!(conflicts, 2);
+    assert_eq!(note_text(&a, &note.id), note_text(&b, &note.id));
+}
+
+#[test]
+fn random_concurrent_edits_always_converge() {
+    let shared = tempfile::tempdir().expect("shared");
+    let devices: Vec<Device> = ["A", "B", "C"]
+        .iter()
+        .map(|name| device(shared.path(), name))
+        .collect();
+    let note = devices[0]
+        .database
+        .create_note("Diario", &paragraphs(&["p0", "p1", "p2", "p3", "p4", "p5"]))
+        .expect("note");
+    for _ in 0..2 {
+        for device in &devices {
+            sync(device);
+        }
+    }
+    let mut seed: u64 = std::env::var("GREATNOTE_MERGE_SEED")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(7);
+    let mut next = |limit: u64| {
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (seed >> 33) % limit
+    };
+    for round in 0..25 {
+        for (index, device) in devices.iter().enumerate() {
+            if next(2) == 0 {
+                continue;
+            }
+            let current = device.database.get_note(&note.id).expect("note");
+            let mut blocks: Vec<String> = current.content["content"]
+                .as_array()
+                .expect("blocks")
+                .iter()
+                .map(|block| {
+                    crate::content::to_plain_text(&json!({"type": "doc", "content": [block]}))
+                })
+                .collect();
+            let position = next(blocks.len() as u64 + 1) as usize;
+            match next(3) {
+                0 if position < blocks.len() => {
+                    blocks[position] = format!("{} r{round}d{index}", blocks[position])
+                }
+                1 if position < blocks.len() && blocks.len() > 2 => {
+                    blocks.remove(position);
+                }
+                _ => blocks.insert(position, format!("nuovo r{round}d{index}")),
+            }
+            let texts: Vec<&str> = blocks.iter().map(String::as_str).collect();
+            device
+                .database
+                .update_note(&note.id, "Diario", &paragraphs(&texts))
+                .expect("edit");
+        }
+        let order = next(6) as usize;
+        for step in 0..3 {
+            sync(&devices[(order + step) % 3]);
+        }
+    }
+    for _ in 0..5 {
+        for device in &devices {
+            sync(device);
+        }
+    }
+    let first = note_text(&devices[0], &note.id);
+    for device in &devices[1..] {
+        assert_eq!(note_text(device, &note.id), first);
+    }
+    let imported: usize = devices.iter().map(|device| sync(device).imported).sum();
+    assert_eq!(imported, 0, "ancora modifiche in giro");
 }

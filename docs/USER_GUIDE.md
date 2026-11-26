@@ -837,7 +837,11 @@ dispositivi ma non cancella nulla: le note e le modifiche che quel
 dispositivo ha sincronizzato restano, e se torna a sincronizzare ricompare.
 
 **Modifiche contemporanee.** Se modifichi la stessa nota su due computer
-prima che si sincronizzino, nessun testo va perso. Tutti i dispositivi
+prima che si sincronizzino, nessun testo va perso. Se le modifiche toccano
+parti diverse (paragrafi diversi, voci diverse di un elenco, il titolo da una
+parte e il testo dall'altra) Greatnote le **unisce da solo**: la nota
+contiene entrambe e la versione di prima resta nella cronologia. Se toccano
+lo stesso paragrafo vale quanto segue. Tutti i dispositivi
 mostrano la stessa versione; l'altra è conservata nella **cronologia della
 nota** (Nota › Informazioni › Cronologia), dove puoi confrontarla e
 ripristinarla. La nota compare anche tra le **Modifiche contemporanee**
@@ -901,6 +905,11 @@ Da sapere:
   questo computer prima del ripristino) tornano, e nessuna nota va persa.
   Per annullare davvero delle modifiche usa la cronologia della nota o il
   cestino.
+- **Nuovi dispositivi più rapidi:** ogni tanto un dispositivo salva nella
+  cartella un'istantanea di tutta la libreria (al massimo una volta al
+  giorno, quando la storia è lunga). Un computer o telefono che si aggiunge
+  parte da lì invece di rileggere ogni modifica dall'inizio. Non devi fare
+  nulla.
 - **Allegati in ritardo:** gli allegati grandi possono arrivare dopo la
   nota. L'impostazione «Allegati in arrivo» li conta e Greatnote li completa
   appena il servizio li ha copiati.
