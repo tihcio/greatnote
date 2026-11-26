@@ -98,3 +98,35 @@ injection.
 - Rimandati: strumenti distruttivi (cestino, riscrittura del testo), che
   richiederebbero una conferma nell'app con una coda di richieste.
 
+## Aggiornamento: richieste distruttive con conferma (2026-11-26)
+
+- Terzo permesso `allow_destructive` («Consenti anche di chiedere cestino e
+  riscrittura delle note»), disattivato per impostazione predefinita e
+  valido solo con `allow_write`; riletto a ogni chiamata.
+- Nuovi strumenti `trash_note` e `replace_note` (`destructiveHint`) e
+  `request_status`. Il server **non applica** le modifiche: le inserisce in
+  `mcp_requests` (migrazione 18) con la versione della nota (`updated_at`)
+  e il motivo scritto dal client, e risponde che serve la conferma.
+- MCP non offre un modo per chiedere una conferma *dentro* Greatnote, e
+  l'elicitation del protocollo chiede all'utente del client, non dell'app:
+  per questo la coda vive nel database condiviso. Nell'app un thread
+  controlla le richieste ogni 3 secondi (solo con il permesso attivo o con
+  richieste già in attesa), avvisa la UI e manda una notifica di sistema.
+  La UI le rilegge anche quando la finestra torna in primo piano.
+- L'anteprima mostra il motivo e, per la riscrittura, il confronto per
+  parole tra testo attuale e proposto; avvisa se la nota è cambiata dopo
+  la richiesta o non è più attiva (in quel caso si può solo rifiutare).
+- Conferma: la richiesta passa a `approved` prima di toccare la nota (una
+  doppia conferma non la riapplica); per la riscrittura la versione
+  attuale viene sempre salvata nella cronologia, poi la nota è aggiornata
+  come un normale salvataggio (indice di ricerca e sincronizzazione
+  inclusi). Se l'operazione fallisce la richiesta resta `failed` con il
+  motivo. Il cestino usa il normale spostamento, reversibile.
+- Limiti: 20 richieste in attesa, scadenza dopo 7 giorni, 200 richieste
+  decise conservate per `request_status`; le richieste spariscono con
+  l'eliminazione definitiva della nota (`ON DELETE CASCADE`) e non sono
+  sincronizzate.
+- Scartato: applicare subito e offrire «annulla» nell'app (la modifica
+  avverrebbe senza che l'utente l'abbia vista); conferma solo nel client
+  MCP (Greatnote non può verificarla).
+

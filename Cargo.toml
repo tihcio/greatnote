@@ -13,6 +13,10 @@ resolver = "2"
 [dependencies]
 age = { version = "0.12", features = ["armor"] }
 base64 = "0.22"
+# Cifratura dei file di sincronizzazione (già dipendenze di `age`).
+chacha20poly1305 = "0.10"
+hmac = "0.12"
+zeroize = "1"
 jiff = "0.2"
 # Ridimensionamento delle immagini inviate ai modelli con visione.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }

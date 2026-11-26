@@ -54,6 +54,7 @@ fn real_library_round_trip() {
         dropbox_account: String::new(),
         folder: shared.path().display().to_string(),
         device_name: name.to_owned(),
+        encrypted: false,
     };
 
     let started = Instant::now();

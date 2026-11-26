@@ -69,3 +69,15 @@ export function diffWords(before: string, after: string): DiffPart[] {
   push(parts, "same", a.slice(endA).join(""));
   return parts.filter((part) => part.text.length > 0);
 }
+
+/** Testo semplice di un documento dell'editor, un blocco per riga. */
+export function plainText(node: { text?: string; content?: unknown[] }): string {
+  if (node.text) return node.text;
+  return (node.content ?? [])
+    .map((child) => plainText(child as { text?: string; content?: unknown[] }))
+    .join(node.content && node.content.length > 0 ? "\n" : "");
+}
+
+/** Titolo e testo di una nota, per confrontare due versioni. */
+export const documentText = (title: string, content: unknown) =>
+  `${title}\n\n${plainText((content ?? {}) as { content?: unknown[] })}`;

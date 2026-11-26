@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use greatnote_core::{
     mcp::{AuditEntry, McpSettings, read_audit},
+    mcp_requests::McpRequest,
     storage::Database,
 };
 use serde::Serialize;
@@ -95,6 +96,8 @@ pub struct McpStatus {
     pub enabled: bool,
     /// Strumenti di modifica consentiti.
     pub allow_write: bool,
+    /// Richieste di cestino e riscrittura (da confermare nell'app).
+    pub allow_destructive: bool,
     /// Programma da avviare nella configurazione del client MCP.
     pub command: String,
     pub args: Vec<String>,
@@ -135,6 +138,7 @@ fn status(database: &Database) -> CommandResult<McpStatus> {
     Ok(McpStatus {
         enabled: settings.enabled,
         allow_write: settings.allow_write,
+        allow_destructive: settings.allow_destructive,
         command: executable(),
         args: vec![
             MCP_FLAG.to_owned(),
@@ -176,6 +180,148 @@ pub fn set_mcp_allow_write(app: AppHandle, allowed: bool) -> CommandResult<McpSt
         .map_err(|error| error.to_string())?;
     tracing::info!(allowed, "modifiche del server MCP aggiornate");
     status(&database)
+}
+
+/// Consente o blocca le richieste distruttive (cestino, riscrittura).
+/// Bloccarle non cancella quelle già in attesa: restano da decidere.
+#[tauri::command]
+pub fn set_mcp_allow_destructive(app: AppHandle, allowed: bool) -> CommandResult<McpStatus> {
+    let database = app.state::<Database>();
+    let current = database.mcp_settings().map_err(|error| error.to_string())?;
+    database
+        .set_mcp_settings(&McpSettings {
+            allow_destructive: allowed,
+            ..current
+        })
+        .map_err(|error| error.to_string())?;
+    tracing::info!(allowed, "richieste distruttive del server MCP aggiornate");
+    status(&database)
+}
+
+/// Richieste del client MCP in attesa di conferma.
+#[tauri::command]
+pub fn list_mcp_requests(database: State<'_, Database>) -> CommandResult<Vec<McpRequest>> {
+    database
+        .pending_mcp_requests()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn approve_mcp_request(app: AppHandle, id: String) -> CommandResult<McpRequest> {
+    let request = app
+        .state::<Database>()
+        .approve_mcp_request(&id)
+        .map_err(|error| error.to_string())?;
+    tracing::info!(action = ?request.action, "richiesta MCP confermata");
+    Ok(request)
+}
+
+#[tauri::command]
+pub fn reject_mcp_request(app: AppHandle, id: String) -> CommandResult<McpRequest> {
+    let request = app
+        .state::<Database>()
+        .reject_mcp_request(&id)
+        .map_err(|error| error.to_string())?;
+    tracing::info!(action = ?request.action, "richiesta MCP rifiutata");
+    Ok(request)
+}
+
+/// Evento per la UI: le richieste in attesa sono cambiate.
+#[cfg(desktop)]
+pub const MCP_REQUESTS_EVENT: &str = "mcp-requests-changed";
+
+/// Controlla ogni pochi secondi le richieste accodate dal client MCP (che
+/// gira in un altro processo): per le nuove avvisa la UI e manda una
+/// notifica di sistema, perché l'utente di solito sta guardando il client.
+#[cfg(desktop)]
+pub fn spawn_request_watcher(app: &AppHandle) {
+    use std::{collections::HashSet, thread, time::Duration};
+
+    use tauri::Emitter;
+
+    const INTERVAL: Duration = Duration::from_secs(3);
+    let app = app.clone();
+    let spawned = thread::Builder::new()
+        .name("mcp-requests".to_owned())
+        .spawn(move || {
+            let mut known: HashSet<String> = HashSet::new();
+            loop {
+                thread::sleep(INTERVAL);
+                let database = app.state::<Database>();
+                let allowed = database
+                    .mcp_settings()
+                    .is_ok_and(|settings| settings.destructive_allowed());
+                // Con il permesso tolto le richieste già arrivate restano
+                // visibili nell'app, ma non se ne controllano di nuove.
+                if !allowed && known.is_empty() {
+                    continue;
+                }
+                let pending = match database.pending_mcp_requests() {
+                    Ok(pending) => pending,
+                    Err(error) => {
+                        tracing::warn!("richieste MCP non lette: {error}");
+                        continue;
+                    }
+                };
+                let ids: HashSet<String> =
+                    pending.iter().map(|request| request.id.clone()).collect();
+                if ids == known {
+                    continue;
+                }
+                let fresh: Vec<&McpRequest> = pending
+                    .iter()
+                    .filter(|request| !known.contains(&request.id))
+                    .collect();
+                known = ids;
+                if let Err(error) = app.emit(MCP_REQUESTS_EVENT, pending.len()) {
+                    tracing::warn!("evento richieste MCP non inviato: {error}");
+                }
+                if let Some(first) = fresh.first() {
+                    let english = app
+                        .state::<crate::planner_commands::UiLanguage>()
+                        .is_english();
+                    let (title, body) = notification_text(first, fresh.len(), english);
+                    if let Err(error) =
+                        crate::planner_commands::send_notification(&app, &title, &body)
+                    {
+                        tracing::warn!("notifica richiesta MCP non inviata: {error}");
+                    }
+                }
+            }
+        });
+    if let Err(error) = spawned {
+        tracing::error!("controllo delle richieste MCP non avviato: {error}");
+    }
+}
+
+/// Testo della notifica: azione e titolo della nota, mai il testo proposto.
+#[cfg(desktop)]
+fn notification_text(request: &McpRequest, count: usize, english: bool) -> (String, String) {
+    use greatnote_core::mcp_requests::McpAction;
+    let note = if request.note_title.trim().is_empty() {
+        if english { "Untitled" } else { "Senza titolo" }.to_owned()
+    } else {
+        request.note_title.clone()
+    };
+    let title = if english {
+        "An AI app is asking for confirmation"
+    } else {
+        "Un'app di AI chiede una conferma"
+    }
+    .to_owned();
+    let action = match (request.action, english) {
+        (McpAction::TrashNote, false) => format!("Spostare «{note}» nel cestino"),
+        (McpAction::TrashNote, true) => format!("Move “{note}” to the trash"),
+        (McpAction::ReplaceNote, false) => format!("Riscrivere «{note}»"),
+        (McpAction::ReplaceNote, true) => format!("Rewrite “{note}”"),
+    };
+    let body = match (count, english) {
+        (1, false) => format!("{action}. Apri Greatnote per vedere l'anteprima."),
+        (1, true) => format!("{action}. Open Greatnote to review it."),
+        (_, false) => format!("{action} e altre {} richieste.", count - 1),
+        (_, true) => format!("{action} and {} more requests.", count - 1),
+    };
+    (title, body)
 }
 
 #[cfg(test)]

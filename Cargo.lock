@@ -1978,6 +1978,8 @@ version = "0.2.15"
 dependencies = [
  "age",
  "base64 0.22.1",
+ "chacha20poly1305",
+ "hmac 0.12.1",
  "image",
  "jiff",
  "md-5",
@@ -1995,6 +1997,7 @@ dependencies = [
  "ureq",
  "uuid",
  "windows-sys 0.61.2",
+ "zeroize",
  "zip",
 ]
 

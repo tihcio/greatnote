@@ -197,10 +197,24 @@ locali.
 
 ## Sincronizzazione tra dispositivi
 
-- **Nessun segreto nei file, ma nessuna cifratura:** la cartella contiene
-  lotti JSON con il contenuto delle note e i blob degli allegati, leggibili
-  dal servizio che la ospita. Lo dicono le impostazioni e la guida;
-  cifratura con passphrase in roadmap.
+- **In chiaro per impostazione predefinita:** la cartella contiene lotti
+  JSON con il contenuto delle note e i blob degli allegati, leggibili dal
+  servizio che la ospita. Lo dicono le impostazioni e la guida.
+- **Cifratura con passphrase (facoltativa, ADR 0032):**
+  - chiave casuale di 256 bit, cifrata con la passphrase in formato age
+    (scrypt);
+  - ogni file è cifrato con XChaCha20-Poly1305, con nonce casuale e dati
+    associati (libreria e percorso): file spostati, sostituiti o alterati
+    vengono rifiutati;
+  - i nomi dei blob sono un HMAC dello SHA-256;
+  - la passphrase deve avere almeno 12 caratteri e non viene mai salvata;
+    la chiave sta nel portachiavi e viene cancellata disattivando la
+    sincronizzazione;
+  - le versioni senza supporto vedono il formato 2 e si fermano invece di
+    scrivere in chiaro;
+  - restano visibili numero, dimensione e date dei file e gli id casuali
+    dei dispositivi;
+  - cambiare passphrase non revoca un dispositivo che ha già la chiave.
 - **Dati remoti non attendibili:**
   - ogni operazione viene validata (entità e colonne solo da un elenco
     fisso, chiavi controllate, query parametrizzate, nessuna struttura nei
@@ -249,7 +263,8 @@ locali.
   - risposte limitate a 80 MB;
   - in caso di 429 o 5xx si riprova con attesa limitata.
 - **Dati:** valgono le regole della sincronizzazione (dati remoti non
-  attendibili, validazione, hash). I file su Dropbox non sono cifrati.
+  attendibili, validazione, hash). I file su Dropbox sono in chiaro, salvo
+  che l'utente scelga la cifratura con passphrase (ADR 0032).
 
 ## Calendari iCal
 
@@ -334,6 +349,22 @@ locali.
   client. Una modifica a una nota aperta nell'app non va persa: se l'app
   salva dalla versione precedente, quella MCP resta nella cronologia e tra
   i conflitti.
+- **Richieste distruttive (facoltative):** con un terzo permesso,
+  «Consenti anche di chiedere cestino e riscrittura», disattivato per
+  impostazione predefinita e valido solo insieme alle modifiche, compaiono
+  `trash_note`, `replace_note` e `request_status`. Il server non applica
+  nulla: inserisce una richiesta in `mcp_requests` (al massimo 20 in
+  attesa, scadenza 7 giorni, motivo limitato a 500 caratteri, testo
+  convertito con la whitelist Markdown e validato) e risponde che serve la
+  conferma. Solo l'app, su azione esplicita dell'utente dopo l'anteprima,
+  la applica; nessuno strumento MCP può confermare. Prima di una riscrittura
+  la versione attuale va sempre nella cronologia; il cestino resta
+  reversibile. La richiesta passa a «confermata» prima di toccare la nota,
+  così una doppia conferma non la applica due volte. La notifica di sistema
+  mostra azione e titolo, mai il testo proposto; il registro contiene solo
+  l'id della richiesta. Le richieste restano sul dispositivo (la
+  sincronizzazione non le copia) e spariscono con l'eliminazione
+  definitiva della nota.
 - **Dati esposti:** note attive e archiviate, con taccuino, tag, date e
   testo delle immagini. Mai il cestino né i taccuini esclusi dall'AI, che
   non vengono nemmeno confermati come esistenti. Gli allegati non sono
@@ -345,7 +376,9 @@ locali.
   attendibile. Senza il permesso di modifica gli strumenti non possono
   agire sulle note; con il permesso una nota malevola potrebbe indurre il
   client a creare note o attività, mai a cancellarle: il danno massimo è
-  limitato, visibile nel registro e annullabile.
+  limitato, visibile nel registro e annullabile. Con le richieste
+  distruttive una nota malevola può al più far *proporre* un cestino o una
+  riscrittura, che l'utente vede con l'anteprima e può rifiutare.
 - **Registro:** `mcp-audit.jsonl` contiene strumento, esito, conteggio e
   id della nota o dell'attività letta, creata o modificata, mai testo di
   note o ricerche. Il file vive nella
@@ -469,6 +502,13 @@ applicate. Stato e prove in `docs/ANDROID_PORTING.md`.
   non dall'estensione (come ogni allegato) e cancella le copie. Una
   condivisione viene letta una volta sola, anche se Android ricrea
   l'activity.
+- **Pagine web condivise** (`web_clip.rs`). Condividere un indirizzo fa
+  scaricare la pagina dal sito, come aprirla nel browser ma senza cookie,
+  script né immagini: il sito vede l'indirizzo IP e lo user agent
+  `Greatnote`. Solo `http`/`https`, al massimo 5 MB e 20 secondi, 5
+  reindirizzamenti HTTP e 2 con `<meta refresh>`. L'HTML passa dalla
+  conversione dell'importazione (solo nodi ammessi, link sicuri), quindi
+  nessuno script o stile della pagina finisce nella nota.
 - **Plugin `fs`** attivo solo su Android e usato solo dal lato Rust: il
   frontend non ha alcun permesso sul filesystem.
 - **Permessi dichiarati:** solo `INTERNET`, oggi non usato da nessuna

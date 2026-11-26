@@ -14,6 +14,8 @@ export interface SyncSettings {
   folder: string;
   dropbox_account: string;
   device_name: string;
+  /** Cifrare la libreria con una passphrase (nuova o da convertire). */
+  encrypted: boolean;
 }
 
 export interface SyncConflict {
@@ -42,6 +44,10 @@ export interface SyncView {
   conflicts: SyncConflict[];
   /** Nome usato se `settings.device_name` è vuoto (nome host). */
   default_device_name: string;
+  /** La libreria in uso è cifrata. */
+  encrypted: boolean;
+  /** L'ultima sincronizzazione aspetta la passphrase. */
+  passphrase_required: boolean;
   running: boolean;
   /** Questa versione include il collegamento a Dropbox. */
   dropbox_available: boolean;
@@ -49,6 +55,77 @@ export interface SyncView {
 }
 
 export const SYNC_FINISHED_EVENT = "sync-finished";
+
+/** Lunghezza minima della passphrase (come in `sync/crypto.rs`). */
+const MIN_SYNC_PASSPHRASE = 12;
+
+interface PassphraseFormProps {
+  /** Passphrase nuova: chiesta due volte. */
+  confirm: boolean;
+  submitLabel: string;
+  busy: boolean;
+  onSubmit: (passphrase: string) => void;
+  onCancel?: () => void;
+}
+
+/** Passphrase della sincronizzazione: mai salvata, passa solo al backend. */
+function PassphraseForm({ confirm, submitLabel, busy, onSubmit, onCancel }: PassphraseFormProps) {
+  const [passphrase, setPassphrase] = useState("");
+  const [repeat, setRepeat] = useState("");
+  const problem =
+    confirm && passphrase.trim().length < MIN_SYNC_PASSPHRASE
+      ? t.syncPassphraseTooShort(MIN_SYNC_PASSPHRASE)
+      : confirm && repeat !== passphrase
+        ? t.syncPassphraseMismatch
+        : null;
+  return (
+    <form
+      className="sync-passphrase-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!problem && passphrase) onSubmit(passphrase);
+      }}
+    >
+      <div className="settings-row">
+        <label className="dialog-field">
+          <span>{t.syncPassphrase}</span>
+          <input
+            autoComplete={confirm ? "new-password" : "current-password"}
+            onChange={(event) => setPassphrase(event.target.value)}
+            type="password"
+            value={passphrase}
+          />
+        </label>
+        {confirm && (
+          <label className="dialog-field">
+            <span>{t.syncPassphraseRepeat}</span>
+            <input
+              autoComplete="new-password"
+              onChange={(event) => setRepeat(event.target.value)}
+              type="password"
+              value={repeat}
+            />
+          </label>
+        )}
+      </div>
+      {passphrase !== "" && problem && (
+        <p className="data-hint" role="status">
+          {problem}
+        </p>
+      )}
+      <div className="ai-inline-actions">
+        <button className="data-action primary" disabled={busy || !passphrase || problem !== null} type="submit">
+          {submitLabel}
+        </button>
+        {onCancel && (
+          <button className="data-action" disabled={busy} onClick={onCancel} type="button">
+            {t.cancel}
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
 
 interface SyncSectionProps {
   onOpenNote: (noteId: string) => void;
@@ -68,6 +145,8 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** Modulo aperto: cifratura di una libreria in chiaro o nuova passphrase. */
+  const [passphraseForm, setPassphraseForm] = useState<"encrypt" | "change" | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -108,7 +187,9 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
     };
   }, [load]);
 
-  const run = async (action: () => Promise<SyncView>, done?: string) => {
+  /** `unlocking`: tentativo con la passphrase, il cui errore va mostrato
+   *  anche se la libreria resta da sbloccare. */
+  const run = async (action: () => Promise<SyncView>, done?: string, unlocking = false) => {
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -116,11 +197,29 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
       setView(await action());
       if (done) setNotice(done);
     } catch (cause) {
-      setError(errorMessage(cause));
-      void load();
+      const next = await load();
+      // Serve la passphrase: lo dice già il riquadro della cifratura.
+      setError(next?.passphrase_required && !unlocking ? null : errorMessage(cause));
     } finally {
       setBusy(false);
     }
+  };
+
+  /** Cifra la libreria in uso (o la prossima): con la sincronizzazione
+   *  attiva parte subito, altrimenti la passphrase verrà chiesta
+   *  all'attivazione. */
+  const encrypt = async (passphrase: string | null) => {
+    if (!view) return;
+    await run(
+      () =>
+        invoke<SyncView>("set_sync_settings", {
+          settings: { ...view.settings, encrypted: true },
+          passphrase,
+        }),
+      view.settings.enabled ? t.syncEncryptedDone : t.syncEncryptLater,
+      passphrase !== null,
+    );
+    setPassphraseForm(null);
   };
 
   const pickFolder = async () => {
@@ -140,6 +239,7 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
     folder,
     dropbox_account: view?.settings.dropbox_account ?? "",
     device_name: deviceName,
+    encrypted: view?.settings.encrypted ?? false,
   });
 
   const enable = async () => {
@@ -244,6 +344,9 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
   const otherDevices = view.devices.filter((device) => !device.this_device);
   const thisDevice = view.devices.find((device) => device.this_device);
   const nameChanged = deviceName.trim() !== view.settings.device_name;
+  // Libreria da creare o convertire (passphrase nuova, due volte) oppure
+  // già cifrata altrove (passphrase esistente).
+  const choosingPassphrase = view.settings.encrypted && !view.encrypted;
 
   return (
     <div className="ai-settings sync-settings">
@@ -404,7 +507,7 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
             )}
           </dl>
         )}
-        {enabled && view.last_error && (
+        {enabled && view.last_error && !view.passphrase_required && (
           <p className="dialog-error" role="alert">
             {t.syncErrorPrefix} {view.last_error}
           </p>
@@ -414,6 +517,79 @@ export default function SyncSection({ onOpenNote }: SyncSectionProps) {
           <p className="dialog-error" role="alert">
             {error}
           </p>
+        )}
+      </fieldset>
+      <fieldset>
+        <legend>{t.syncEncryption}</legend>
+        <p className="data-hint">{t.syncEncryptionIntro}</p>
+        {enabled && view.passphrase_required ? (
+          <div className="ai-remote-warning" role="alert">
+            <strong>{choosingPassphrase ? t.syncChooseTitle : t.syncUnlockTitle}</strong>
+            <p>{choosingPassphrase ? t.syncEncryptWarning : t.syncUnlockIntro}</p>
+            <PassphraseForm
+              busy={busy}
+              confirm={choosingPassphrase}
+              onSubmit={(passphrase) =>
+                void run(() => invoke<SyncView>("unlock_sync", { passphrase }), t.syncUnlocked, true)
+              }
+              submitLabel={choosingPassphrase ? t.syncEncryptNow : t.syncUnlock}
+            />
+          </div>
+        ) : view.encrypted ? (
+          <>
+            <p className="sync-account">{t.syncEncryptedOn}</p>
+            {passphraseForm === "change" ? (
+              <PassphraseForm
+                busy={busy}
+                confirm
+                onCancel={() => setPassphraseForm(null)}
+                onSubmit={(passphrase) =>
+                  void run(
+                    () => invoke<SyncView>("change_sync_passphrase", { current: null, passphrase }),
+                    t.syncPassphraseChanged,
+                  ).then(() => setPassphraseForm(null))
+                }
+                submitLabel={t.syncChangePassphrase}
+              />
+            ) : (
+              <div className="ai-inline-actions">
+                <button className="data-action" disabled={busy} onClick={() => setPassphraseForm("change")} type="button">
+                  {t.syncChangePassphraseStart}
+                </button>
+              </div>
+            )}
+          </>
+        ) : view.settings.encrypted ? (
+          <p className="data-hint">{t.syncEncryptPending}</p>
+        ) : passphraseForm === "encrypt" ? (
+          <div className="ai-remote-warning">
+            <p>{t.syncEncryptWarning}</p>
+            {enabled && <p>{t.syncConvertHint}</p>}
+            {enabled ? (
+              <PassphraseForm
+                busy={busy}
+                confirm
+                onCancel={() => setPassphraseForm(null)}
+                onSubmit={(passphrase) => void encrypt(passphrase)}
+                submitLabel={t.syncEncryptNow}
+              />
+            ) : (
+              <div className="ai-inline-actions">
+                <button className="data-action primary" disabled={busy} onClick={() => void encrypt(null)} type="button">
+                  {t.syncEncryptNow}
+                </button>
+                <button className="data-action" disabled={busy} onClick={() => setPassphraseForm(null)} type="button">
+                  {t.cancel}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="ai-inline-actions">
+            <button className="data-action" disabled={busy} onClick={() => setPassphraseForm("encrypt")} type="button">
+              {t.syncEncryptStart}
+            </button>
+          </div>
         )}
       </fieldset>
       {enabled && (

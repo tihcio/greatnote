@@ -15,8 +15,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use super::crypto::{self, CryptoError, LibraryKey};
+
 pub(crate) const ROOT: &str = "greatnote-sync";
+/// Formato dei lotti e di una libreria in chiaro.
 pub const FORMAT: u32 = 1;
+/// Libreria cifrata (ADR 0032): la libreria vera è in [`ENCRYPTED_DIR`] e il
+/// `format.json` principale ha questo formato, così le versioni che non
+/// conoscono la cifratura si fermano invece di scrivere in chiaro.
+pub const ENCRYPTED_FORMAT: u32 = 2;
+const ENCRYPTED_DIR: &str = "encrypted/";
 /// Dimensione massima di un lotto letto (protezione da file anomali).
 const MAX_BATCH_BYTES: usize = 64 * 1024 * 1024;
 
@@ -44,6 +52,11 @@ pub enum FolderError {
     /// il token invece di riprovare.
     #[error("{}", crate::tr!("Accesso a {0} non più valido: ricollega l'account", "Access to {0} has expired: reconnect the account", .0))]
     Unauthorized(&'static str),
+    /// Libreria cifrata e nessuna chiave valida: serve la passphrase.
+    #[error("{}", crate::tr!("La libreria di sincronizzazione è cifrata: inserisci la passphrase nelle impostazioni", "The sync library is encrypted: enter the passphrase in settings"))]
+    PassphraseRequired,
+    #[error(transparent)]
+    Crypto(#[from] CryptoError),
 }
 
 /// Archivio di file della libreria. I percorsi sono relativi alla radice
@@ -156,6 +169,46 @@ impl SyncStore for LocalStore {
 pub(crate) struct FormatFile {
     pub format: u32,
     pub library: String,
+    /// Solo in `encrypted/format.json`: come aprire la libreria.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption: Option<EncryptionInfo>,
+    /// Solo nel `format.json` principale di una libreria convertita: la
+    /// libreria in chiaro di prima, i cui dispositivi passano a quella
+    /// cifrata riesportando tutto.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_library: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct EncryptionInfo {
+    pub scheme: String,
+    /// Riconosce la chiave salvata nel portachiavi.
+    pub key_id: String,
+    /// Chiave della libreria cifrata con la passphrase (age).
+    pub wrapped_key: String,
+}
+
+/// Accesso alla libreria: chiave già nota, passphrase appena inserita e
+/// scelta di cifrare.
+#[derive(Debug, Default)]
+pub struct SyncAccess {
+    /// Chiave salvata da una sincronizzazione precedente. Dopo l'apertura è
+    /// quella della libreria (da salvare nel portachiavi), `None` per una
+    /// libreria in chiaro.
+    pub key: Option<LibraryKey>,
+    /// Passphrase inserita dall'utente (mai salvata).
+    pub passphrase: Option<String>,
+    /// L'utente vuole la cifratura: una libreria nuova nasce cifrata e una
+    /// in chiaro viene convertita.
+    pub encrypt: bool,
+}
+
+/// Libreria aperta.
+pub(crate) struct OpenedLibrary {
+    pub folder: SyncFolder,
+    pub library: String,
+    /// Libreria in chiaro da cui questa cifrata è stata convertita.
+    pub previous_library: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,6 +257,10 @@ pub(crate) struct Batch {
 /// Libreria sopra un archivio di file.
 pub(crate) struct SyncFolder {
     store: Box<dyn SyncStore>,
+    /// Cartella della libreria dentro l'archivio (`encrypted/` se cifrata).
+    prefix: &'static str,
+    /// Chiave e id della libreria, se cifrata.
+    cipher: Option<(LibraryKey, String)>,
 }
 
 /// Id di dispositivo o libreria ammessi come nome di cartella.
@@ -239,51 +296,286 @@ fn blob_path(sha256: &str) -> Option<String> {
     .then(|| format!("blobs/{}/{sha256}", &sha256[..2]))
 }
 
+/// `format.json` (principale o della libreria cifrata), validato.
+fn read_format(store: &dyn SyncStore, path: &str) -> Result<Option<FormatFile>, FolderError> {
+    let Some(bytes) = store.read(path)? else {
+        return Ok(None);
+    };
+    let format: FormatFile = serde_json::from_slice(&bytes)
+        .map_err(|error| FolderError::Invalid(format!("format.json: {error}")))?;
+    if format.format > ENCRYPTED_FORMAT {
+        return Err(FolderError::NewerFormat(format.format));
+    }
+    if !valid_id(&format.library) {
+        return Err(FolderError::Invalid(crate::tr!(
+            "format.json: libreria non valida",
+            "format.json: invalid library"
+        )));
+    }
+    Ok(Some(format))
+}
+
+fn write_format(
+    store: &dyn SyncStore,
+    path: &str,
+    format: &FormatFile,
+    create_only: bool,
+) -> Result<(), FolderError> {
+    let bytes = serde_json::to_vec_pretty(format)
+        .map_err(|error| FolderError::Invalid(error.to_string()))?;
+    store.write(path, &bytes, create_only)
+}
+
 impl SyncFolder {
-    /// Apre (o crea) la libreria nell'archivio.
+    /// Apre (o crea) la libreria nell'archivio. Con `access.encrypt` una
+    /// libreria nuova nasce cifrata e una in chiaro viene convertita (serve
+    /// la passphrase); una libreria cifrata richiede la chiave o la
+    /// passphrase, e `access.key` riporta la chiave in uso.
     pub(crate) fn open(
         store: Box<dyn SyncStore>,
         create_library: impl FnOnce() -> String,
-    ) -> Result<(Self, String), FolderError> {
-        let library = match store.read("format.json")? {
-            Some(bytes) => {
-                let format: FormatFile = serde_json::from_slice(&bytes)
-                    .map_err(|error| FolderError::Invalid(format!("format.json: {error}")))?;
-                if format.format > FORMAT {
-                    return Err(FolderError::NewerFormat(format.format));
+        access: &mut SyncAccess,
+    ) -> Result<OpenedLibrary, FolderError> {
+        match read_format(store.as_ref(), "format.json")? {
+            Some(root) if root.format == ENCRYPTED_FORMAT => {
+                let previous = root.previous_library.filter(|id| valid_id(id));
+                Self::open_encrypted(store, None, access, previous)
+            }
+            Some(root) if !access.encrypt => {
+                access.key = None;
+                Ok(Self::plain(store, root.library))
+            }
+            Some(root) => {
+                // Conversione: libreria cifrata nuova accanto a quella in
+                // chiaro, poi il formato principale la indica a tutti.
+                let opened = Self::open_encrypted(
+                    store,
+                    Some(uuid::Uuid::new_v4().to_string()),
+                    access,
+                    Some(root.library.clone()),
+                )?;
+                write_format(
+                    opened.folder.store.as_ref(),
+                    "format.json",
+                    &FormatFile {
+                        format: ENCRYPTED_FORMAT,
+                        library: opened.library.clone(),
+                        encryption: None,
+                        previous_library: Some(root.library),
+                    },
+                    false,
+                )?;
+                Ok(opened)
+            }
+            None if access.encrypt => {
+                let opened = Self::open_encrypted(store, Some(create_library()), access, None)?;
+                let marker = FormatFile {
+                    format: ENCRYPTED_FORMAT,
+                    library: opened.library.clone(),
+                    encryption: None,
+                    previous_library: None,
+                };
+                match write_format(opened.folder.store.as_ref(), "format.json", &marker, true) {
+                    Ok(()) => Ok(opened),
+                    // Libreria in chiaro creata nel frattempo da un altro
+                    // dispositivo: si riapre, convertendola.
+                    Err(FolderError::Exists) => {
+                        let OpenedLibrary { folder, .. } = opened;
+                        Self::open(folder.store, library_created_elsewhere, access)
+                    }
+                    Err(error) => Err(error),
                 }
-                if !valid_id(&format.library) {
-                    return Err(FolderError::Invalid(crate::tr!(
-                        "format.json: libreria non valida",
-                        "format.json: invalid library"
-                    )));
-                }
-                format.library
             }
             None => {
                 let library = create_library();
-                let bytes = serde_json::to_vec_pretty(&FormatFile {
+                let format = FormatFile {
                     format: FORMAT,
                     library: library.clone(),
-                })
-                .map_err(|error| FolderError::Invalid(error.to_string()))?;
-                match store.write("format.json", &bytes, true) {
-                    Ok(()) => library,
+                    encryption: None,
+                    previous_library: None,
+                };
+                match write_format(store.as_ref(), "format.json", &format, true) {
+                    Ok(()) => {
+                        access.key = None;
+                        Ok(Self::plain(store, library))
+                    }
                     // Creata nel frattempo da un altro dispositivo: vale quella.
                     Err(FolderError::Exists) => {
-                        return Self::open(store, library_created_elsewhere);
+                        Self::open(store, library_created_elsewhere, access)
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+        }
+    }
+
+    fn plain(store: Box<dyn SyncStore>, library: String) -> OpenedLibrary {
+        OpenedLibrary {
+            folder: Self {
+                store,
+                prefix: "",
+                cipher: None,
+            },
+            library,
+            previous_library: None,
+        }
+    }
+
+    /// Apre la libreria cifrata in `encrypted/`, creandola con `create` se
+    /// manca.
+    fn open_encrypted(
+        store: Box<dyn SyncStore>,
+        create: Option<String>,
+        access: &mut SyncAccess,
+        previous_library: Option<String>,
+    ) -> Result<OpenedLibrary, FolderError> {
+        let path = format!("{ENCRYPTED_DIR}format.json");
+        let format = match read_format(store.as_ref(), &path)? {
+            Some(format) => format,
+            None => {
+                let Some(library) = create else {
+                    return Err(FolderError::Invalid(crate::tr!(
+                        "libreria cifrata mancante",
+                        "encrypted library missing"
+                    )));
+                };
+                let Some(passphrase) = access.passphrase.as_deref() else {
+                    return Err(FolderError::PassphraseRequired);
+                };
+                let key = LibraryKey::generate();
+                let format = FormatFile {
+                    format: ENCRYPTED_FORMAT,
+                    library,
+                    encryption: Some(EncryptionInfo {
+                        scheme: crypto::SCHEME.to_owned(),
+                        key_id: key.key_id(),
+                        wrapped_key: key.wrap(passphrase)?,
+                    }),
+                    previous_library: None,
+                };
+                match write_format(store.as_ref(), &path, &format, true) {
+                    Ok(()) => {
+                        access.key = Some(key);
+                        format
+                    }
+                    // Creata nel frattempo da un altro dispositivo.
+                    Err(FolderError::Exists) => {
+                        read_format(store.as_ref(), &path)?.ok_or(FolderError::Exists)?
                     }
                     Err(error) => return Err(error),
                 }
             }
         };
-        Ok((Self { store }, library))
+        let info = format.encryption.as_ref().ok_or_else(|| {
+            FolderError::Invalid(crate::tr!(
+                "libreria cifrata senza chiave",
+                "encrypted library without a key"
+            ))
+        })?;
+        if info.scheme != crypto::SCHEME {
+            return Err(FolderError::NewerFormat(format.format));
+        }
+        let known = access.key.take().filter(|key| key.key_id() == info.key_id);
+        let key = match (known, access.passphrase.as_deref()) {
+            (Some(key), _) => key,
+            (None, Some(passphrase)) => {
+                let key = LibraryKey::unwrap(&info.wrapped_key, passphrase)?;
+                if key.key_id() != info.key_id {
+                    return Err(CryptoError::Invalid.into());
+                }
+                key
+            }
+            (None, None) => return Err(FolderError::PassphraseRequired),
+        };
+        access.key = Some(key.clone());
+        Ok(OpenedLibrary {
+            folder: Self {
+                store,
+                prefix: ENCRYPTED_DIR,
+                cipher: Some((key, format.library.clone())),
+            },
+            library: format.library,
+            previous_library,
+        })
+    }
+
+    /// Cambia la passphrase della libreria cifrata: la chiave resta la
+    /// stessa, quindi gli altri dispositivi non devono fare nulla.
+    pub(crate) fn change_passphrase(&self, passphrase: &str) -> Result<(), FolderError> {
+        let Some((key, _)) = &self.cipher else {
+            return Err(FolderError::Invalid(crate::tr!(
+                "la libreria non è cifrata",
+                "the library is not encrypted"
+            )));
+        };
+        let path = format!("{ENCRYPTED_DIR}format.json");
+        let mut format = read_format(self.store.as_ref(), &path)?.ok_or_else(|| {
+            FolderError::Invalid(crate::tr!(
+                "libreria cifrata mancante",
+                "encrypted library missing"
+            ))
+        })?;
+        let info = format
+            .encryption
+            .as_mut()
+            .filter(|info| info.key_id == key.key_id())
+            .ok_or_else(|| {
+                FolderError::Invalid(crate::tr!(
+                    "la chiave della libreria è cambiata",
+                    "the library key has changed"
+                ))
+            })?;
+        info.wrapped_key = key.wrap(passphrase)?;
+        write_format(self.store.as_ref(), &path, &format, false)
+    }
+
+    pub(crate) fn is_encrypted(&self) -> bool {
+        self.cipher.is_some()
+    }
+
+    fn read_file(&self, path: &str) -> Result<Option<Vec<u8>>, FolderError> {
+        let full = format!("{}{path}", self.prefix);
+        let Some(bytes) = self.store.read(&full)? else {
+            return Ok(None);
+        };
+        match &self.cipher {
+            None => Ok(Some(bytes)),
+            Some((key, library)) => Ok(key.open(library, path, &bytes)?),
+        }
+    }
+
+    fn write_file(&self, path: &str, bytes: &[u8], create_only: bool) -> Result<(), FolderError> {
+        let full = format!("{}{path}", self.prefix);
+        match &self.cipher {
+            None => self.store.write(&full, bytes, create_only),
+            Some((key, library)) => {
+                self.store
+                    .write(&full, &key.seal(library, path, bytes), create_only)
+            }
+        }
+    }
+
+    fn list_dir(&self, directory: &str) -> Result<Vec<(String, bool)>, FolderError> {
+        self.store.list(&format!("{}{directory}", self.prefix))
+    }
+
+    /// Percorso del blob di un allegato: con la cifratura il nome è un HMAC
+    /// dell'hash, che non rivela quale file sia.
+    fn blob_path(&self, sha256: &str) -> Option<String> {
+        let name = blob_path(sha256)?;
+        Some(match &self.cipher {
+            None => name,
+            Some((key, _)) => {
+                let hidden = key.blob_name(sha256);
+                format!("blobs/{}/{hidden}", &hidden[..2])
+            }
+        })
     }
 
     pub(crate) fn write_device(&self, file: &DeviceFile) -> Result<(), FolderError> {
         let bytes = serde_json::to_vec_pretty(file)
             .map_err(|error| FolderError::Invalid(error.to_string()))?;
-        self.store.write(
+        self.write_file(
             &format!("devices/{}/device.json", file.device),
             &bytes,
             false,
@@ -292,8 +584,7 @@ impl SyncFolder {
 
     pub(crate) fn read_device(&self, device: &str) -> Option<DeviceFile> {
         let bytes = self
-            .store
-            .read(&format!("devices/{device}/device.json"))
+            .read_file(&format!("devices/{device}/device.json"))
             .ok()??;
         serde_json::from_slice(&bytes).ok()
     }
@@ -301,8 +592,7 @@ impl SyncFolder {
     /// Rimozioni dall'elenco decise da `device`; vuoto se il file manca o
     /// non è valido (un file illeggibile non deve fermare la sincronizzazione).
     pub(crate) fn read_retired(&self, device: &str) -> BTreeMap<String, String> {
-        self.store
-            .read(&format!("devices/{device}/retired.json"))
+        self.read_file(&format!("devices/{device}/retired.json"))
             .ok()
             .flatten()
             .and_then(|bytes| serde_json::from_slice::<RetiredFile>(&bytes).ok())
@@ -324,15 +614,13 @@ impl SyncFolder {
             retired: retired.clone(),
         })
         .map_err(|error| FolderError::Invalid(error.to_string()))?;
-        self.store
-            .write(&format!("devices/{device}/retired.json"), &bytes, false)
+        self.write_file(&format!("devices/{device}/retired.json"), &bytes, false)
     }
 
     /// Dispositivi presenti (solo nomi validi).
     pub(crate) fn devices(&self) -> Result<Vec<String>, FolderError> {
         let mut devices: Vec<String> = self
-            .store
-            .list("devices")?
+            .list_dir("devices")?
             .into_iter()
             .filter(|(name, is_dir)| *is_dir && valid_id(name))
             .map(|(name, _)| name)
@@ -344,8 +632,7 @@ impl SyncFolder {
     /// Numero di sequenza più alto presente per un dispositivo.
     pub(crate) fn last_seq(&self, device: &str) -> Result<u64, FolderError> {
         Ok(self
-            .store
-            .list(&changes_dir(device))?
+            .list_dir(&changes_dir(device))?
             .into_iter()
             .filter(|(_, is_dir)| !is_dir)
             .filter_map(|(name, _)| parse_batch_name(&name))
@@ -357,7 +644,7 @@ impl SyncFolder {
         let bytes =
             serde_json::to_vec(batch).map_err(|error| FolderError::Invalid(error.to_string()))?;
         let path = format!("{}/{}", changes_dir(&batch.device), batch_name(batch.seq));
-        match self.store.write(&path, &bytes, true) {
+        match self.write_file(&path, &bytes, true) {
             Err(FolderError::Exists) => Err(FolderError::Invalid(crate::tr!(
                 "il lotto {} esiste già",
                 "batch {} already exists",
@@ -371,8 +658,7 @@ impl SyncFolder {
     /// o è incompleto, errore se è presente ma non valido.
     pub(crate) fn read_batch(&self, device: &str, seq: u64) -> Result<Option<Batch>, FolderError> {
         let Some(bytes) =
-            self.store
-                .read(&format!("{}/{}", changes_dir(device), batch_name(seq)))?
+            self.read_file(&format!("{}/{}", changes_dir(device), batch_name(seq)))?
         else {
             return Ok(None);
         };
@@ -397,9 +683,10 @@ impl SyncFolder {
 
     /// Copia un allegato nei blob se non c'è già.
     pub(crate) fn put_blob(&self, sha256: &str, source: &Path) -> Result<(), FolderError> {
-        let path = blob_path(sha256)
+        let path = self
+            .blob_path(sha256)
             .ok_or_else(|| FolderError::Invalid(crate::tr!("hash non valido", "invalid hash")))?;
-        if self.store.exists(&path)? {
+        if self.store.exists(&format!("{}{path}", self.prefix))? {
             return Ok(());
         }
         let bytes = fs::read(source)?;
@@ -409,7 +696,7 @@ impl SyncFolder {
                 "a local attachment does not match its hash"
             )));
         }
-        match self.store.write(&path, &bytes, true) {
+        match self.write_file(&path, &bytes, true) {
             // Stesso hash, stesso contenuto: scritto da un altro dispositivo.
             Ok(()) | Err(FolderError::Exists) => Ok(()),
             Err(error) => Err(error),
@@ -419,7 +706,7 @@ impl SyncFolder {
     /// Contenuto di un blob verificato con il suo hash; `None` se manca o è
     /// incompleto.
     pub(crate) fn get_blob(&self, sha256: &str) -> Option<Vec<u8>> {
-        let bytes = self.store.read(&blob_path(sha256)?).ok()??;
+        let bytes = self.read_file(&self.blob_path(sha256)?).ok()??;
         (format!("{:x}", Sha256::digest(&bytes)) == sha256).then_some(bytes)
     }
 }
@@ -432,7 +719,12 @@ mod tests {
         path: &Path,
         library: impl FnOnce() -> String,
     ) -> Result<(SyncFolder, String), FolderError> {
-        SyncFolder::open(Box::new(LocalStore::new(path)?), library)
+        SyncFolder::open(
+            Box::new(LocalStore::new(path)?),
+            library,
+            &mut SyncAccess::default(),
+        )
+        .map(|opened| (opened.folder, opened.library))
     }
 
     #[test]

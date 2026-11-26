@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n";
 import { askConfirmation } from "../lib/confirm";
-import { diffWords } from "../lib/diff";
+import { diffWords, documentText, plainText } from "../lib/diff";
 import { errorMessage, formatDateTime } from "../lib/format";
 import type { Note, NoteRevision, NoteRevisionDetail } from "../types";
 import { aiApi, aiReady, newRequestId } from "./ai/aiApi";
@@ -24,15 +24,6 @@ interface NoteHistoryDialogProps {
 type View = "version" | "diff" | "ai";
 type AiPhase = "idle" | "confirm" | "running" | "done" | "error";
 
-function plainText(node: { text?: string; content?: unknown[] }): string {
-  if (node.text) return node.text;
-  return (node.content ?? [])
-    .map((child) => plainText(child as { text?: string; content?: unknown[] }))
-    .join(node.content && node.content.length > 0 ? "\n" : "");
-}
-
-const documentText = (title: string, content: unknown) =>
-  `${title}\n\n${plainText(content as { content?: unknown[] })}`;
 
 /** Consenso per i server remoti, mostrato solo quando serve. */
 function RemoteConsent({ status, onStatus, onSend }: { status: AiStatus; onStatus: (status: AiStatus) => void; onSend: () => void }) {

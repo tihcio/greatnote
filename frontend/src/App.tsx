@@ -38,6 +38,7 @@ import ConfirmHost from "./features/ConfirmHost";
 import { askConfirmation } from "./lib/confirm";
 import NotePlanner from "./features/NotePlanner";
 import ReminderAlerts from "./features/ReminderAlerts";
+import McpRequests, { type McpRequest } from "./features/McpRequests";
 import RemindersView from "./features/RemindersView";
 import SyncStatusIndicator from "./features/SyncStatusIndicator";
 import { updatesApi, useUpdateStatus } from "./features/updates/updatesApi";
@@ -1913,6 +1914,40 @@ export default function App() {
     await openLinkedNote(noteId);
   };
 
+  /** Nuova nota con l'articolo di una pagina web (File › Nuova nota da
+   * pagina web… e menu contestuale di un link). Senza indirizzo lo chiede,
+   * proponendo quello negli appunti. */
+  const createNoteFromWebPage = async (address?: string) => {
+    if (!(await flushDraft(activeNoteRef.current))) return;
+    let url = address;
+    if (!url) {
+      const clipboard = await invoke<string>("read_clipboard_text").catch(() => "");
+      const suggested = /^https?:\/\/\S+$/i.test(clipboard.trim()) ? clipboard.trim() : "";
+      url =
+        (await askText({
+          title: t.webPageTitle,
+          label: t.webPageAddress,
+          initialValue: suggested,
+          placeholder: "https://",
+          confirmLabel: t.webPageImport,
+          maxLength: 2048,
+          validate: (value) => (/^https?:\/\/\S+$/i.test(value) ? null : t.webPageInvalid),
+        })) ?? undefined;
+      if (!url) return;
+    }
+    setNotice(t.webPageDownloading);
+    try {
+      const notebookId = selectedView.kind === "notebook" ? selectedView.id : null;
+      const note = await invoke<Note>("create_note_from_web_page", { url, notebookId });
+      setNoteListVersion((version) => version + 1);
+      await openNoteById(note.id);
+      setNotice(t.webPageCreated(note.title));
+    } catch (cause) {
+      setNotice(null);
+      setError(t.webPageFailed(errorMessage(cause)));
+    }
+  };
+
   const openNoteByIdRef = useRef(openNoteById);
   openNoteByIdRef.current = openNoteById;
 
@@ -2074,6 +2109,45 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [editor],
   );
+
+  // Richieste di cestino e riscrittura arrivate da un'app di AI via MCP:
+  // il controllo periodico in Rust avvisa quando cambiano (ADR 0014).
+  const [mcpRequests, setMcpRequests] = useState<McpRequest[]>([]);
+  const loadMcpRequests = useCallback(async () => {
+    try {
+      setMcpRequests(await invoke<McpRequest[]>("list_mcp_requests"));
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }, []);
+  useEffect(() => {
+    if (!isDesktop) return;
+    void loadMcpRequests();
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    void listen("mcp-requests-changed", () => void loadMcpRequests()).then((unlisten) =>
+      cancelled ? unlisten() : (stop = unlisten),
+    );
+    // Anche al ritorno nella finestra (dopo la notifica di sistema).
+    const onFocus = () => void loadMcpRequests();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      stop?.();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [loadMcpRequests]);
+  const beforeMcpApproval = async (request: McpRequest) =>
+    activeNoteRef.current?.id === request.note_id ? flushDraft(activeNoteRef.current) : true;
+  const afterMcpDecision = async (request: McpRequest, approved: boolean) => {
+    setNotice(approved ? t.mcpRequestApproved : t.mcpRequestRejected);
+    if (approved && request.action === "trash_note") {
+      if (activeNoteRef.current?.id === request.note_id) clearActiveNote();
+      setNotes((current) => current.filter((item) => item.id !== request.note_id));
+    }
+    await loadMcpRequests();
+    if (approved) await applySyncChanges([request.note_id]);
+  };
 
   // Stato della sincronizzazione per l'indicatore in basso.
   const [syncInfo, setSyncInfo] = useState<{ enabled: boolean; at: string | null; error: string | null; conflicts: number }>({
@@ -2493,6 +2567,7 @@ export default function App() {
     newTask: () => void startNewTask(),
     newTag: () => createTag(),
     newNoteFromTemplate: () => void openWorkspace("templates"),
+    newNoteFromWebPage: () => void createNoteFromWebPage(),
     saveNow: () => void flushDraft(activeNoteRef.current).then((saved) => saved && setNotice(t.savedNow)),
     importData: () => openDataDialog("import"),
     exportNote: (kind: ExportKind) => void exportActiveNote(kind),
@@ -3890,6 +3965,7 @@ export default function App() {
                       paste: (plain) => void pasteText(plain),
                       findReplace: () => setIsFindOpen(true),
                       aiItems: isDesktop && !isTrashView ? aiItems : undefined,
+                      importWebPage: isTrashView ? undefined : (url) => void createNoteFromWebPage(url),
                       onError: setError,
                     });
                   }}
@@ -4171,6 +4247,11 @@ export default function App() {
           />
         )}
     </div>
+      <McpRequests
+        beforeApprove={beforeMcpApproval}
+        onDecided={(request, approved) => void afterMcpDecision(request, approved)}
+        requests={mcpRequests}
+      />
       {workspace !== "reminders" && (
         <ReminderAlerts
           onChanged={() => void refreshPlanner()}

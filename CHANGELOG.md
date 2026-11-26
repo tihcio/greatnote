@@ -4,6 +4,29 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+- **Android: condividere una pagina web salva l'articolo.** Prima la nota
+  conteneva solo titolo e indirizzo; ora Greatnote scarica la pagina e ne
+  tiene il contenuto principale (testo, titoli, elenchi, tabelle, link),
+  con il link alla fonte in cima. Se la pagina non è leggibile resta il
+  link con un avviso.
+- **Nuova nota da pagina web** (menu File) e **Importa la pagina in una
+  nuova nota** (menu contestuale di un link): lo stesso anche sul computer.
+- **MCP: cestino e riscrittura con conferma.** Un nuovo permesso nelle
+  Integrazioni lascia che l'app di AI *chieda* di spostare una nota nel
+  cestino o di riscriverne il testo. Greatnote avvisa con una notifica e
+  mostra l'anteprima delle differenze: la nota cambia solo se confermi, e
+  prima di una riscrittura la versione attuale va nella cronologia.
+- **Sincronizzazione cifrata con passphrase.** Da Impostazioni ›
+  Sincronizzazione › Cifratura i file nella cartella o su Dropbox vengono
+  cifrati sul dispositivo: chi li ospita non legge più note, titoli,
+  allegati né nomi dei dispositivi. Una sincronizzazione già in uso viene
+  convertita senza perdere nulla; gli altri dispositivi chiedono la
+  passphrase una volta, poi la chiave resta nel portachiavi. La passphrase
+  si può cambiare senza disturbare gli altri dispositivi. Le versioni
+  precedenti si fermano con un avviso invece di scrivere in chiaro.
+- Test dell'interfaccia: il clic sulla griglia oraria evita la barra di
+  scorrimento (falliva a certe ore del giorno).
+
 ## 0.2.15 — 2026-11-25
 
 - **Android: condividere verso Greatnote.** Dal pannello «Condividi» di

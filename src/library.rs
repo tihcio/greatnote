@@ -97,6 +97,15 @@ pub(crate) fn record_revision_if_due(
     Ok(())
 }
 
+/// Salva subito una revisione con il contenuto attuale della nota, senza
+/// guardare l'intervallo (prima di una riscrittura confermata dall'utente).
+pub(crate) fn record_revision_now(
+    connection: &Connection,
+    note_id: &str,
+) -> Result<(), StorageError> {
+    insert_revision(connection, note_id)
+}
+
 fn insert_revision(connection: &Connection, note_id: &str) -> Result<(), StorageError> {
     connection.execute(
         "INSERT INTO note_revisions (id, note_id, title, content_json)

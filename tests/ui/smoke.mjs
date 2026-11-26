@@ -150,6 +150,23 @@ try {
     await clickText(".menu-bar-item", "File");
     await expectVisible(".menu-list");
   });
+  await step("nuova-nota-da-pagina-web", async () => {
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => {
+      window.__CLIPBOARD__ = "https://example.com/articolo";
+      window.__SMOKE_LOG__.length = 0;
+    });
+    await clickText(".menu-bar-item", "File");
+    await clickText(".menu-item", "Nuova nota da pagina web");
+    await pause(300);
+    // L'indirizzo negli appunti viene proposto.
+    const proposed = await page.$eval(".planner-dialog input", (input) => input.value);
+    if (proposed !== "https://example.com/articolo") throw new Error(`indirizzo proposto: ${proposed}`);
+    await clickText(".planner-dialog .dialog-submit-button", "Importa");
+    await pause(300);
+    const log = await page.evaluate(() => window.__SMOKE_LOG__.join("\n"));
+    if (!log.includes("web_page:https://example.com/articolo")) throw new Error(`pagina non richiesta: ${log}`);
+  });
   await step("menu-visualizza-tema", async () => {
     await page.keyboard.press("Escape");
     await clickText(".menu-bar-item", "Visualizza");
@@ -880,7 +897,8 @@ try {
     const point = await page.$eval(".time-grid-column", (column) => {
       const box = column.getBoundingClientRect();
       const hour = box.height / 24;
-      return { x: box.left + box.width - 12, y: box.top + hour * (10 + 40 / 60) };
+      // Lontano dal bordo destro, dove può comparire la barra di scorrimento.
+      return { x: box.left + box.width * 0.6, y: box.top + hour * (10 + 40 / 60) };
     });
     await page.mouse.click(point.x, point.y);
     await pause(300);
@@ -1075,6 +1093,66 @@ try {
     const indicator = await page.$eval(".sync-indicator", (element) => element.textContent ?? "").catch(() => "");
     if (!indicator.includes("Sincronizzato")) throw new Error(`indicatore: ${indicator}`);
   });
+  await step("sincronizzazione-cifrata", async () => {
+    await keys("Control", "Comma");
+    await clickText(".settings-nav-item", "Sincronizzazione");
+    await pause(300);
+    await clickText(".sync-settings .data-action", "Cifra la sincronizzazione");
+    await pause(200);
+    const fields = await page.$$(".sync-passphrase-form input[type=password]");
+    if (fields.length !== 2) throw new Error(`campi passphrase: ${fields.length}`);
+    await fields[0].type("corta");
+    await pause(100);
+    const hint = await page.$eval(".sync-passphrase-form", (element) => element.textContent ?? "");
+    if (!hint.includes("Almeno 12 caratteri")) throw new Error(`avviso lunghezza: ${hint}`);
+    await fields[0].type(" ma ora abbastanza");
+    await fields[1].type("corta ma ora abbastanza");
+    await pause(100);
+    await clickText(".sync-passphrase-form .data-action.primary", "Cifra");
+    await pause(300);
+    let text = await page.$eval(".sync-settings", (element) => element.textContent ?? "");
+    if (!text.includes("La libreria è cifrata")) throw new Error(`stato cifratura: ${text}`);
+    let log = await page.evaluate(() => window.__SMOKE_LOG__.join("\n"));
+    if (!log.includes("sync_encrypt:23")) throw new Error(`passphrase non inviata: ${log}`);
+    // Su un altro dispositivo: la libreria chiede la passphrase.
+    await page.click('.planner-dialog button[aria-label="Chiudi"]');
+    await pause(200);
+    await page.evaluate(() => window.__setSyncView({ encrypted: false, passphrase_required: true,
+      settings: { enabled: true, transport: "folder", folder: "/home/test/Nextcloud", dropbox_account: "", device_name: "Fisso", encrypted: false },
+      last_error: "La libreria di sincronizzazione è cifrata" }));
+    await keys("Control", "Comma");
+    await clickText(".settings-nav-item", "Sincronizzazione");
+    await pause(300);
+    await expectVisible(".sync-settings .ai-remote-warning[role=alert]");
+    const unlock = await page.$$(".sync-passphrase-form input[type=password]");
+    if (unlock.length !== 1) throw new Error(`campi sblocco: ${unlock.length}`);
+    await unlock[0].type("passphrase sbagliata");
+    await clickText(".sync-passphrase-form .data-action.primary", "Sblocca");
+    await pause(300);
+    text = await page.$eval(".sync-settings", (element) => element.textContent ?? "");
+    if (!text.includes("Passphrase errata")) throw new Error(`errore non mostrato: ${text}`);
+    await unlock[0].click();
+    await page.keyboard.down("Control");
+    await page.keyboard.press("a");
+    await page.keyboard.up("Control");
+    await page.keyboard.press("Backspace");
+    await unlock[0].type("passphrase giusta e lunga");
+    await clickText(".sync-passphrase-form .data-action.primary", "Sblocca");
+    await pause(300);
+    text = await page.$eval(".sync-settings", (element) => element.textContent ?? "");
+    if (!text.includes("Libreria sbloccata")) throw new Error(`sblocco: ${text}`);
+    await clickText(".sync-settings .data-action", "Cambia passphrase");
+    await pause(200);
+    const change = await page.$$(".sync-passphrase-form input[type=password]");
+    await change[0].type("nuova passphrase lunga");
+    await change[1].type("nuova passphrase lunga");
+    await clickText(".sync-passphrase-form .data-action.primary", "Cambia passphrase");
+    await pause(300);
+    log = await page.evaluate(() => window.__SMOKE_LOG__.join("\n"));
+    if (!log.includes("sync_change:22")) throw new Error(`cambio passphrase: ${log}`);
+    await page.click('.planner-dialog button[aria-label="Chiudi"]');
+    await pause(200);
+  });
   await step("sincronizzazione-dropbox", async () => {
     await keys("Control", "Comma");
     await clickText(".settings-nav-item", "Sincronizzazione");
@@ -1145,7 +1223,43 @@ try {
     if (!tools.includes("create_note") || !tools.includes("append_to_note"))
       throw new Error("strumenti di modifica non mostrati");
     await expectVisible(".integration-audit-error");
+    await clickText(".integrations-settings .checkbox-field", "cestino e riscrittura");
+    await pause(200);
+    const destructive = await page.$eval(".integrations-settings", (element) => element.textContent ?? "");
+    if (!destructive.includes("replace_note")) throw new Error("richieste da confermare non mostrate");
     await page.keyboard.press("Escape");
+  });
+  await step("mcp-richiesta-da-confermare", async () => {
+    // Una riscrittura e uno spostamento nel cestino arrivati dal client MCP.
+    await page.evaluate(() => {
+      const doc = (text) => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] });
+      const base = { note_title: "Lista della spesa", note_content: doc("Pane latte uova"), error: null,
+        created_at: new Date().toISOString(), decided_at: null, note_changed: false, note_missing: false };
+      window.__MCP_REQUESTS__ = [
+        { ...base, id: "req-1", action: "replace_note", note_id: "22222222-2222-4222-8222-222222222222",
+          title: null, content: doc("Pane latte uova caffè"), reason: "aggiunto il caffè", status: "pending" },
+        { ...base, id: "req-2", action: "trash_note", note_id: "22222222-2222-4222-8222-222222222222",
+          title: null, content: null, reason: "", status: "pending" },
+      ];
+      window.dispatchEvent(new Event("focus"));
+    });
+    await pause(300);
+    await expectVisible(".mcp-requests");
+    const banner = await page.$eval(".mcp-requests", (element) => element.textContent ?? "");
+    if (!banner.includes("2 conferme") || !banner.includes("aggiunto il caffè")) throw new Error(`riquadro: ${banner}`);
+    await clickText(".mcp-requests .data-action", "Rivedi");
+    await pause(200);
+    const added = await page.$eval(".mcp-request-dialog .ai-diff ins", (element) => element.textContent ?? "");
+    if (!added.includes("caffè")) throw new Error(`differenze: ${added}`);
+    await clickText(".mcp-request-dialog .dialog-submit-button", "Sostituisci il testo");
+    await pause(300);
+    await clickText(".mcp-requests .data-action", "Rivedi");
+    await pause(200);
+    await clickText(".mcp-request-dialog .dialog-cancel-button", "Rifiuta");
+    await pause(300);
+    const log = await page.evaluate(() => window.__SMOKE_LOG__.join("\n"));
+    if (!log.includes("mcp_approve:req-1") || !log.includes("mcp_reject:req-2")) throw new Error(`decisioni: ${log}`);
+    if (await page.$(".mcp-requests")) throw new Error("riquadro rimasto dopo le decisioni");
   });
   await step("impostazioni-ai", async () => {
     await keys("Control", "Comma");

@@ -31,6 +31,7 @@ export interface MenuContext {
   newTask: () => void;
   newTag: () => void;
   newNoteFromTemplate: () => void;
+  newNoteFromWebPage: () => void;
   saveNow: () => void;
   importData: () => void;
   exportNote: (kind: ExportKind) => void;
@@ -219,6 +220,7 @@ export function buildMenus(context: MenuContext): Menu[] {
         item("new-task", t.menuNewTask, context.newTask, { accelerator: "Alt+T" }),
         item("new-tag", t.menuNewTag, context.newTag, { accelerator: "Ctrl+Shift+T" }),
         item("new-from-template", t.menuNewFromTemplate, context.newNoteFromTemplate),
+        item("new-from-web", t.menuNewFromWebPage, context.newNoteFromWebPage),
         separator,
         item("save-now", t.menuSaveNow, context.saveNow, { accelerator: "Ctrl+S", enabled: note && editable }),
         separator,

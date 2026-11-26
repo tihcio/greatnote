@@ -9,6 +9,7 @@ use crate::{
     content::text_to_document,
     domain::note::Note,
     storage::{Database, MAX_ATTACHMENT_BYTES, StorageError, sniff_attachment_type},
+    web_clip::Article,
 };
 
 /// File condivisi accettati al massimo in una volta.
@@ -61,6 +62,34 @@ impl Database {
         files: &[SharedFile],
         data_directory: &Path,
     ) -> Result<SharedNote, StorageError> {
+        self.create_note_from_shared_page(subject, text, files, None, data_directory)
+    }
+
+    /// Come [`Database::create_note_from_share`]; con l'articolo della
+    /// pagina condivisa, la nota ne prende titolo e contenuto (con il link
+    /// alla fonte) al posto del solo indirizzo.
+    pub fn create_note_from_shared_page(
+        &self,
+        subject: Option<&str>,
+        text: Option<&str>,
+        files: &[SharedFile],
+        article: Option<&Article>,
+        data_directory: &Path,
+    ) -> Result<SharedNote, StorageError> {
+        if let Some(article) = article {
+            let title = article
+                .title
+                .as_deref()
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+                .map(str::to_owned)
+                .unwrap_or_else(|| shared_title(subject, text.unwrap_or_default(), files));
+            let note = self.create_note(&title, &article.document)?;
+            return Ok(SharedNote {
+                note: self.get_note(&note.id)?,
+                skipped: Vec::new(),
+            });
+        }
         let text: String = text
             .unwrap_or_default()
             .chars()
@@ -172,6 +201,37 @@ mod tests {
         assert_eq!(attachments[0].original_filename, "foto.png");
         assert_eq!(shared.skipped.len(), 1);
         assert!(shared.skipped[0].starts_with("programma.exe"));
+    }
+
+    #[test]
+    fn a_shared_page_becomes_its_article() {
+        let directory = tempfile::tempdir().expect("directory");
+        let database = Database::open(directory.path().join("gna.sqlite3")).expect("database");
+        let body = "Il comune ha presentato oggi il nuovo piano per la mobilità sostenibile, con piste ciclabili e autobus elettrici entro il 2028. ".repeat(3);
+        let html = format!(
+            "<!doctype html><html><head><title>Mobilità</title></head><body><article><p>{body}</p></article></body></html>"
+        );
+        let article =
+            crate::web_clip::extract_article(&html, "https://example.com/a").expect("article");
+        let shared = database
+            .create_note_from_shared_page(
+                Some("Titolo dal browser"),
+                Some("https://example.com/a"),
+                &[],
+                Some(&article),
+                directory.path(),
+            )
+            .expect("note");
+        assert_eq!(shared.note.title, "Mobilità");
+        let text = crate::content::to_plain_text(&shared.note.content);
+        assert!(
+            text.contains("Fonte: https://example.com/a") && text.contains("autobus elettrici")
+        );
+        // La nota è cercabile per il contenuto dell'articolo.
+        let found = database
+            .search_notes("ciclabili", "all", None, 10, 0)
+            .expect("search");
+        assert_eq!(found.len(), 1);
     }
 
     #[test]

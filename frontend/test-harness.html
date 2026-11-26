@@ -66,9 +66,10 @@
         },
       ];
       // Sincronizzazione simulata: nessuna cartella reale.
+      window.__setSyncView = (patch) => (syncView = { ...syncView, ...patch });
       let syncView = {
-        settings: { enabled: false, transport: "folder", folder: "", dropbox_account: "", device_name: "" }, device_id: null,
-        last_sync_at: null, last_error: null, pending_changes: 0, missing_attachments: 0, running: false,
+        settings: { enabled: false, transport: "folder", folder: "", dropbox_account: "", device_name: "", encrypted: false }, device_id: null,
+        encrypted: false, passphrase_required: false, last_sync_at: null, last_error: null, pending_changes: 0, missing_attachments: 0, running: false,
         dropbox_available: true, connecting: false, default_device_name: "postazione-prova",
         devices: [
           { device_id: "d-1", name: "postazione-prova", applied_seq: 1, last_seen_at: now, this_device: true },
@@ -77,7 +78,7 @@
         conflicts: [{ id: "c-1", entity: "notes", entity_key: "11111111-1111-4111-8111-111111111111", title: "Riunione di lunedì", from_device: "Portatile", created_at: now }],
       };
       let mcpStatus = {
-        enabled: false, allow_write: false, command: "/opt/Greatnote/greatnote", args: ["--mcp", "--data-dir", "/home/test/.local/share/dev.greatnote.notes"],
+        enabled: false, allow_write: false, allow_destructive: false, command: "/opt/Greatnote/greatnote", args: ["--mcp", "--data-dir", "/home/test/.local/share/dev.greatnote.notes"],
         audit: [{ at: now, tool: "search_notes", ok: true, results: 3 }, { at: now, tool: "read_note", ok: false, results: 0, error: "Nota non trovata o non disponibile" }],
       };
       const remoteProvider = () => aiSettings.provider === "claude-code";
@@ -198,6 +199,11 @@
         get_sync_status: () => syncView,
         // Aggiornamenti in-app: la ricerca trova la 0.2.0, già scaricata.
         get_update_status: () => updateStatus,
+        read_clipboard_text: () => window.__CLIPBOARD__ ?? "",
+        create_note_from_web_page: (args) => {
+          window.__SMOKE_LOG__.push(`web_page:${args.url}`);
+          return notes[0];
+        },
         get_background_settings: () => backgroundStatus,
         set_background_settings: (args) => {
           window.__SMOKE_LOG__.push(`background:${JSON.stringify(args.settings)}`);
@@ -216,10 +222,20 @@
           return null;
         },
         set_sync_settings: (args) => {
-          syncView = { ...syncView, settings: args.settings, last_sync_at: args.settings.enabled ? now : syncView.last_sync_at };
+          if (args.passphrase) window.__SMOKE_LOG__.push(`sync_encrypt:${args.passphrase.length}`);
+          syncView = { ...syncView, settings: args.settings, last_sync_at: args.settings.enabled ? now : syncView.last_sync_at,
+            encrypted: syncView.encrypted || Boolean(args.settings.enabled && args.settings.encrypted && args.passphrase) };
           return syncView;
         },
         sync_now: () => (syncView = { ...syncView, last_sync_at: now }),
+        unlock_sync: (args) => {
+          if (args.passphrase !== "passphrase giusta e lunga") throw "Passphrase errata";
+          return (syncView = { ...syncView, encrypted: true, passphrase_required: false, last_error: null });
+        },
+        change_sync_passphrase: (args) => {
+          window.__SMOKE_LOG__.push(`sync_change:${args.passphrase.length}`);
+          return syncView;
+        },
         // Android: Greatnote non ancora esente dall'ottimizzazione della batteria.
         get_notification_permission: () => "granted",
         request_notification_permission: () => "granted",
@@ -358,6 +374,22 @@
         get_mcp_status: () => mcpStatus,
         set_mcp_enabled: (args) => (mcpStatus = { ...mcpStatus, enabled: args.enabled }),
         set_mcp_allow_write: (args) => (mcpStatus = { ...mcpStatus, allow_write: args.allowed }),
+        set_mcp_allow_destructive: (args) => (mcpStatus = { ...mcpStatus, allow_destructive: args.allowed }),
+        list_mcp_requests: () => (window.__MCP_REQUESTS__ ?? []).filter((request) => request.status === "pending"),
+        approve_mcp_request: (args) => {
+          window.__SMOKE_LOG__.push(`mcp_approve:${args.id}`);
+          const request = (window.__MCP_REQUESTS__ ?? []).find((item) => item.id === args.id);
+          request.status = "approved";
+          const note = notes.find((item) => item.id === request.note_id);
+          if (note && request.content) note.content = request.content;
+          return request;
+        },
+        reject_mcp_request: (args) => {
+          window.__SMOKE_LOG__.push(`mcp_reject:${args.id}`);
+          const request = (window.__MCP_REQUESTS__ ?? []).find((item) => item.id === args.id);
+          request.status = "rejected";
+          return request;
+        },
         ai_compare_revision: (args) => {
           const text = "Aggiunto\n- decisioni corrette\n\nRimosso\n- Nessuna modifica";
           stream(args.onDelta, [text]);

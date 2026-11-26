@@ -16,6 +16,7 @@ interface McpAuditEntry {
 interface McpStatus {
   enabled: boolean;
   allow_write: boolean;
+  allow_destructive: boolean;
   command: string;
   args: string[];
   audit: McpAuditEntry[];
@@ -23,6 +24,7 @@ interface McpStatus {
 
 const READ_ONLY_TOOLS = ["search_notes", "read_note", "list_notebooks", "list_tags", "list_tasks"];
 const WRITE_TOOLS = ["create_note", "append_to_note", "create_task", "complete_task"];
+const DESTRUCTIVE_TOOLS = ["trash_note", "replace_note", "request_status"];
 
 /** Argomento sicuro per la shell (POSIX): tra apici se serve. */
 function shellQuote(value: string): string {
@@ -63,6 +65,16 @@ export default function IntegrationsSection() {
     setNotice(null);
     try {
       setStatus(await invoke<McpStatus>("set_mcp_allow_write", { allowed }));
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
+  const setAllowDestructive = async (allowed: boolean) => {
+    setError(null);
+    setNotice(null);
+    try {
+      setStatus(await invoke<McpStatus>("set_mcp_allow_destructive", { allowed }));
     } catch (cause) {
       setError(errorMessage(cause));
     }
@@ -117,6 +129,16 @@ export default function IntegrationsSection() {
           <span>{t.mcpAllowWrite}</span>
         </label>
         <p className="data-hint">{t.mcpAllowWriteHint}</p>
+        <label className="checkbox-field">
+          <input
+            checked={status.allow_destructive}
+            disabled={!status.enabled || !status.allow_write}
+            onChange={(event) => void setAllowDestructive(event.target.checked)}
+            type="checkbox"
+          />
+          <span>{t.mcpAllowDestructive}</span>
+        </label>
+        <p className="data-hint">{t.mcpAllowDestructiveHint}</p>
         <p className="data-hint">
           {t.mcpTools} <code>{READ_ONLY_TOOLS.join(", ")}</code>.{" "}
           {status.allow_write ? (
@@ -125,6 +147,12 @@ export default function IntegrationsSection() {
             </>
           ) : (
             t.mcpNoWriteTools
+          )}
+          {status.allow_write && status.allow_destructive && (
+            <>
+              {" "}
+              {t.mcpDestructiveTools} <code>{DESTRUCTIVE_TOOLS.join(", ")}</code>.
+            </>
           )}
         </p>
       </fieldset>

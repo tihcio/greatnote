@@ -17,6 +17,8 @@ export interface EditorMenuOptions {
   /** Voci AI sulla selezione o sulla nota (solo nell'app principale). */
   aiItems?: () => MenuEntry[];
   onError?: (message: string) => void;
+  /** «Importa la pagina in una nuova nota» su un link (solo app principale). */
+  importWebPage?: (url: string) => void;
 }
 
 /** Incolla il testo degli appunti al cursore, un paragrafo per riga. */
@@ -127,6 +129,12 @@ export function openEditorContextMenu(
         enabled: isSafeLink(href),
         run: () =>
           void invoke("open_note_link", { href }).catch((cause: unknown) => options.onError?.(String(cause))),
+      },
+      {
+        id: "ed-link-import",
+        label: t.importLinkedPage,
+        enabled: Boolean(options.importWebPage) && /^https?:\/\//i.test(href),
+        run: () => options.importWebPage?.(href),
       },
       {
         id: "ed-link-copy",

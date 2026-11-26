@@ -157,10 +157,9 @@ versione locale è davvero concorrente.
 
 ## Conseguenze e limiti
 
-- **Nessuna cifratura dei file.** Il servizio che ospita la cartella (per
-  esempio Dropbox) può leggerli. Per la riservatezza: Syncthing tra
-  dispositivi propri o Nextcloud personale. La cifratura con passphrase è
-  in roadmap.
+- **File in chiaro per impostazione predefinita.** Il servizio che ospita
+  la cartella (per esempio Dropbox) può leggerli. Dalla 0.2.16 c'è la
+  cifratura con passphrase (ADR 0032).
 - **La cronologia dei lotti cresce.** Non c'è ancora una compattazione con
   istantanee: un nuovo dispositivo rilegge tutti i lotti.
 - **Cartella indispensabile.** La sincronizzazione funziona solo se il

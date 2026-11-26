@@ -589,6 +589,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             ai_commands::spawn_auto_indexer(app.handle());
             calendar_commands::spawn_calendar_sync(app.handle());
             sync_commands::spawn_sync_loop(app.handle());
+            #[cfg(desktop)]
+            mcp_commands::spawn_request_watcher(app.handle());
             // Desktop: plugin updater (ADR 0023). Android: APK della release
             // (update_commands_mobile.rs).
             app.manage(update_commands::UpdateState::default());
@@ -715,6 +717,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             ui_commands::app_info,
             ui_commands::open_note_window,
             share_commands::take_shared_content,
+            share_commands::create_note_from_web_page,
             background::get_background_settings,
             background::set_background_settings,
             ai_commands::get_ai_status,
@@ -743,6 +746,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             sync_commands::get_sync_status,
             sync_commands::set_sync_settings,
             sync_commands::sync_now,
+            sync_commands::unlock_sync,
+            sync_commands::change_sync_passphrase,
             sync_commands::dismiss_sync_conflict,
             sync_commands::retire_sync_device,
             sync_commands::pick_sync_folder,
@@ -753,6 +758,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             calendar_commands::remove_calendar_subscription,
             mcp_commands::set_mcp_enabled,
             mcp_commands::set_mcp_allow_write,
+            mcp_commands::set_mcp_allow_destructive,
+            mcp_commands::list_mcp_requests,
+            mcp_commands::approve_mcp_request,
+            mcp_commands::reject_mcp_request,
             ai_commands::ai_suggest_tags,
             ai_commands::ai_extract_tasks,
             ai_commands::ai_markdown_to_document,

@@ -50,7 +50,8 @@ const MIGRATION_14: &str = include_str!("../migrations/0014_sync.sql");
 const MIGRATION_15: &str = include_str!("../migrations/0015_task_recurrence.sql");
 const MIGRATION_16: &str = include_str!("../migrations/0016_event_recurrence.sql");
 const MIGRATION_17: &str = include_str!("../migrations/0017_search_row_map.sql");
-pub const CURRENT_SCHEMA_VERSION: u32 = 17;
+const MIGRATION_18: &str = include_str!("../migrations/0018_mcp_requests.sql");
+pub const CURRENT_SCHEMA_VERSION: u32 = 18;
 const MAX_TITLE_LENGTH: usize = 512;
 const MAX_ORGANIZATION_NAME_LENGTH: usize = 200;
 const MAX_TAG_NAME_LENGTH: usize = 100;
@@ -142,6 +143,10 @@ pub enum StorageError {
     InvalidTask(&'static str),
     #[error("{}", crate::tr!("Attività non trovata", "Task not found"))]
     TaskNotFound,
+    #[error("{}", crate::tr!("Richiesta non trovata o già decisa", "Request not found or already decided"))]
+    McpRequestNotFound,
+    #[error("{}", crate::tr!("Ci sono già {0} richieste in attesa di conferma in Greatnote", "There are already {0} requests waiting for confirmation in Greatnote", .0))]
+    TooManyMcpRequests(usize),
     #[error("{}", crate::tr!("Evento non valido: {0}", "Invalid event: {0}", .0))]
     InvalidEvent(&'static str),
     #[error("{}", crate::tr!("Evento non trovato", "Event not found"))]
@@ -1810,6 +1815,10 @@ fn migrate(connection: &Connection) -> Result<(), StorageError> {
         connection.execute_batch(MIGRATION_17)?;
         version = 17;
     }
+    if version == 17 {
+        connection.execute_batch(MIGRATION_18)?;
+        version = 18;
+    }
     if version == CURRENT_SCHEMA_VERSION {
         repair_ai_index_schema(connection)?;
     }
@@ -3061,6 +3070,7 @@ mod tests {
                      DROP TRIGGER attachments_search_update;
                      DROP TRIGGER attachments_search_delete;
                      DROP TABLE note_search_rows;
+                     DROP TABLE mcp_requests;
                      ALTER TABLE attachments DROP COLUMN ocr_text;
                      ALTER TABLE attachments DROP COLUMN ocr_status;
                      ALTER TABLE attachments DROP COLUMN ocr_engine;

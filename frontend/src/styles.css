@@ -2569,6 +2569,18 @@ p {
   border-top: 1px solid var(--line);
 }
 
+/* Richieste MCP: in alto, per non coprire i promemoria in basso. */
+.reminder-alerts.mcp-requests {
+  top: 64px;
+  bottom: auto;
+  border-color: color-mix(in srgb, var(--error) 45%, var(--line));
+}
+
+.mcp-request-reason {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
 .reminder-more {
   color: var(--muted);
   font-size: 12px;

@@ -17,8 +17,9 @@ use greatnote_core::{
     storage::Database,
     sync::{
         SyncReport, SyncSettings, SyncStatus, SyncTransport,
+        crypto::LibraryKey,
         dropbox::{DropboxAuth, DropboxStore, REDIRECT_PORT},
-        folder::SyncStore,
+        folder::{SyncAccess, SyncStore},
     },
 };
 use serde::Serialize;
@@ -37,6 +38,8 @@ const FIRST_DELAY: Duration = Duration::from_secs(15);
 const DROPBOX_APP_KEY: Option<&str> = option_env!("GREATNOTE_DROPBOX_APP_KEY");
 const KEYRING_SERVICE: &str = "greatnote-sync";
 const DROPBOX_REFRESH_USER: &str = "dropbox-refresh";
+/// Chiave della libreria cifrata (ADR 0032), mai la passphrase.
+const LIBRARY_KEY_USER: &str = "library-key";
 
 #[derive(Default)]
 pub struct SyncRunState {
@@ -44,6 +47,9 @@ pub struct SyncRunState {
     /// Token di accesso Dropbox in memoria (mai su disco) e scadenza.
     dropbox_token: Mutex<Option<(String, Instant)>>,
     connecting: Mutex<Option<Arc<AtomicBool>>>,
+    /// Chiave della libreria cifrata, letta dal portachiavi alla prima
+    /// sincronizzazione.
+    library_key: Mutex<Option<LibraryKey>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -117,6 +123,47 @@ fn dropbox_access_token(app: &AppHandle) -> CommandResult<String> {
     Ok(tokens.access_token)
 }
 
+/// Chiave della libreria cifrata: in memoria o dal portachiavi.
+fn saved_library_key(state: &SyncRunState) -> Option<LibraryKey> {
+    if let Ok(slot) = state.library_key.lock()
+        && slot.is_some()
+    {
+        return slot.clone();
+    }
+    match crate::secrets::read(KEYRING_SERVICE, LIBRARY_KEY_USER) {
+        Ok(Some(text)) => {
+            let key = LibraryKey::from_hex(&text);
+            if let Ok(mut slot) = state.library_key.lock() {
+                slot.clone_from(&key);
+            }
+            key
+        }
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!("chiave della sincronizzazione non letta dal portachiavi: {error}");
+            None
+        }
+    }
+}
+
+/// Conserva (o dimentica) la chiave della libreria nel portachiavi, solo se
+/// è cambiata.
+fn store_library_key(state: &SyncRunState, key: Option<&LibraryKey>) -> CommandResult<()> {
+    let current = state.library_key.lock().ok().and_then(|slot| slot.clone());
+    if current.as_ref() == key {
+        return Ok(());
+    }
+    match key {
+        Some(key) => crate::secrets::write(KEYRING_SERVICE, LIBRARY_KEY_USER, &key.to_hex())
+            .map_err(keyring_error)?,
+        None => crate::secrets::delete(KEYRING_SERVICE, LIBRARY_KEY_USER).map_err(keyring_error)?,
+    }
+    if let Ok(mut slot) = state.library_key.lock() {
+        *slot = key.cloned();
+    }
+    Ok(())
+}
+
 /// Evento per l'interfaccia: note da ricaricare ed eventuale errore.
 #[derive(Debug, Clone, Serialize)]
 struct SyncFinished {
@@ -142,11 +189,11 @@ fn view(app: &AppHandle) -> CommandResult<SyncView> {
     })
 }
 
-/// Sincronizzazione con la destinazione scelta.
-fn sync_with_transport(app: &AppHandle) -> Result<SyncReport, String> {
+/// Archivio remoto della destinazione scelta (`None` per la cartella).
+fn transport_store(app: &AppHandle) -> Result<Option<Box<dyn SyncStore>>, String> {
     let database = app.state::<Database>();
     let settings = database.sync_settings().map_err(message)?;
-    let store: Option<Box<dyn SyncStore>> = match settings.transport {
+    Ok(match settings.transport {
         SyncTransport::Folder => None,
         SyncTransport::Dropbox => match dropbox_access_token(app) {
             Ok(token) => Some(Box::new(DropboxStore::new(&token))),
@@ -155,12 +202,28 @@ fn sync_with_transport(app: &AppHandle) -> Result<SyncReport, String> {
                 return Err(error);
             }
         },
+    })
+}
+
+/// Sincronizzazione con la destinazione scelta. `passphrase` è quella
+/// appena inserita dall'utente; altrimenti vale la chiave salvata.
+fn sync_with_transport(app: &AppHandle, passphrase: Option<String>) -> Result<SyncReport, String> {
+    let database = app.state::<Database>();
+    let state = app.state::<SyncRunState>();
+    let store = transport_store(app)?;
+    let mut access = SyncAccess {
+        key: saved_library_key(&state),
+        passphrase,
+        encrypt: false,
     };
-    let result = database.sync_now_with(store);
-    if let Err(error) = &result
-        && error.is_unauthorized()
-    {
-        forget_token(&app.state::<SyncRunState>());
+    let result = database.sync_now_with(store, &mut access);
+    match &result {
+        // Libreria aperta: la chiave in uso (o nessuna) è quella da tenere.
+        Ok(_) => store_library_key(&state, access.key.as_ref())?,
+        // Sbloccata ma interrotta più avanti: la chiave resta valida.
+        Err(_) if access.key.is_some() => store_library_key(&state, access.key.as_ref())?,
+        Err(error) if error.is_unauthorized() => forget_token(&state),
+        Err(_) => {}
     }
     result.map_err(message)
 }
@@ -175,12 +238,12 @@ async fn blocking<T: Send + 'static>(
 }
 
 /// Una sincronizzazione alla volta; l'esito va all'interfaccia.
-fn run_once(app: &AppHandle) -> Option<Result<SyncReport, String>> {
+fn run_once(app: &AppHandle, passphrase: Option<String>) -> Option<Result<SyncReport, String>> {
     let state = app.state::<SyncRunState>();
     if state.running.swap(true, Ordering::SeqCst) {
         return None;
     }
-    let result = sync_with_transport(app);
+    let result = sync_with_transport(app, passphrase);
     state.running.store(false, Ordering::SeqCst);
     match &result {
         Ok(report) => {
@@ -223,16 +286,26 @@ pub async fn get_sync_status(app: AppHandle) -> CommandResult<SyncView> {
 }
 
 /// Attiva, modifica o disattiva la sincronizzazione; attivandola parte
-/// subito un primo giro.
+/// subito un primo giro, con la passphrase se l'utente l'ha inserita
+/// (libreria nuova cifrata, conversione o accesso a una libreria cifrata).
+/// Disattivandola la chiave della libreria cifrata viene tolta dal
+/// portachiavi.
 #[tauri::command]
-pub async fn set_sync_settings(app: AppHandle, settings: SyncSettings) -> CommandResult<SyncView> {
+pub async fn set_sync_settings(
+    app: AppHandle,
+    settings: SyncSettings,
+    passphrase: Option<String>,
+) -> CommandResult<SyncView> {
     blocking(app, move |app| {
         let saved = app
             .state::<Database>()
             .set_sync_settings(settings)
             .map_err(message)?;
+        if !saved.enabled {
+            store_library_key(&app.state::<SyncRunState>(), None)?;
+        }
         if saved.enabled
-            && let Some(Err(error)) = run_once(app)
+            && let Some(Err(error)) = run_once(app, passphrase.filter(|p| !p.is_empty()))
         {
             return Err(error);
         }
@@ -241,10 +314,50 @@ pub async fn set_sync_settings(app: AppHandle, settings: SyncSettings) -> Comman
     .await
 }
 
+/// Sblocca una libreria cifrata con la passphrase (su questo dispositivo la
+/// chiave resta poi nel portachiavi).
+#[tauri::command]
+pub async fn unlock_sync(app: AppHandle, passphrase: String) -> CommandResult<SyncView> {
+    blocking(app, move |app| {
+        if let Some(Err(error)) = run_once(app, Some(passphrase)) {
+            return Err(error);
+        }
+        view(app)
+    })
+    .await
+}
+
+/// Cambia la passphrase della libreria cifrata. La chiave non cambia: gli
+/// altri dispositivi continuano senza fare nulla, quelli nuovi useranno la
+/// passphrase nuova.
+#[tauri::command]
+pub async fn change_sync_passphrase(
+    app: AppHandle,
+    current: Option<String>,
+    passphrase: String,
+) -> CommandResult<SyncView> {
+    blocking(app, move |app| {
+        let state = app.state::<SyncRunState>();
+        let mut access = SyncAccess {
+            key: saved_library_key(&state),
+            passphrase: current.filter(|p| !p.is_empty()),
+            encrypt: false,
+        };
+        let store = transport_store(app)?;
+        app.state::<Database>()
+            .change_sync_passphrase(store, &mut access, &passphrase)
+            .map_err(message)?;
+        store_library_key(&state, access.key.as_ref())?;
+        tracing::info!("passphrase della sincronizzazione cambiata");
+        view(app)
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn sync_now(app: AppHandle) -> CommandResult<SyncView> {
     blocking(app, |app| {
-        match run_once(app) {
+        match run_once(app, None) {
             Some(Err(error)) => return Err(error),
             Some(Ok(_)) => {}
             // Già in corso in background: lo stato lo mostra.
@@ -373,6 +486,7 @@ pub async fn connect_dropbox(app: AppHandle, device_name: String) -> CommandResu
                 folder: previous.folder,
                 dropbox_account: label,
                 device_name,
+                encrypted: previous.encrypted,
             })
             .map_err(message)?;
         tracing::info!("account Dropbox collegato");
@@ -383,7 +497,7 @@ pub async fn connect_dropbox(app: AppHandle, device_name: String) -> CommandResu
         let spawned = thread::Builder::new()
             .name("sync-first-dropbox".to_owned())
             .spawn(move || {
-                run_once(&background);
+                run_once(&background, None);
             });
         if let Err(error) = spawned {
             tracing::warn!("prima sincronizzazione non avviata: {error}");
@@ -424,6 +538,7 @@ pub async fn disconnect_dropbox(app: AppHandle) -> CommandResult<SyncView> {
                 ..previous
             })
             .map_err(message)?;
+        store_library_key(&app.state::<SyncRunState>(), None)?;
         view(app)
     })
     .await
@@ -441,7 +556,7 @@ pub fn spawn_sync_loop(app: &AppHandle) {
                 .map(|settings| settings.enabled)
                 .unwrap_or(false);
             if enabled {
-                run_once(&app);
+                run_once(&app, None);
             }
             thread::sleep(INTERVAL);
         }

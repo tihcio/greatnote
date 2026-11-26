@@ -409,6 +409,24 @@ cartella condivisa temporanea):
     trigger, istantanee e riferimenti mancanti;
   - `folder`: lotti immutabili, file troncati ignorati, blob verificati,
     formato più recente rifiutato.
+- **Cifratura (`crypto` e `tests`, ADR 0032):**
+  - file legati a percorso, libreria e chiave; byte alterati, file più
+    lunghi o in chiaro rifiutati; file troncati in attesa; nonce diverso a
+    ogni cifratura;
+  - chiave cifrata con la passphrase, passphrase errata o troppo corta
+    rifiutata, nessuna chiave nel `Debug`;
+  - libreria cifrata creata solo con la passphrase; nella cartella nessun
+    titolo, testo, nome di dispositivo o di allegato, hash, passphrase o
+    chiave; formato principale 2;
+  - secondo dispositivo fermo senza passphrase o con quella errata,
+    sbloccato con quella giusta, poi con la sola chiave salvata; allegato
+    decifrato e verificato; lotto alterato segnalato da un nuovo
+    dispositivo;
+  - conversione di una libreria in chiaro: modifiche mai sincronizzate
+    conservate, note unite senza duplicati né conflitti, versioni vecchie
+    fermate dal formato;
+  - cambio di passphrase: chi ha la chiave continua, un nuovo dispositivo
+    usa la passphrase nuova.
 
 Dropbox (`src/sync/dropbox.rs`), con un server finto:
 
@@ -553,7 +571,17 @@ lettura:
   rifiutati; testo aggiunto in fondo; salvataggio dell'app da una versione
   precedente che conserva la versione MCP nella cronologia; attività
   create, elencate e completate; limite di modifiche per sessione; registro
-  con gli id e senza testo.
+  con gli id e senza testo;
+- richieste distruttive (`src/mcp.rs` e `src/mcp_requests.rs`): strumenti
+  assenti e rifiutati senza entrambi i permessi; `trash_note` e
+  `replace_note` che accodano senza cambiare la nota; taccuini esclusi e
+  testo vuoto rifiutati; conferma che sostituisce titolo e testo salvando
+  la versione precedente nella cronologia; rifiuto che lascia la nota
+  com'è; doppia conferma rifiutata; nota modificata dopo la richiesta
+  segnalata; nota nel cestino che fa fallire la conferma con il motivo;
+  limite di 20 richieste in attesa, scadenza dopo 7 giorni e cancellazione
+  insieme alla nota; `request_status` che segue la decisione; registro
+  senza il testo proposto né il motivo.
 
 Prova manuale dell'eseguibile (usa una copia del database, mai
 l'originale):

@@ -340,6 +340,22 @@ nel corpo, immagini (PNG, JPEG, GIF), PDF e file di testo diventano
 allegati (fino a 20 file da 25 MB). I file di altri tipi vengono saltati e
 indicati in un avviso.
 
+Condividendo una **pagina web** (dal browser arrivano titolo e indirizzo)
+Greatnote scarica la pagina e ne salva l'articolo: titoli, paragrafi,
+elenchi, tabelle, citazioni e link, senza menu, commenti, pubblicità e
+banner. La nota ha il titolo della pagina e in cima «Fonte:» con il link.
+Le immagini dell'articolo non vengono scaricate (resta la loro
+descrizione). Se la pagina non si scarica o non contiene un articolo
+leggibile (per esempio richiede un abbonamento o è costruita in
+JavaScript) la nota contiene il link e un avviso spiega il motivo.
+
+Sul computer (e anche su Android) lo stesso si fa con **File › Nuova nota
+da pagina web…**: scrivi l'indirizzo (se negli appunti c'è un link viene
+proposto) e la nota nasce nel taccuino aperto. Su un link dentro una nota,
+il menu contestuale offre **Importa la pagina in una nuova nota**. Se la
+pagina non si può leggere, un messaggio spiega il motivo e nessuna nota
+viene creata.
+
 ## Esportare una nota
 
 Nella barra dell'editor, il menu **Esporta** salva la nota corrente come
@@ -829,12 +845,49 @@ nelle impostazioni, dove puoi aprirla e segnarla come controllata. Se una
 nota viene eliminata su un computer mentre la modifichi su un altro, la
 modifica prevale e la nota resta.
 
+### Cifrare la sincronizzazione
+
+Senza cifratura il servizio che ospita la cartella (Dropbox, Nextcloud…) può
+leggere i file. Con una **passphrase** i file sono cifrati sul dispositivo
+prima di partire, e chi ospita la cartella non può leggere note, titoli,
+allegati né i nomi dei dispositivi. Vede solo quanti file ci sono, quanto
+sono grandi e quando cambiano.
+
+1. **Impostazioni › Sincronizzazione › Cifratura › Cifra la
+   sincronizzazione…**
+2. Scegli una passphrase di almeno 12 caratteri (per esempio quattro parole
+   a caso), scrivila due volte e premi **Cifra**. Se la sincronizzazione non
+   è ancora attiva, la passphrase viene chiesta quando la attivi o colleghi
+   Dropbox.
+3. Sugli altri dispositivi, alla sincronizzazione successiva compare **Serve
+   la passphrase**: inseriscila e premi **Sblocca**. Su ogni dispositivo
+   Greatnote conserva solo la chiave della libreria, nel portachiavi del
+   sistema; la passphrase non viene salvata da nessuna parte.
+
+Da sapere:
+
+- **Annota la passphrase in un posto sicuro.** Se la dimentichi, i dati
+  nella cartella non si possono più leggere. Le note sui dispositivi
+  restano, e un dispositivo già sbloccato può sceglierne una nuova con
+  **Cambia passphrase…**.
+- **Cambiare passphrase** non disturba gli altri dispositivi già sbloccati.
+  Quelli nuovi useranno la nuova passphrase.
+- **Una sincronizzazione già in uso** viene convertita senza perdere nulla:
+  ogni dispositivo, dopo aver inserito la passphrase, invia di nuovo le sue
+  note, che vengono unite. La vecchia copia in chiaro resta nella cartella
+  `greatnote-sync` ma non viene più usata. Quando tutti i dispositivi sono
+  passati, eliminala a mano: tieni solo `format.json` e la cartella
+  `encrypted`. Su Dropbox la cartella è in **Applicazioni › Greatnote**.
+- **Aggiorna Greatnote su tutti i dispositivi:** le versioni precedenti alla
+  0.2.16 si fermano con un avviso invece di sincronizzare.
+- **Non si torna in chiaro:** per una sincronizzazione senza cifratura
+  scegli un'altra cartella.
+
 **Da sapere:**
 
-- **Riservatezza:** i file nella cartella non sono cifrati, quindi il
-  servizio che la ospita può leggerli. Per la massima riservatezza usa
-  Syncthing, che sincronizza direttamente tra i tuoi computer, o un tuo
-  Nextcloud.
+- **Riservatezza:** senza cifratura il servizio che ospita la cartella può
+  leggere i file. Usa la cifratura con passphrase (sopra), oppure Syncthing,
+  che sincronizza direttamente tra i tuoi computer, o un tuo Nextcloud.
 - **Non copiare il database tra computer:** usa la sincronizzazione. Se
   Greatnote trova lo stesso database su due computer si ferma con un avviso;
   disattiva e riattiva la sincronizzazione su uno dei due per dargli una
@@ -877,8 +930,8 @@ AI può seguirli; quelli verso note dei taccuini esclusi non compaiono.
 può creare note (con taccuino e tag), aggiungere testo **in fondo** a una
 nota, creare attività e completarle (per esempio «aggiungi alla nota del
 trasloco l'elenco delle cose da comprare» o «crea un'attività per venerdì»).
-Non può eliminare, spostare nel cestino né riscrivere il testo esistente, e
-i taccuini esclusi dall'AI restano intoccabili. Al massimo 100 modifiche
+Da sola non può eliminare, spostare nel cestino né riscrivere il testo
+esistente, e i taccuini esclusi dall'AI restano intoccabili. Al massimo 100 modifiche
 per sessione dell'app di AI. Se la nota è aperta in Greatnote mentre viene
 modificata, riaprila per vedere il testo aggiunto; se la salvi prima, la
 versione dell'app di AI resta comunque nella **Cronologia** della nota. Le note nel cestino e quelle dei taccuini esclusi dall'AI non
@@ -886,6 +939,29 @@ sono mai accessibili. **Attività recenti** mostra le ultime richieste
 (strumento ed esito, senza testo). Togliendo la spunta l'accesso viene
 revocato subito. Per rimuovere anche la configurazione dal client:
 `claude mcp remove greatnote`.
+
+**Cestino e riscrittura, con la tua conferma:** spuntando anche **Consenti
+anche di chiedere cestino e riscrittura delle note**, l'app di AI può
+*chiedere* di spostare una nota nel cestino o di sostituirne il testo (per
+esempio «riordina la nota del trasloco» o «butta via la lista della spesa
+vecchia»). Non succede nulla subito: Greatnote mostra una notifica di
+sistema e, in alto a destra, il riquadro **Un'app di AI chiede una
+conferma**. Con **Rivedi…** vedi il motivo indicato e l'anteprima: per una
+riscrittura le parole aggiunte e tolte, per il cestino il testo della nota.
+Scegli **Sostituisci il testo** o **Sposta nel cestino** per confermare,
+**Rifiuta** per lasciare la nota com'è, **Decidi dopo** per chiudere
+l'anteprima e lasciare la richiesta in attesa.
+
+- Prima di una riscrittura la versione attuale viene salvata nella
+  **Cronologia** della nota: puoi sempre tornare indietro. Una nota spostata
+  nel cestino si ripristina dal **Cestino**.
+- Se nel frattempo hai modificato la nota, l'anteprima lo segnala: la
+  proposta non contiene le tue ultime modifiche (che resterebbero solo
+  nella cronologia).
+- Gli allegati e le immagini che il testo proposto non contiene vengono
+  tolti dalla nota: controlla l'anteprima.
+- Le richieste non decise scadono dopo 7 giorni; ne restano in attesa al
+  massimo 20. L'app di AI può controllarne l'esito, ma non può confermarle.
 
 Ciò che l'app di AI legge può essere inviato al suo fornitore secondo le
 sue condizioni. Greatnote non apre porte di rete: è l'app di AI ad

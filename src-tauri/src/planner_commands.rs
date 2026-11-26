@@ -365,7 +365,7 @@ fn notification_body(reminder: &Reminder, english: bool, now: time::Instant) -> 
 
 /// Invia una notifica di sistema. Il promemoria resta comunque visibile
 /// nell'app come "da gestire" anche se la consegna fallisce.
-fn send_notification(app: &AppHandle, title: &str, body: &str) -> Result<(), String> {
+pub(crate) fn send_notification(app: &AppHandle, title: &str, body: &str) -> Result<(), String> {
     #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
     {
         let _ = app;

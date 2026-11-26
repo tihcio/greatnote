@@ -24,6 +24,7 @@ fn device(shared: &Path, name: &str) -> Device {
             dropbox_account: String::new(),
             folder: shared.display().to_string(),
             device_name: name.to_owned(),
+            encrypted: false,
         })
         .expect("settings");
     Device {
@@ -767,6 +768,7 @@ fn remote_device(store: &MemoryStore, name: &str) -> Device {
             folder: String::new(),
             dropbox_account: "anna@example.com".to_owned(),
             device_name: name.to_owned(),
+            encrypted: false,
         })
         .expect("settings");
     let _ = store;
@@ -797,11 +799,17 @@ fn remote_store_carries_notes_and_attachments() {
         .add_attachment(&note.id, "file.txt", b"dati riservati", &data_a)
         .expect("att");
     a.database
-        .sync_now_with(Some(Box::new(store.clone())))
+        .sync_now_with(
+            Some(Box::new(store.clone())),
+            &mut folder::SyncAccess::default(),
+        )
         .expect("sync a");
     let report = b
         .database
-        .sync_now_with(Some(Box::new(store.clone())))
+        .sync_now_with(
+            Some(Box::new(store.clone())),
+            &mut folder::SyncAccess::default(),
+        )
         .expect("sync b");
     assert_eq!(report.rejected, 0);
     assert_eq!(
@@ -902,7 +910,7 @@ fn network_calls_never_hold_the_database_lock() {
                 calls_while_locked: std::sync::Arc::clone(&calls),
             };
             database
-                .sync_now_with(Some(Box::new(watching)))
+                .sync_now_with(Some(Box::new(watching)), &mut folder::SyncAccess::default())
                 .expect("sync");
         }
     }
@@ -1015,4 +1023,277 @@ fn default_device_name_is_never_empty() {
     let name = default_device_name();
     assert!(!name.trim().is_empty());
     assert!(name.chars().count() <= 100);
+}
+
+// ---------------------------------------------------------------------------
+// Cifratura (ADR 0032)
+
+const PASSPHRASE: &str = "cavallo batteria graffetta";
+
+fn set_encrypted(device: &Device) {
+    let settings = device.database.sync_settings().expect("settings");
+    device
+        .database
+        .set_sync_settings(SyncSettings {
+            encrypted: true,
+            ..settings
+        })
+        .expect("settings");
+}
+
+fn sync_with(device: &Device, access: &mut folder::SyncAccess) -> Result<SyncReport, SyncError> {
+    device.database.sync_now_with(None, access)
+}
+
+fn unlock(passphrase: &str) -> folder::SyncAccess {
+    folder::SyncAccess {
+        passphrase: Some(passphrase.to_owned()),
+        ..Default::default()
+    }
+}
+
+/// Tutti i file della libreria (percorso relativo, contenuto).
+fn library_files(shared: &Path) -> Vec<(String, Vec<u8>)> {
+    fn walk(root: &Path, directory: &Path, files: &mut Vec<(String, Vec<u8>)>) {
+        for entry in fs::read_dir(directory).expect("dir") {
+            let path = entry.expect("entry").path();
+            if path.is_dir() {
+                walk(root, &path, files);
+            } else {
+                let relative = path
+                    .strip_prefix(root)
+                    .expect("relative")
+                    .display()
+                    .to_string();
+                files.push((relative, fs::read(&path).expect("read")));
+            }
+        }
+    }
+    let root = shared.join(folder::ROOT);
+    let mut files = Vec::new();
+    walk(&root, &root, &mut files);
+    files
+}
+
+fn contains(bytes: &[u8], needle: &str) -> bool {
+    bytes
+        .windows(needle.len())
+        .any(|window| window == needle.as_bytes())
+}
+
+#[test]
+fn encrypted_library_hides_contents_and_needs_the_passphrase() {
+    let shared = tempfile::tempdir().expect("shared");
+    let a = device(shared.path(), "Portatile di Anna");
+    set_encrypted(&a);
+    let note = a
+        .database
+        .create_note("Diagnosi riservata", &doc("pressione alta"))
+        .expect("note");
+    let data_a = a.database.data_directory().expect("dir").to_path_buf();
+    let attachment = a
+        .database
+        .add_attachment(&note.id, "referto.txt", b"valori del referto", &data_a)
+        .expect("attachment");
+
+    // Senza passphrase, o troppo corta, la libreria non viene creata.
+    assert!(matches!(
+        sync_with(&a, &mut folder::SyncAccess::default()),
+        Err(SyncError::Folder(FolderError::PassphraseRequired))
+    ));
+    assert!(
+        a.database
+            .sync_status()
+            .expect("status")
+            .passphrase_required
+    );
+    assert!(matches!(
+        sync_with(&a, &mut unlock("breve")),
+        Err(SyncError::Folder(FolderError::Crypto(_)))
+    ));
+    let mut access_a = unlock(PASSPHRASE);
+    sync_with(&a, &mut access_a).expect("sync");
+    let key = access_a.key.clone().expect("chiave da conservare");
+    let status = a.database.sync_status().expect("status");
+    assert!(status.encrypted && !status.passphrase_required);
+
+    // Nella cartella niente testo, nomi, passphrase né hash degli allegati.
+    let files = library_files(shared.path());
+    assert!(files.iter().any(|(path, _)| path == "format.json"));
+    for (path, bytes) in &files {
+        for secret in [
+            "Diagnosi",
+            "pressione",
+            "Anna",
+            "referto",
+            "valori del referto",
+            PASSPHRASE,
+            attachment.sha256.as_str(),
+            key.to_hex().as_str(),
+        ] {
+            assert!(
+                !contains(bytes, secret) && !path.contains(secret),
+                "{path}: {secret}"
+            );
+        }
+        if path != "format.json" && path != "encrypted/format.json" {
+            assert!(path.starts_with("encrypted/"), "{path}");
+        }
+    }
+    let root: Value = serde_json::from_slice(
+        &fs::read(shared.path().join(folder::ROOT).join("format.json")).expect("read"),
+    )
+    .expect("json");
+    assert_eq!(root["format"], folder::ENCRYPTED_FORMAT);
+
+    // Un altro dispositivo: senza passphrase si ferma, con quella sbagliata
+    // pure, con quella giusta riceve nota e allegato.
+    let b = device(shared.path(), "Telefono");
+    assert!(matches!(
+        sync_with(&b, &mut folder::SyncAccess::default()),
+        Err(SyncError::Folder(FolderError::PassphraseRequired))
+    ));
+    assert!(titles(&b).is_empty());
+    assert!(matches!(
+        sync_with(&b, &mut unlock("passphrase sbagliata")),
+        Err(SyncError::Folder(FolderError::Crypto(
+            crypto::CryptoError::WrongPassphrase
+        )))
+    ));
+    let mut access_b = unlock(PASSPHRASE);
+    sync_with(&b, &mut access_b).expect("sync");
+    assert_eq!(titles(&b), vec!["Diagnosi riservata"]);
+    let data_b = b.database.data_directory().expect("dir").to_path_buf();
+    let path = b
+        .database
+        .verified_attachment_path(&note.id, &attachment.id, &data_b)
+        .expect("allegato decifrato e verificato");
+    assert_eq!(fs::read(path).expect("read"), b"valori del referto");
+
+    // Le volte successive basta la chiave salvata.
+    b.database
+        .update_note(&note.id, "Diagnosi riservata", &doc("pressione normale"))
+        .expect("update");
+    let mut saved = folder::SyncAccess {
+        key: access_b.key.clone(),
+        ..Default::default()
+    };
+    sync_with(&b, &mut saved).expect("sync");
+    sync_with(
+        &a,
+        &mut folder::SyncAccess {
+            key: Some(key),
+            ..Default::default()
+        },
+    )
+    .expect("sync");
+    assert!(note_text(&a, &note.id).contains("normale"));
+
+    // Un lotto alterato non viene applicato.
+    let batch = files
+        .iter()
+        .find(|(path, _)| path.contains("/changes/"))
+        .map(|(path, _)| shared.path().join(folder::ROOT).join(path))
+        .expect("batch");
+    let mut bytes = fs::read(&batch).expect("read");
+    let middle = bytes.len() / 2;
+    bytes[middle] ^= 0x55;
+    fs::write(&batch, bytes).expect("tamper");
+    let c = device(shared.path(), "Nuovo");
+    let report = sync_with(&c, &mut unlock(PASSPHRASE)).expect("sync");
+    assert!(!report.warnings.is_empty(), "{report:?}");
+}
+
+#[test]
+fn plain_library_is_converted_without_losing_changes() {
+    let shared = tempfile::tempdir().expect("shared");
+    let a = device(shared.path(), "A");
+    let b = device(shared.path(), "B");
+    a.database.create_note("Da A", &doc("uno")).expect("note");
+    sync(&a);
+    sync(&b);
+    // B scrive una nota che non arriva mai nella libreria in chiaro.
+    b.database
+        .create_note("Solo su B", &doc("due"))
+        .expect("note");
+
+    set_encrypted(&a);
+    a.database
+        .create_note("Dopo la cifratura", &doc("tre"))
+        .expect("note");
+    let mut access_a = unlock(PASSPHRASE);
+    sync_with(&a, &mut access_a).expect("conversion");
+    assert!(a.database.sync_status().expect("status").encrypted);
+    // La libreria in chiaro resta (da cancellare a mano), ma è ferma.
+    assert!(shared.path().join(folder::ROOT).join("devices").is_dir());
+
+    // B si accorge della conversione e chiede la passphrase.
+    assert!(matches!(
+        sync_with(&b, &mut folder::SyncAccess::default()),
+        Err(SyncError::Folder(FolderError::PassphraseRequired))
+    ));
+    sync_with(&b, &mut unlock(PASSPHRASE)).expect("join");
+    assert!(b.database.sync_status().expect("status").encrypted);
+    sync_with(&a, &mut access_a).expect("sync");
+    let expected = vec!["Da A", "Dopo la cifratura", "Solo su B"];
+    assert_eq!(titles(&a), expected);
+    assert_eq!(titles(&b), expected);
+    // Nessuna nota duplicata né conflitto per le note già uguali.
+    assert!(
+        a.database
+            .sync_status()
+            .expect("status")
+            .conflicts
+            .is_empty()
+    );
+
+    // Una versione di Greatnote senza cifratura vede un formato più nuovo
+    // e si ferma invece di scrivere in chiaro.
+    let root: Value = serde_json::from_slice(
+        &fs::read(shared.path().join(folder::ROOT).join("format.json")).expect("read"),
+    )
+    .expect("json");
+    assert!(root["format"].as_u64().expect("format") > u64::from(folder::FORMAT));
+}
+
+#[test]
+fn passphrase_change_keeps_the_key_for_other_devices() {
+    let shared = tempfile::tempdir().expect("shared");
+    let a = device(shared.path(), "A");
+    let b = device(shared.path(), "B");
+    set_encrypted(&a);
+    a.database.create_note("Prima", &doc("x")).expect("note");
+    let mut access_a = unlock(PASSPHRASE);
+    sync_with(&a, &mut access_a).expect("sync");
+    let mut access_b = unlock(PASSPHRASE);
+    sync_with(&b, &mut access_b).expect("sync");
+
+    let mut with_key = folder::SyncAccess {
+        key: access_a.key.clone(),
+        ..Default::default()
+    };
+    assert!(
+        a.database
+            .change_sync_passphrase(None, &mut with_key, "corta")
+            .is_err()
+    );
+    a.database
+        .change_sync_passphrase(None, &mut with_key, "una passphrase nuova e lunga")
+        .expect("change");
+
+    // B continua con la chiave salvata.
+    a.database.create_note("Dopo", &doc("y")).expect("note");
+    sync_with(&a, &mut with_key).expect("sync");
+    let mut saved_b = folder::SyncAccess {
+        key: access_b.key.clone(),
+        ..Default::default()
+    };
+    sync_with(&b, &mut saved_b).expect("sync");
+    assert_eq!(titles(&b), vec!["Dopo", "Prima"]);
+
+    // Un nuovo dispositivo deve usare la passphrase nuova.
+    let c = device(shared.path(), "C");
+    assert!(sync_with(&c, &mut unlock(PASSPHRASE)).is_err());
+    sync_with(&c, &mut unlock("una passphrase nuova e lunga")).expect("sync");
+    assert_eq!(titles(&c), vec!["Dopo", "Prima"]);
 }

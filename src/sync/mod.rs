@@ -3,6 +3,7 @@
 //! per dispositivo, orologi di Lamport, consegna causale e conflitti risolti
 //! in modo deterministico conservando la versione perdente.
 
+pub mod crypto;
 pub mod dropbox;
 pub mod folder;
 pub(crate) mod tables;
@@ -20,8 +21,8 @@ use uuid::Uuid;
 
 use self::{
     folder::{
-        Batch, DeviceFile, FORMAT, FolderError, LocalStore, Operation, SyncFolder, SyncStore,
-        Version,
+        Batch, DeviceFile, FORMAT, FolderError, LocalStore, Operation, SyncAccess, SyncFolder,
+        SyncStore, Version,
     },
     tables::{Applied, SyncTable, TABLES},
 };
@@ -49,6 +50,9 @@ pub struct SyncSettings {
     pub dropbox_account: String,
     /// Nome di questo dispositivo, mostrato agli altri.
     pub device_name: String,
+    /// Cifrare la libreria con una passphrase (ADR 0032): una libreria
+    /// nuova nasce cifrata, una in chiaro viene convertita.
+    pub encrypted: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,6 +141,10 @@ pub struct SyncStatus {
     pub conflicts: Vec<SyncConflict>,
     /// Nome usato quando `settings.device_name` è vuoto (nome host).
     pub default_device_name: String,
+    /// La libreria in uso è cifrata.
+    pub encrypted: bool,
+    /// L'ultima sincronizzazione si è fermata perché serve la passphrase.
+    pub passphrase_required: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +312,7 @@ impl Database {
             folder,
             dropbox_account,
             device_name,
+            encrypted: settings.encrypted,
         };
         let previous = self.sync_settings()?;
         let value = serde_json::to_string(&settings)?;
@@ -387,6 +396,8 @@ impl Database {
             conflicts,
             settings,
             default_device_name: default_device_name(),
+            encrypted: state(&connection, "encrypted")?.as_deref() == Some("1"),
+            passphrase_required: state(&connection, "passphrase_required")?.as_deref() == Some("1"),
         })
     }
 
@@ -437,30 +448,37 @@ impl Database {
 
     /// Sincronizza con la cartella locale delle impostazioni.
     pub fn sync_now(&self) -> Result<SyncReport, SyncError> {
-        self.sync_now_with(None)
+        self.sync_now_with(None, &mut SyncAccess::default())
     }
 
     /// Esegue una sincronizzazione completa: esporta le modifiche locali e
     /// applica quelle degli altri dispositivi. `store` è l'archivio remoto
     /// (Dropbox); senza, si usa la cartella locale delle impostazioni.
+    /// `access` porta chiave o passphrase di una libreria cifrata e, alla
+    /// fine, la chiave in uso (da conservare nel portachiavi).
     pub fn sync_now_with(
         &self,
         store: Option<Box<dyn SyncStore>>,
+        access: &mut SyncAccess,
     ) -> Result<SyncReport, SyncError> {
         let settings = self.sync_settings()?;
         if !settings.enabled {
             return Err(SyncError::NotConfigured);
         }
-        let store: Box<dyn SyncStore> = match (store, settings.transport) {
-            (Some(store), _) => store,
-            (None, SyncTransport::Folder) => {
-                Box::new(LocalStore::new(Path::new(&settings.folder))?)
-            }
-            (None, SyncTransport::Dropbox) => return Err(SyncError::NotConfigured),
-        };
+        let store = self.sync_store(store, &settings)?;
+        access.encrypt = access.encrypt || settings.encrypted;
         let data_directory = self.data_directory()?.to_path_buf();
-        let result = run(self, store, &settings, &data_directory);
+        let result = run(self, store, &settings, &data_directory, access);
         let connection = self.connection()?;
+        let needs_passphrase = matches!(
+            result,
+            Err(SyncError::Folder(FolderError::PassphraseRequired))
+        );
+        set_state(
+            &connection,
+            "passphrase_required",
+            if needs_passphrase { "1" } else { "" },
+        )?;
         match &result {
             Ok(_) => {
                 set_state(&connection, "last_sync_at", &now_utc())?;
@@ -473,6 +491,45 @@ impl Database {
             )?,
         }
         result
+    }
+
+    fn sync_store(
+        &self,
+        store: Option<Box<dyn SyncStore>>,
+        settings: &SyncSettings,
+    ) -> Result<Box<dyn SyncStore>, SyncError> {
+        Ok(match (store, settings.transport) {
+            (Some(store), _) => store,
+            (None, SyncTransport::Folder) => {
+                Box::new(LocalStore::new(Path::new(&settings.folder))?)
+            }
+            (None, SyncTransport::Dropbox) => return Err(SyncError::NotConfigured),
+        })
+    }
+
+    /// Cambia la passphrase della libreria cifrata in uso. Serve la chiave
+    /// (dal portachiavi) o la passphrase attuale; la chiave della libreria
+    /// non cambia, quindi gli altri dispositivi continuano senza fare nulla.
+    pub fn change_sync_passphrase(
+        &self,
+        store: Option<Box<dyn SyncStore>>,
+        access: &mut SyncAccess,
+        new_passphrase: &str,
+    ) -> Result<(), SyncError> {
+        let settings = self.sync_settings()?;
+        if !settings.enabled {
+            return Err(SyncError::NotConfigured);
+        }
+        crypto::check_passphrase(new_passphrase).map_err(FolderError::from)?;
+        let store = self.sync_store(store, &settings)?;
+        access.encrypt = false;
+        let known = state(&*self.connection()?, "library_id")?;
+        let opened = SyncFolder::open(store, || Uuid::new_v4().to_string(), access)?;
+        if known.as_deref() != Some(opened.library.as_str()) {
+            return Err(SyncError::OtherLibrary);
+        }
+        opened.folder.change_passphrase(new_passphrase)?;
+        Ok(())
     }
 }
 
@@ -492,9 +549,42 @@ fn run(
     store: Box<dyn SyncStore>,
     settings: &SyncSettings,
     data_directory: &Path,
+    access: &mut SyncAccess,
 ) -> Result<SyncReport, SyncError> {
-    let (device, known_library, seq) = {
+    let known_library = state(&*database.connection()?, "library_id")?;
+    let opened = SyncFolder::open(
+        store,
+        || {
+            known_library
+                .clone()
+                .unwrap_or_else(|| Uuid::new_v4().to_string())
+        },
+        access,
+    )?;
+    let (folder, library) = (opened.folder, opened.library);
+    match &known_library {
+        // Libreria convertita in cifrata (da qui o da un altro dispositivo):
+        // si ricomincia nella nuova riesportando tutto, e le note vengono
+        // unite a quelle degli altri dispositivi.
+        Some(known) if *known != library && opened.previous_library.as_ref() == Some(known) => {
+            let mut connection = database.connection()?;
+            let transaction = connection.transaction()?;
+            reset_protocol_state(&transaction)?;
+            set_state(&transaction, "library_id", &library)?;
+            transaction.commit()?;
+            tracing::info!("sincronizzazione passata alla libreria cifrata");
+        }
+        Some(known) if *known != library => return Err(SyncError::OtherLibrary),
+        Some(_) => {}
+        None => set_state(&*database.connection()?, "library_id", &library)?,
+    }
+    let (device, seq) = {
         let connection = database.connection()?;
+        set_state(
+            &connection,
+            "encrypted",
+            if folder.is_encrypted() { "1" } else { "" },
+        )?;
         let device = match state(&connection, "device_id")? {
             Some(device) => device,
             None => {
@@ -504,18 +594,8 @@ fn run(
             }
         };
         let seq = u64::try_from(state_number(&connection, "seq")?).unwrap_or(0);
-        (device, state(&connection, "library_id")?, seq)
+        (device, seq)
     };
-    let (folder, library) = SyncFolder::open(store, || {
-        known_library
-            .clone()
-            .unwrap_or_else(|| Uuid::new_v4().to_string())
-    })?;
-    match &known_library {
-        Some(known) if *known != library => return Err(SyncError::OtherLibrary),
-        Some(_) => {}
-        None => set_state(&*database.connection()?, "library_id", &library)?,
-    }
 
     // Ogni lotto è registrato nel database prima di essere scritto: un lotto
     // nella cartella che il database non conosce significa che un altro
