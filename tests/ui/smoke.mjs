@@ -1237,6 +1237,10 @@ try {
     await expectVisible(".meeting-recorder");
     const start = await page.$(".meeting-recorder .data-action.primary");
     if (!(await start.evaluate((button) => button.disabled))) throw new Error("avvio senza consenso dei partecipanti");
+    const selects = await page.$$(".meeting-recorder select");
+    if (selects.length !== 2) throw new Error(`selettori nel pannello: ${selects.length}`);
+    await selects[1].select("it");
+    await page.type(".meeting-recorder textarea", "Anna Rossi, VLAN");
     await clickText(".meeting-recorder .checkbox-field", "Ho informato");
     await clickText(".meeting-recorder .data-action.primary", "Avvia la registrazione");
     await pause(1200);
@@ -1258,7 +1262,7 @@ try {
     await clickText(".confirm-dialog .dialog-submit-button", "Elimina l'audio");
     await pause(300);
     const log = await page.evaluate(() => window.__SMOKE_LOG__.join("\n"));
-    for (const expected of ["microphone:true", "recording:", "transcribe:rec-1", "delete_recording:rec-1", "microphone:false"])
+    for (const expected of ["microphone:true", "recording:", "recording_options:it|Anna Rossi, VLAN", "transcribe:rec-1", "delete_recording:rec-1", "microphone:false"])
       if (!log.includes(expected)) throw new Error(`manca ${expected}: ${log}`);
     // Dal menu, con il pannello ancora aperto, si riparte da capo.
     await clickText(".menu-bar-item", "Nota");

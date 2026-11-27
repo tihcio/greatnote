@@ -74,6 +74,16 @@ pub struct Recording {
     /// Trascrizione già fatta (l'audio resta finché l'utente non lo elimina).
     #[serde(default)]
     pub transcribed: bool,
+    /// Lingua della riunione per Whisper (`it`, `en`, `auto`).
+    #[serde(default = "default_language")]
+    pub language: String,
+    /// Nomi e termini citati, suggeriti a Whisper.
+    #[serde(default)]
+    pub terms: String,
+}
+
+fn default_language() -> String {
+    "it".to_owned()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,6 +92,10 @@ struct Meta {
     started_at: String,
     #[serde(default)]
     transcribed: bool,
+    #[serde(default = "default_language")]
+    language: String,
+    #[serde(default)]
+    terms: String,
 }
 
 fn directory(data_directory: &Path) -> Result<PathBuf, MeetingError> {
@@ -121,13 +135,23 @@ fn info(data_directory: &Path, id: &str) -> Result<Recording, MeetingError> {
         started_at: meta.started_at,
         duration_seconds: bytes as f64 / BYTES_PER_SECOND as f64,
         transcribed: meta.transcribed,
+        language: meta.language,
+        terms: meta.terms,
     })
 }
 
 /// Nuova registrazione vuota.
-pub fn start(data_directory: &Path, note_id: Option<&str>) -> Result<Recording, MeetingError> {
+pub fn start(
+    data_directory: &Path,
+    note_id: Option<&str>,
+    language: &str,
+    terms: &str,
+) -> Result<Recording, MeetingError> {
     if let Some(note_id) = note_id {
         valid_id(note_id)?;
+    }
+    if !crate::ai::whisper::valid_language(language) {
+        return Err(MeetingError::InvalidAudio);
     }
     let id = uuid::Uuid::new_v4().to_string();
     let (audio, meta_path) = paths(data_directory, &id)?;
@@ -136,6 +160,8 @@ pub fn start(data_directory: &Path, note_id: Option<&str>) -> Result<Recording, 
         note_id: note_id.map(str::to_owned),
         started_at: crate::time::format_utc(crate::time::now()),
         transcribed: false,
+        language: language.to_owned(),
+        terms: crate::ai::whisper::clean_terms(terms),
     };
     fs::write(
         &meta_path,
@@ -183,7 +209,13 @@ pub fn list(data_directory: &Path) -> Result<Vec<Recording>, MeetingError> {
 /// Elimina audio e dati della registrazione.
 pub fn delete(data_directory: &Path, id: &str) -> Result<(), MeetingError> {
     let (audio, meta_path) = paths(data_directory, id)?;
-    for path in [audio, meta_path] {
+    let directory = directory(data_directory)?;
+    // Anche i file temporanei di una trascrizione interrotta.
+    let temporary = [
+        directory.join(format!("{id}.whisper.wav")),
+        directory.join(format!("{id}.whisper.json")),
+    ];
+    for path in [audio, meta_path].into_iter().chain(temporary) {
         match fs::remove_file(path) {
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error.into()),
             _ => {}
@@ -352,6 +384,48 @@ pub fn prompt(english: bool) -> (&'static str, &'static str) {
     }
 }
 
+/// Trascrive una registrazione con Whisper (ADR 0036): un'unica passata
+/// sull'audio ripulito dai buchi della cattura, con VAD, lingua e nomi della
+/// registrazione. `on_progress` riceve la percentuale.
+#[allow(clippy::too_many_arguments)]
+pub fn transcribe_with_whisper(
+    data_directory: &Path,
+    id: &str,
+    executable: &Path,
+    model: &Path,
+    vad_model: &Path,
+    threads: usize,
+    cancel: &AtomicBool,
+    on_progress: &mut dyn FnMut(u8),
+) -> Result<Vec<TranscriptSegment>, MeetingError> {
+    let recording = info(data_directory, id)?;
+    let samples = remove_dropouts(&samples(data_directory, id)?);
+    if samples.is_empty() || rms(&samples) < SILENCE_RMS / 4.0 {
+        return Err(MeetingError::Silent);
+    }
+    let directory = directory(data_directory)?;
+    let audio = directory.join(format!("{id}.whisper.wav"));
+    let output = directory.join(format!("{id}.whisper"));
+    fs::write(&audio, wav_bytes(&samples))?;
+    let prompt = crate::ai::whisper::prompt(&recording.language, &recording.terms);
+    let job = crate::ai::whisper::WhisperJob {
+        executable,
+        model,
+        vad_model,
+        audio: &audio,
+        output: &output,
+        language: &recording.language,
+        prompt: &prompt,
+        threads,
+    };
+    let result = crate::ai::whisper::run(&job, cancel, on_progress);
+    // Il WAV temporaneo non resta in ogni caso.
+    let _ = fs::remove_file(&audio);
+    let segments = result?;
+    mark_transcribed(data_directory, id)?;
+    Ok(segments)
+}
+
 /// Testo che un modello restituisce quando non c'è parlato.
 fn is_empty_answer(text: &str) -> bool {
     let normalized: String = text
@@ -484,6 +558,81 @@ mod tests {
         }
     }
 
+    /// `whisper-cli` finto: controlla gli argomenti e scrive il risultato.
+    #[cfg(unix)]
+    #[test]
+    fn whisper_gets_language_terms_and_clean_audio() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().expect("dir");
+        let script = directory.path().join("whisper-cli");
+        let arguments = directory.path().join("argomenti.txt");
+        fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n\
+                 out=''; audio=''\n\
+                 while [ $# -gt 0 ]; do case \"$1\" in --output-file) out=\"$2\";; --file) audio=\"$2\";; esac; shift; done\n\
+                 wc -c < \"$audio\" > \"$out.size\"\n\
+                 printf '{{\"transcription\":[{{\"offsets\":{{\"from\":0,\"to\":1500}},\"text\":\" Ciao a tutti.\"}}]}}' > \"$out.json\"\n",
+                arguments.display()
+            ),
+        )
+        .expect("script");
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).expect("chmod");
+
+        let recording = start(directory.path(), None, "en", "Anna Rossi\nVLAN").expect("start");
+        assert_eq!(recording.language, "en");
+        assert_eq!(recording.terms, "Anna Rossi, VLAN");
+        assert!(start(directory.path(), None, "fr", "").is_err());
+        // Voce con i buchi di zeri della cattura: a Whisper arriva solo la voce.
+        let voice = tone(2.0);
+        let mut broken = Vec::new();
+        for chunk in voice.chunks(4096) {
+            broken.extend_from_slice(chunk);
+            broken.extend(std::iter::repeat_n(0, 4096));
+        }
+        append(directory.path(), &recording.id, &bytes(&broken)).expect("append");
+        let mut progress = Vec::new();
+        let segments = transcribe_with_whisper(
+            directory.path(),
+            &recording.id,
+            &script,
+            Path::new("modello.bin"),
+            Path::new("vad.bin"),
+            4,
+            &AtomicBool::new(false),
+            &mut |p| progress.push(p),
+        )
+        .expect("whisper");
+        assert_eq!(segments[0].text, "Ciao a tutti.");
+        assert_eq!(progress.last(), Some(&100));
+        let passed = fs::read_to_string(&arguments).expect("arguments");
+        assert!(passed.contains("--language\nen\n"), "{passed}");
+        assert!(
+            passed.contains("Names and terms: Anna Rossi, VLAN."),
+            "{passed}"
+        );
+        let size_file = directory
+            .path()
+            .join("recordings")
+            .join(format!("{}.whisper.size", recording.id));
+        let size: usize = fs::read_to_string(&size_file)
+            .expect("size")
+            .trim()
+            .parse()
+            .expect("n");
+        assert_eq!(size, 44 + voice.len() * 2);
+        // Nessun file temporaneo rimasto, registrazione segnata.
+        assert!(
+            !directory
+                .path()
+                .join("recordings")
+                .join(format!("{}.whisper.wav", recording.id))
+                .exists()
+        );
+        assert!(list(directory.path()).expect("list")[0].transcribed);
+    }
+
     #[test]
     fn capture_dropouts_are_removed_before_transcribing() {
         // Voce e blocchi di zeri esatti alternati ogni 4096 campioni, come
@@ -500,7 +649,7 @@ mod tests {
         assert_eq!(remove_dropouts(&short), short);
 
         let directory = tempfile::tempdir().expect("dir");
-        let recording = start(directory.path(), None).expect("start");
+        let recording = start(directory.path(), None, "it", "").expect("start");
         append(directory.path(), &recording.id, &bytes(&broken)).expect("append");
         let provider = FakeAudio {
             calls: Mutex::new(Vec::new()),
@@ -526,7 +675,7 @@ mod tests {
     fn recordings_are_written_listed_and_deleted() {
         let directory = tempfile::tempdir().expect("dir");
         let note = uuid::Uuid::new_v4().to_string();
-        let recording = start(directory.path(), Some(&note)).expect("start");
+        let recording = start(directory.path(), Some(&note), "it", "").expect("start");
         assert_eq!(recording.note_id.as_deref(), Some(note.as_str()));
         let duration = append(directory.path(), &recording.id, &bytes(&tone(1.5))).expect("append");
         assert!((duration - 1.5).abs() < 0.01);
@@ -572,7 +721,7 @@ mod tests {
         assert_eq!(cuts.last().map(|cut| cut.1), Some(audio.len()));
 
         let directory = tempfile::tempdir().expect("dir");
-        let recording = start(directory.path(), None).expect("start");
+        let recording = start(directory.path(), None, "it", "").expect("start");
         append(directory.path(), &recording.id, &bytes(&audio)).expect("append");
         let provider = FakeAudio {
             calls: Mutex::new(Vec::new()),
@@ -605,7 +754,7 @@ mod tests {
         assert!(list(directory.path()).expect("list")[0].transcribed);
 
         // Solo silenzio: nessuna richiesta.
-        let quiet = start(directory.path(), None).expect("start");
+        let quiet = start(directory.path(), None, "it", "").expect("start");
         append(directory.path(), &quiet.id, &bytes(&silence(5.0))).expect("append");
         assert!(matches!(
             transcribe(

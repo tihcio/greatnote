@@ -213,8 +213,18 @@ ADR 0035.
   - fuori da backup, sincronizzazione ed esportazioni, salvo l'esportazione
     WAV chiesta dall'utente;
   - eliminabile in ogni momento.
+- **Whisper (ADR 0036):**
+  - `whisper-cli` è distribuito con l'app, con versione e impronta fissate;
+  - viene avviato senza shell, con argomenti costruiti dall'app; la lingua
+    è scelta da un elenco fisso e i «nomi e termini» sono ripuliti dai
+    caratteri di controllo e limitati a 400 caratteri;
+  - nessuna porta di rete;
+  - il processo si chiude con l'app anche dopo un crash;
+  - il WAV temporaneo e il risultato JSON vengono eliminati subito dopo,
+    anche in caso di errore o annullamento.
 - **Invio:**
-  - con il motore integrato l'audio resta sul dispositivo;
+  - con il motore integrato (Gemma o Whisper) l'audio resta sul
+    dispositivo;
   - con un server compatibile OpenAI valgono `ensure_usable` (AI attiva e
     consenso per i server remoti) e le esclusioni dei taccuini;
   - i registri contengono solo numero di tratti e durata, mai testo o audio.

@@ -1344,7 +1344,9 @@ const messages = {
     aiBuiltinRoleVisionHint: "Legge il testo di foto, scansioni e immagini allegate. Facoltativo.",
     aiBuiltinRoleAudio: "Audio (trascrizione delle riunioni)",
     aiBuiltinRoleAudioHint:
-      "Trascrive le registrazioni delle riunioni sul computer, senza inviarle. Gemma 4 E2B usa gli stessi file della visione. Facoltativo; il supporto audio di llama.cpp è ancora sperimentale.",
+      "Trascrive le registrazioni delle riunioni sul computer, senza inviarle. Whisper è specializzato nel parlato e capisce bene l'italiano: turbo è il più rapido, large-v3 il più preciso. Facoltativo.",
+    aiBuiltinWhisperMissing:
+      "Whisper non è incluso in questa installazione: per la trascrizione restano i modelli Gemma, meno precisi.",
     menuRecordMeeting: "Registra riunione…",
     recorderTitle: "Registrazione della riunione",
     recorderIntro:
@@ -1364,6 +1366,15 @@ const messages = {
     recorderStop: "Termina e trascrivi",
     recorderPreparing: "Preparo la trascrizione…",
     recorderTranscribing: (done: number, total: number) => `Trascrizione: ${done} di ${total} tratti`,
+    recorderTranscribingPercent: (percent: number) => `Trascrizione: ${percent}%`,
+    recorderLanguage: "Lingua della riunione",
+    recorderLanguageIt: "Italiano",
+    recorderLanguageEn: "Inglese",
+    recorderLanguageAuto: "Riconosci da solo",
+    recorderTerms: "Nomi e termini (facoltativo)",
+    recorderTermsPlaceholder: "Es. Anna Rossi, Sentinel One, VLAN, Microsoft 365",
+    recorderTermsHint:
+      "Persone, aziende, prodotti e sigle che verranno nominati: aiutano Whisper a scriverli giusti.",
     recorderSummarize: "Riassumi",
     recorderExtractActions: "Estrai decisioni e azioni",
     recorderAudioKept: "L'audio resta sul dispositivo finché non lo elimini.",
@@ -2898,7 +2909,9 @@ const messages = {
     aiBuiltinRoleVisionHint: "Reads the text in attached photos, scans and images. Optional.",
     aiBuiltinRoleAudio: "Audio (meeting transcription)",
     aiBuiltinRoleAudioHint:
-      "Transcribes meeting recordings on this computer, without sending them. Gemma 4 E2B uses the same files as vision. Optional; llama.cpp audio support is still experimental.",
+      "Transcribes meeting recordings on this computer, without sending them. Whisper is specialized in speech and understands Italian well: turbo is the fastest, large-v3 the most accurate. Optional.",
+    aiBuiltinWhisperMissing:
+      "Whisper is not included in this installation: the Gemma models remain for transcription, with lower accuracy.",
     menuRecordMeeting: "Record meeting…",
     recorderTitle: "Meeting recording",
     recorderIntro:
@@ -2918,6 +2931,15 @@ const messages = {
     recorderStop: "Stop and transcribe",
     recorderPreparing: "Preparing the transcription…",
     recorderTranscribing: (done: number, total: number) => `Transcribing: ${done} of ${total} parts`,
+    recorderTranscribingPercent: (percent: number) => `Transcribing: ${percent}%`,
+    recorderLanguage: "Meeting language",
+    recorderLanguageIt: "Italian",
+    recorderLanguageEn: "English",
+    recorderLanguageAuto: "Detect automatically",
+    recorderTerms: "Names and terms (optional)",
+    recorderTermsPlaceholder: "E.g. Anna Rossi, Sentinel One, VLAN, Microsoft 365",
+    recorderTermsHint:
+      "People, companies, products and acronyms that will be mentioned: they help Whisper spell them right.",
     recorderSummarize: "Summarize",
     recorderExtractActions: "Extract decisions and actions",
     recorderAudioKept: "The audio stays on the device until you delete it.",

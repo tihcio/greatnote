@@ -67,6 +67,12 @@ try {
     await pause(300);
     await page.click(".note-list-item");
     await shot(`${theme}-nota`);
+    // Pannelli sotto la nota: collegamenti, attività, promemoria.
+    await page.evaluate(() =>
+      document.querySelector('.note-detail-panel[aria-label="Collegamenti tra note"]')?.scrollIntoView({ block: "start" }),
+    );
+    await shot(`${theme}-nota-pannelli`);
+    await page.evaluate(() => document.querySelector(".ProseMirror")?.scrollIntoView({ block: "start" }));
     await clickText(".attachment-image-actions .text-button", "Inserisci nel testo");
     await pause(400);
     await page.hover(".note-editor .note-image-frame");

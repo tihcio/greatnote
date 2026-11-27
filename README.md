@@ -104,9 +104,12 @@ npm run tauri:build                 # tutti i formati
 npx tauri build --bundles rpm       # solo l'RPM
 ```
 
-Prima della build viene eseguito `scripts/fetch-llama.sh`, che scarica una
-volta la build di llama.cpp prevista, ne verifica lo SHA-256 e la prepara in
-`src-tauri/resources/llama/` (in cache in `target/llama-dist/`).
+Prima della build vengono eseguiti `scripts/fetch-llama.sh` e
+`scripts/fetch-whisper.sh`. Scaricano una volta le build previste di
+llama.cpp (motore AI integrato) e whisper.cpp (trascrizione delle riunioni),
+ne verificano lo SHA-256 e le preparano in `src-tauri/resources/llama/` e
+`src-tauri/resources/whisper/`, con la cache in `target/llama-dist/` e
+`target/whisper-dist/`.
 L'RPM installa il motore in `/usr/lib/Greatnote/llama/` e richiede
 `vulkan-loader`, `openssl-libs` e `libayatana-appindicator-gtk3` (icona
 nell'area di notifica della modalità in background; il `.deb` richiede
@@ -166,10 +169,12 @@ npm ci
 npm run tauri:build
 ```
 
-Per includere il motore AI integrato nella build Windows, esegui prima:
+Per includere il motore AI integrato e la trascrizione con Whisper nella
+build Windows, esegui prima:
 
 ``` powershell
 powershell -ExecutionPolicy Bypass -File scripts/fetch-llama.ps1
+powershell -ExecutionPolicy Bypass -File scripts/fetch-whisper.ps1
 ```
 
 ## Test

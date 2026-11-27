@@ -679,8 +679,12 @@ Greatnote può registrare una riunione e scriverne la trascrizione nella nota,
 con un modello AI che capisce l'audio.
 
 **Prima volta.** In **Impostazioni › Intelligenza artificiale**, con il
-motore integrato, scegli un modello per **Audio (trascrizione delle
-riunioni)**. Gemma 4 E2B è consigliato e usa gli stessi file del modello per
+motore integrato, scarica e scegli un modello per **Audio (trascrizione
+delle riunioni)**. **Whisper large-v3 turbo** (574 MB) è consigliato: è
+specializzato nel parlato e capisce bene l'italiano. **Whisper large-v3**
+(1,1 GB) è più preciso ma impiega circa il doppio. Sul processore la
+trascrizione dura circa quanto la riunione (con turbo). In alternativa
+restano i modelli Gemma, meno precisi: Gemma 4 E2B è consigliato e usa gli stessi file del modello per
 le immagini: se l'hai già scaricato non serve altro. **Gemma 4 E4B** è più
 preciso, ma più lento e chiede più memoria (circa 6,5 GB). Se usi già E4B per
 la chat, aggiunge solo un file da 0,56 GB. Whisper non è disponibile nel
@@ -692,7 +696,10 @@ trascrive l'audio.
    una nota aperta ne viene creata una nuova.
 2. Nel pannello in basso a sinistra scegli il **microfono** e controlla che
    la barra del livello si muova quando parli. La prima volta il sistema può
-   chiedere il permesso di usare il microfono.
+   chiedere il permesso di usare il microfono. Scegli la **lingua della
+   riunione** e, se vuoi, scrivi in **Nomi e termini** le persone, le aziende,
+   i prodotti e le sigle che verranno nominati (per esempio «Anna Rossi,
+   Sentinel One, VLAN»): Whisper li scriverà giusti molto più spesso.
 3. Conferma di **aver informato i partecipanti** e premi **Avvia la
    registrazione**. Finché registra vedi un punto rosso con il tempo, nel
    pannello e in basso nella nota. Puoi continuare a scrivere nella nota e
@@ -720,10 +727,10 @@ eliminare.
 **Da sapere:**
 - **Consenso dei partecipanti.** Registrare una conversazione può richiedere
   il loro consenso. Informali sempre prima di iniziare.
-- **Qualità.** La trascrizione è buona ma non perfetta: controlla nomi
-  propri, cifre e date. Il supporto audio del motore integrato è ancora
-  sperimentale, e senza scheda video la trascrizione richiede più tempo
-  della durata della riunione.
+- **Qualità.** Con Whisper la trascrizione è buona ma non perfetta:
+  controlla nomi propri, sigle, cifre e date. Indirizzi email e numeri
+  dettati lettera per lettera vengono spesso spezzettati. Con Gemma gli
+  errori sono molto più frequenti.
 - **Parlanti.** La trascrizione non distingue chi parla.
 - **Durata.** Al massimo 4 ore per registrazione.
 - **Linux.** Il microfono passa da GStreamer: se non funziona, installa i

@@ -20,6 +20,7 @@ pub mod prompt;
 pub mod provider;
 pub mod retrieval;
 pub mod settings;
+pub mod whisper;
 
 use thiserror::Error;
 

@@ -80,6 +80,14 @@ impl BuiltinProvider {
                     "choose and download a model for transcribing audio in AI settings"
                 ),
             }))?;
+        // I modelli Whisper non vanno a llama-server: la trascrizione li usa
+        // con whisper-cli (ADR 0036).
+        if model.engine != catalog::ModelEngine::Llama {
+            return Err(AiError::NotConfigured(crate::tr_str!(
+                "questo modello si usa solo per trascrivere le registrazioni",
+                "this model is only used to transcribe recordings"
+            )));
+        }
         // Stesso file di un modello con proiettore già scelto: si usa la sua
         // configurazione, quindi lo stesso processo (la visione per prima).
         let shared = [&self.vision_model, &self.audio_model]

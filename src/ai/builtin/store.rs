@@ -517,6 +517,8 @@ mod tests {
                 repo: "autore/repo-GGUF".to_owned(),
                 revision: revision.to_owned(),
             },
+            engine: catalog::ModelEngine::Llama,
+            vad: None,
         }
     }
 

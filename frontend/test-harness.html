@@ -249,7 +249,8 @@
         },
         list_recordings: () => recordings,
         start_recording: (args) => {
-          const recording = { id: `rec-${recordings.length + 1}`, note_id: args.noteId, started_at: now, duration_seconds: 0, transcribed: false };
+          window.__SMOKE_LOG__.push(`recording_options:${args.language}|${args.terms}`);
+          const recording = { id: `rec-${recordings.length + 1}`, note_id: args.noteId, started_at: now, duration_seconds: 0, transcribed: false, language: args.language, terms: args.terms };
           recordings.push(recording);
           window.__SMOKE_LOG__.push(`recording:${args.noteId}`);
           return recording;
@@ -265,9 +266,9 @@
             { start_seconds: 22.4, end_seconds: 40, text: "Marco prepara il verbale entro venerdì." },
           ];
           stream(args.onProgress, [
-            { done: 0, total: 2, segment: null },
-            { done: 1, total: 2, segment: segments[0] },
-            { done: 2, total: 2, segment: segments[1] },
+            { done: 0, total: 100, unit: "percent", segment: null },
+            { done: 60, total: 100, unit: "percent", segment: null },
+            { done: 100, total: 100, unit: "percent", segment: null },
           ]);
           recordings.find((item) => item.id === args.id).transcribed = true;
           window.__SMOKE_LOG__.push(`transcribe:${args.id}`);

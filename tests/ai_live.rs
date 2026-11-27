@@ -389,7 +389,8 @@ fn local_server_transcribes_a_recording() {
         .expect("data chunk")
         + 8;
     let directory = tempfile::tempdir().expect("dir");
-    let recording = greatnote_core::meeting::start(directory.path(), None).expect("start");
+    let recording =
+        greatnote_core::meeting::start(directory.path(), None, "it", "").expect("start");
     greatnote_core::meeting::append(directory.path(), &recording.id, &wav[data..]).expect("append");
     let provider = OpenAiCompatible::new(
         Endpoint::parse(&url).expect("url"),
@@ -412,4 +413,56 @@ fn local_server_transcribes_a_recording() {
     }
     println!("{:.1} s", started.elapsed().as_secs_f64());
     assert!(!transcript.is_empty());
+}
+
+/// Trascrizione reale con whisper.cpp (ADR 0036): copia una registrazione
+/// (PCM 16 kHz) in una cartella temporanea e la passa da
+/// `meeting::transcribe_with_whisper`, come fa l'app.
+///
+/// ```text
+/// GREATNOTE_WHISPER_CLI=src-tauri/resources/whisper/whisper-cli \
+/// GREATNOTE_WHISPER_MODEL=/percorso/ggml-large-v3-turbo-q5_0.bin \
+/// GREATNOTE_WHISPER_VAD=/percorso/ggml-silero-v6.2.0.bin \
+/// GREATNOTE_WHISPER_PCM=/percorso/registrazione.pcm \
+/// cargo test --release --test ai_live whisper -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "richiede whisper-cli, un modello Whisper e una registrazione"]
+fn whisper_transcribes_a_recording() {
+    let env = |name: &str| std::path::PathBuf::from(std::env::var(name).expect(name));
+    let executable = std::fs::canonicalize(env("GREATNOTE_WHISPER_CLI")).expect("cli");
+    let pcm = std::fs::read(env("GREATNOTE_WHISPER_PCM")).expect("pcm");
+    let directory = tempfile::tempdir().expect("dir");
+    let recording =
+        greatnote_core::meeting::start(directory.path(), None, "it", "").expect("start");
+    for chunk in pcm.chunks(greatnote_core::meeting::MAX_CHUNK_BYTES & !1) {
+        greatnote_core::meeting::append(directory.path(), &recording.id, chunk).expect("append");
+    }
+    let started = std::time::Instant::now();
+    let mut last = 0;
+    let segments = greatnote_core::meeting::transcribe_with_whisper(
+        directory.path(),
+        &recording.id,
+        &executable,
+        &env("GREATNOTE_WHISPER_MODEL"),
+        &env("GREATNOTE_WHISPER_VAD"),
+        std::thread::available_parallelism().map_or(4, |n| n.get().saturating_sub(2).max(1)),
+        &AtomicBool::new(false),
+        &mut |percent| {
+            if percent >= last + 25 {
+                println!("{percent}%");
+                last = percent;
+            }
+        },
+    )
+    .expect("whisper");
+    for segment in segments.iter().take(8) {
+        println!("[{:>6.1}s] {}", segment.start_seconds, segment.text);
+    }
+    println!(
+        "{} frasi in {:.1} s",
+        segments.len(),
+        started.elapsed().as_secs_f64()
+    );
+    assert!(!segments.is_empty());
 }

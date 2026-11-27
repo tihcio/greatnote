@@ -1468,7 +1468,91 @@ mod tests {
 pub struct TranscriptionProgress {
     pub done: usize,
     pub total: usize,
+    /// `parts`: tratti fatti su quelli da fare; `percent`: percentuale
+    /// (Whisper).
+    pub unit: &'static str,
     pub segment: Option<greatnote_core::meeting::TranscriptSegment>,
+}
+
+/// Modello Whisper scelto per l'audio, se lo è (ADR 0036).
+fn whisper_model(
+    settings: &AiSettings,
+) -> CommandResult<Option<greatnote_core::ai::builtin::catalog::CatalogModel>> {
+    if settings.audio_model.is_empty() {
+        return Ok(None);
+    }
+    let runtime = builtin_ai_commands::runtime()?;
+    Ok(runtime
+        .store()
+        .find_with_role(
+            &settings.audio_model,
+            greatnote_core::ai::builtin::catalog::ModelRole::Audio,
+        )
+        .filter(|model| model.engine == greatnote_core::ai::builtin::catalog::ModelEngine::Whisper))
+}
+
+/// Trascrizione con Whisper sul dispositivo: nessun dato esce, quindi basta
+/// che l'AI sia attiva.
+fn transcribe_with_whisper(
+    app: &AppHandle,
+    directory: &std::path::Path,
+    id: &str,
+    model: &greatnote_core::ai::builtin::catalog::CatalogModel,
+    cancel: &AtomicBool,
+    on_progress: &Channel<TranscriptionProgress>,
+) -> CommandResult<Vec<greatnote_core::meeting::TranscriptSegment>> {
+    let runtime = builtin_ai_commands::runtime()?;
+    let store = runtime.store();
+    if !store.is_installed(model) {
+        return Err(message(AiError::NotConfigured(greatnote_core::tr_str!(
+            "scarica il modello Whisper scelto per l'audio nelle impostazioni AI",
+            "download the Whisper model chosen for audio in AI settings"
+        ))));
+    }
+    let vad = model.vad.as_ref().ok_or_else(|| {
+        message(AiError::NotConfigured(greatnote_core::tr_str!(
+            "modello Whisper senza VAD",
+            "Whisper model without VAD"
+        )))
+    })?;
+    let executable = builtin_ai_commands::locate_whisper(app).ok_or_else(|| {
+        greatnote_core::tr!(
+            "Whisper non è incluso in questa installazione di Greatnote (manca whisper-cli)",
+            "Whisper is not included in this Greatnote installation (whisper-cli is missing)"
+        )
+    })?;
+    // Lascia un po' di processore all'app e al sistema.
+    let threads = thread::available_parallelism()
+        .map(|cores| cores.get().saturating_sub(2).max(1))
+        .unwrap_or(4);
+    let started = std::time::Instant::now();
+    let result = greatnote_core::meeting::transcribe_with_whisper(
+        directory,
+        id,
+        &executable,
+        &store.path(&model.model),
+        &store.path(vad),
+        threads,
+        cancel,
+        &mut |percent| {
+            let _ = on_progress.send(TranscriptionProgress {
+                done: usize::from(percent),
+                total: 100,
+                unit: "percent",
+                segment: None,
+            });
+        },
+    );
+    match &result {
+        Ok(segments) => tracing::info!(
+            segments = segments.len(),
+            seconds = started.elapsed().as_secs(),
+            model = %model.id,
+            "registrazione trascritta con Whisper"
+        ),
+        Err(error) => tracing::warn!("trascrizione con Whisper non riuscita: {error}"),
+    }
+    result.map_err(message)
 }
 
 /// Modello per l'audio secondo il provider: quello scelto per l'audio; con
@@ -1509,7 +1593,6 @@ pub async fn transcribe_recording(
         let guard = jobs.begin(&request_id)?;
         let database = app.state::<Database>();
         let settings = database.ai_settings().map_err(message)?;
-        let endpoint = settings.ensure_usable().map_err(message)?;
         let directory = data_directory(&database)?;
         let recording = greatnote_core::meeting::list(&directory)
             .map_err(message)?
@@ -1522,6 +1605,20 @@ pub async fn transcribe_recording(
         {
             return Err(message(AiError::ExcludedNote));
         }
+        if let Some(whisper) = whisper_model(&settings)? {
+            if !settings.enabled {
+                return Err(message(AiError::Disabled));
+            }
+            return transcribe_with_whisper(
+                app,
+                &directory,
+                &id,
+                &whisper,
+                &guard.cancel,
+                &on_progress,
+            );
+        }
+        let endpoint = settings.ensure_usable().map_err(message)?;
         let model = audio_model(&settings)?;
         let provider = provider_for(&settings, endpoint)?;
         let english = language(app) == Language::En;
@@ -1537,6 +1634,7 @@ pub async fn transcribe_recording(
                 let _ = on_progress.send(TranscriptionProgress {
                     done,
                     total,
+                    unit: "parts",
                     segment: segment.cloned(),
                 });
             },

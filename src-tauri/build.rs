@@ -23,6 +23,16 @@ fn main() {
             );
         }
         println!("cargo:rerun-if-changed=resources/llama/VERSION.txt");
+        // Lo stesso per whisper.cpp (scripts/fetch-whisper.sh, ADR 0036).
+        let whisper = std::path::Path::new("resources/whisper");
+        if !whisper.exists() {
+            let _ = std::fs::create_dir_all(whisper);
+            let _ = std::fs::write(
+                whisper.join("README.txt"),
+                "Trascrizione non inclusa: eseguire scripts/fetch-whisper.sh\n",
+            );
+        }
+        println!("cargo:rerun-if-changed=resources/whisper/VERSION.txt");
     }
     tauri_build::build()
 }

@@ -85,9 +85,17 @@ pub fn allow_microphone(allowed: bool) {
 pub fn start_recording(
     database: State<'_, Database>,
     note_id: Option<String>,
+    language: Option<String>,
+    terms: Option<String>,
 ) -> CommandResult<Recording> {
     let directory = data_directory(&database)?;
-    let recording = meeting::start(&directory, note_id.as_deref()).map_err(message)?;
+    let recording = meeting::start(
+        &directory,
+        note_id.as_deref(),
+        language.as_deref().unwrap_or("it"),
+        terms.as_deref().unwrap_or_default(),
+    )
+    .map_err(message)?;
     tracing::info!("registrazione iniziata");
     Ok(recording)
 }

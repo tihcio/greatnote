@@ -95,6 +95,17 @@ impl ModelFile {
     }
 }
 
+/// Programma che esegue il modello.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModelEngine {
+    /// `llama-server` (chat, embedding, immagini, audio multimodale).
+    #[default]
+    Llama,
+    /// `whisper-cli` di whisper.cpp: trascrizione del parlato (ADR 0036).
+    Whisper,
+}
+
 /// Origine di un modello.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -121,9 +132,14 @@ pub struct CatalogModel {
     /// Parti successive di un modello diviso (`-00002-of-00003.gguf`...).
     #[serde(default)]
     pub parts: Vec<ModelFile>,
-    /// Proiettore multimodale (solo per visione e audio).
+    /// Proiettore multimodale (solo per visione e audio con llama.cpp).
     pub projector: Option<ModelFile>,
     pub source: ModelSource,
+    #[serde(default)]
+    pub engine: ModelEngine,
+    /// Modello per il rilevamento del parlato (solo Whisper).
+    #[serde(default)]
+    pub vad: Option<ModelFile>,
 }
 
 impl CatalogModel {
@@ -131,6 +147,7 @@ impl CatalogModel {
         std::iter::once(&self.model)
             .chain(self.parts.iter())
             .chain(self.projector.iter())
+            .chain(self.vad.iter())
     }
 
     pub fn size_bytes(&self) -> u64 {
@@ -159,18 +176,30 @@ impl CatalogModel {
             && self.name.chars().count() <= 200
             && self.license.chars().count() <= 60
             && self.parts.len() <= 64
-            && self.projector.is_some() == self.role.needs_projector()
+            && match self.engine {
+                ModelEngine::Llama => {
+                    self.vad.is_none() && self.projector.is_some() == self.role.needs_projector()
+                }
+                // Solo dal catalogo curato, per la trascrizione.
+                ModelEngine::Whisper => {
+                    self.role == ModelRole::Audio
+                        && self.projector.is_none()
+                        && self.vad.is_some()
+                        && self.source == ModelSource::Curated
+                }
+            }
             && self.files().all(ModelFile::is_valid)
     }
 }
 
 /// Nome locale accettato per un file di modello: solo caratteri sicuri su
-/// ogni sistema, estensione `.gguf`, nessun separatore di percorso.
+/// ogni sistema, estensione `.gguf` (llama.cpp) o `.bin` (whisper.cpp),
+/// nessun separatore di percorso.
 pub fn is_safe_file_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= MAX_FILE_NAME
         && !name.starts_with('.')
-        && name.ends_with(".gguf")
+        && (name.ends_with(".gguf") || name.ends_with(".bin"))
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
@@ -259,6 +288,33 @@ fn curated_model(
         parts: Vec::new(),
         projector,
         source: ModelSource::Curated,
+        engine: ModelEngine::Llama,
+        vad: None,
+    }
+}
+
+/// Modello Whisper del catalogo, con il modello VAD che toglie i silenzi.
+fn whisper_model(
+    id: &str,
+    name: &str,
+    memory_gb: f32,
+    recommended: bool,
+    model: ModelFile,
+    vad: ModelFile,
+) -> CatalogModel {
+    CatalogModel {
+        id: id.to_owned(),
+        role: ModelRole::Audio,
+        name: name.to_owned(),
+        license: "MIT".to_owned(),
+        memory_gb,
+        recommended,
+        model,
+        parts: Vec::new(),
+        projector: None,
+        source: ModelSource::Curated,
+        engine: ModelEngine::Whisper,
+        vad: Some(vad),
     }
 }
 
@@ -293,6 +349,27 @@ static CURATED: LazyLock<Vec<CatalogModel>> = LazyLock::new(|| {
         "ggml-org/gemma-4-E4B-it-GGUF/resolve/a69f018d7678a2b9f5e705f8903d6fb29b9b25dc",
         559_874_816,
         "197f49a93027f9843772bd24a6a9e0be2a32a788de5a3def330e9c585d86edd1",
+    );
+    // Whisper per whisper.cpp (ADR 0036), dal repository ufficiale, e il VAD
+    // Silero convertito da ggml-org.
+    let whisper_repo = "ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1";
+    let whisper_turbo = curated_file(
+        "ggml-large-v3-turbo-q5_0.bin",
+        whisper_repo,
+        574_041_195,
+        "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+    );
+    let whisper_large = curated_file(
+        "ggml-large-v3-q5_0.bin",
+        whisper_repo,
+        1_081_140_203,
+        "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1",
+    );
+    let silero_vad = curated_file(
+        "ggml-silero-v6.2.0.bin",
+        "ggml-org/whisper-vad/resolve/9ffd54a1e1ee413ddf265af9913beaf518d1639b",
+        885_098,
+        "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987",
     );
     let bge_m3 = curated_file(
         "bge-m3-q8_0.gguf",
@@ -390,16 +467,35 @@ static CURATED: LazyLock<Vec<CatalogModel>> = LazyLock::new(|| {
             gemma4_e2b.clone(),
             Some(gemma4_e2b_projector.clone()),
         ),
+        // Trascrizione con Whisper (ADR 0036): su una riunione reale di 11
+        // minuti il testo è utilizzabile, con Gemma no. Turbo è il
+        // compromesso tra precisione e tempo sul processore.
+        whisper_model(
+            "whisper-large-v3-turbo",
+            "Whisper large-v3 turbo",
+            1.5,
+            true,
+            whisper_turbo,
+            silero_vad.clone(),
+        ),
+        whisper_model(
+            "whisper-large-v3",
+            "Whisper large-v3",
+            2.5,
+            false,
+            whisper_large,
+            silero_vad,
+        ),
         // Gemma 4 E2B capisce anche l'audio, con lo stesso proiettore: chi
         // usa già il modello per chat o immagini non scarica nulla.
-        // Provato con llama.cpp b11397 (ADR 0035).
+        // Meno preciso di Whisper (ADR 0035, 0036).
         curated_model(
             "gemma-4-e2b-audio",
             ModelRole::Audio,
             "Gemma 4 E2B",
             "Apache 2.0",
             4.5,
-            true,
+            false,
             gemma4_e2b,
             Some(gemma4_e2b_projector),
         ),
@@ -509,12 +605,15 @@ mod tests {
         assert!(is_safe_file_name(
             "hf-0123456789ab-Q4_K_M_model-00001-of-00002.gguf"
         ));
+        // Modelli di whisper.cpp.
+        assert!(is_safe_file_name("ggml-large-v3-turbo-q5_0.bin"));
         for invalid in [
             "../x.gguf",
             "a/b.gguf",
             "a\\b.gguf",
             ".x.gguf",
-            "x.bin",
+            "x.exe",
+            "x.bin.sh",
             "con figura.gguf",
         ] {
             assert!(!is_safe_file_name(invalid), "{invalid}");

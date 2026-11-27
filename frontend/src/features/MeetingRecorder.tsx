@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { t } from "../i18n";
+import { language, t } from "../i18n";
 import { askConfirmation } from "../lib/confirm";
 import { errorMessage, formatDateTime } from "../lib/format";
 
@@ -11,6 +11,8 @@ export interface Recording {
   started_at: string;
   duration_seconds: number;
   transcribed: boolean;
+  language: string;
+  terms: string;
 }
 
 export interface TranscriptSegment {
@@ -22,8 +24,12 @@ export interface TranscriptSegment {
 interface TranscriptionProgress {
   done: number;
   total: number;
+  /** `percent` con Whisper, `parts` con gli altri modelli. */
+  unit: "percent" | "parts";
   segment: TranscriptSegment | null;
 }
+
+type MeetingLanguage = "it" | "en" | "auto";
 
 const SAMPLE_RATE = 16_000;
 /** Ogni quanto i campioni vengono salvati su disco. */
@@ -118,7 +124,13 @@ export default function MeetingRecorder({
   const [seconds, setSeconds] = useState(0);
   const [recording, setRecording] = useState<Recording | null>(null);
   const [saved, setSaved] = useState<Recording[]>([]);
-  const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  const [progress, setProgress] = useState<{ done: number; total: number; unit: "percent" | "parts" }>({
+    done: 0,
+    total: 0,
+    unit: "parts",
+  });
+  const [meetingLanguage, setMeetingLanguage] = useState<MeetingLanguage>(language === "en" ? "en" : "it");
+  const [terms, setTerms] = useState("");
   const [preview, setPreview] = useState<TranscriptSegment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -261,7 +273,11 @@ export default function MeetingRecorder({
       if (!streamRef.current) return;
     }
     try {
-      const created = await invoke<Recording>("start_recording", { noteId });
+      const created = await invoke<Recording>("start_recording", {
+        noteId,
+        language: meetingLanguage,
+        terms,
+      });
       recordingRef.current = created;
       setRecording(created);
       pausedRef.current = false;
@@ -286,10 +302,10 @@ export default function MeetingRecorder({
     setError(null);
     setNotice(null);
     setPreview([]);
-    setProgress({ done: 0, total: 0 });
+    setProgress({ done: 0, total: 0, unit: "parts" });
     const channel = new Channel<TranscriptionProgress>();
     channel.onmessage = (message) => {
-      setProgress({ done: message.done, total: message.total });
+      setProgress({ done: message.done, total: message.total, unit: message.unit });
       if (message.segment) setPreview((current) => [...current, message.segment as TranscriptSegment]);
     };
     try {
@@ -418,6 +434,28 @@ export default function MeetingRecorder({
           <div aria-label={t.recorderLevel} className="recorder-level" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(level * 100)}>
             <span style={{ width: `${Math.round(level * 100)}%` }} />
           </div>
+          <label className="dialog-field">
+            <span>{t.recorderLanguage}</span>
+            <select
+              onChange={(event) => setMeetingLanguage(event.target.value as MeetingLanguage)}
+              value={meetingLanguage}
+            >
+              <option value="it">{t.recorderLanguageIt}</option>
+              <option value="en">{t.recorderLanguageEn}</option>
+              <option value="auto">{t.recorderLanguageAuto}</option>
+            </select>
+          </label>
+          <label className="dialog-field">
+            <span>{t.recorderTerms}</span>
+            <textarea
+              maxLength={400}
+              onChange={(event) => setTerms(event.target.value)}
+              placeholder={t.recorderTermsPlaceholder}
+              rows={2}
+              value={terms}
+            />
+          </label>
+          <p className="data-hint">{t.recorderTermsHint}</p>
           <label className="checkbox-field">
             <input checked={consent} onChange={(event) => setConsent(event.target.checked)} type="checkbox" />
             <span>{t.recorderConsent}</span>
@@ -450,7 +488,11 @@ export default function MeetingRecorder({
       {phase === "transcribing" && (
         <>
           <p className="data-hint" role="status">
-            {progress.total > 0 ? t.recorderTranscribing(progress.done, progress.total) : t.recorderPreparing}
+            {progress.total === 0
+              ? t.recorderPreparing
+              : progress.unit === "percent"
+                ? t.recorderTranscribingPercent(progress.done)
+                : t.recorderTranscribing(progress.done, progress.total)}
           </p>
           <progress max={Math.max(1, progress.total)} value={progress.done} />
           {preview.length > 0 && (

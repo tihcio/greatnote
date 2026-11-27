@@ -413,6 +413,21 @@ modello di embedding reale, annullamento di una risposta lunga.
   - Voxtral Mini 3B tramite llama.cpp: rifiuti e testo inventato, escluso.
 
   Vedi ADR 0035.
+- **Whisper (ADR 0036):**
+  - `ai/whisper.rs`: suggerimento e «nomi e termini» ripuliti e limitati,
+    argomenti (lingua, thread limitati, VAD), lettura dell'avanzamento e del
+    JSON. Con un `whisper-cli` finto (script) verifica esecuzione, risultato
+    eliminato, errore con le ultime righe e annullamento rapido;
+  - `meeting.rs`: lingua e termini salvati e passati a Whisper, lingua non
+    valida rifiutata; audio con i buchi della cattura ripulito prima
+    dell'invio; WAV temporaneo eliminato, registrazione segnata;
+  - catalogo: modelli Whisper solo curati, con VAD, mai mandati a
+    llama-server;
+  - interfaccia (`registra-riunione`): lingua e termini inviati
+    all'avvio, avanzamento in percentuale;
+  - prova reale (`tests/ai_live.rs`, `whisper_transcribes_a_recording`) con
+    il `whisper-cli` di `scripts/fetch-whisper.sh`: lettura di 63 secondi
+    trascritta completa in 27 secondi sul processore.
 - `ai/builtin/server.rs`, `engine_processes_end_with_the_app` (Linux):
   un'«app» finta avvia un server finto e termina di colpo; il server viene
   chiuso. Senza la protezione il test fallisce (verificato).

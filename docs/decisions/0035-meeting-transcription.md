@@ -1,5 +1,9 @@
 # ADR 0035: registrazione e trascrizione delle riunioni
 
+> **Aggiornamento 2026-11-27.** Il motore di trascrizione consigliato è
+> Whisper (whisper.cpp), vedi ADR 0036. Le parti di questo ADR su
+> registrazione, permessi, audio e inserimento nella nota restano valide.
+
 - **Stato:** accettata
 - **Data:** 2026-11-26
 

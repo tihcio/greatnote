@@ -597,6 +597,8 @@ pub fn build_details(
                     repo: repo.to_owned(),
                     revision: revision.clone(),
                 },
+                engine: super::catalog::ModelEngine::Llama,
+                vad: None,
             };
             let size = model.size_bytes();
             if size > MAX_VARIANT_BYTES || !model.is_valid() {

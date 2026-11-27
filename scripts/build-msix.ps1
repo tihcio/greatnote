@@ -14,6 +14,7 @@
 param(
     [string]$ExePath = "target/release/greatnote-desktop.exe",
     [string]$LlamaDir = "src-tauri/resources/llama",
+    [string]$WhisperDir = "src-tauri/resources/whisper",
     [string]$OutDir = "target/release/bundle/msix",
     [string]$IdentityName = $env:MSIX_IDENTITY_NAME,
     [string]$Publisher = $env:MSIX_PUBLISHER,
@@ -72,6 +73,11 @@ try {
         Copy-Item -Recurse $LlamaDir (Join-Path $stage "llama")
     } else {
         Write-Warning "Motore llama.cpp assente in ${LlamaDir}: pacchetto senza AI integrata (scripts/fetch-llama.ps1)."
+    }
+    if (Test-Path (Join-Path $WhisperDir "whisper-cli.exe")) {
+        Copy-Item -Recurse $WhisperDir (Join-Path $stage "whisper")
+    } else {
+        Write-Warning "whisper.cpp assente in ${WhisperDir}: pacchetto senza trascrizione Whisper (scripts/fetch-whisper.ps1)."
     }
     Copy-Item -Recurse "src-tauri/msix/Assets" (Join-Path $stage "Assets")
 

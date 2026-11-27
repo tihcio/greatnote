@@ -79,6 +79,10 @@ jobs:
         shell: pwsh
         run: ./scripts/fetch-llama.ps1
 
+      - name: Fetch whisper.cpp
+        shell: pwsh
+        run: ./scripts/fetch-whisper.ps1
+
       - name: Pack a test MSIX
         shell: pwsh
         run: ./scripts/build-msix.ps1 -ExePath "$env:WINDIR\System32\notepad.exe" -OutDir "$env:RUNNER_TEMP\msix"

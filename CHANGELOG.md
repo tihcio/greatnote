@@ -4,6 +4,19 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.17 — 2026-11-27
+
+- **Trascrizione delle riunioni con Whisper.** Il motore specializzato nel
+  parlato di whisper.cpp è incluso nell'app (Linux e Windows) e si sceglie
+  tra i modelli audio: Whisper large-v3 turbo (574 MB, consigliato) o
+  large-v3 (1,1 GB, più preciso). Su una riunione reale il testo passa da
+  inutilizzabile a buono, con punteggiatura e senza frasi inventate sui
+  silenzi. Nel pannello della registrazione si scelgono la lingua della
+  riunione e, facoltativi, i **nomi e termini** che verranno citati, per
+  scriverli giusti. Tutto resta sul computer.
+- Sotto la nota, i menu «Scegli una nota» (collegamenti) e «Una volta /
+  Ogni giorno…» (promemoria) hanno lo stesso aspetto degli altri campi.
+
 ## 0.2.16 — 2026-11-26
 
 - **Android: condividere una pagina web salva l'articolo.** Prima la nota

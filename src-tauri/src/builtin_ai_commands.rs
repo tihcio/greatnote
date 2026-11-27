@@ -40,6 +40,8 @@ pub const DOWNLOAD_PROGRESS_EVENT: &str = "ai-model-download-progress";
 pub const DOWNLOAD_FINISHED_EVENT: &str = "ai-model-download-finished";
 /// Percorso alternativo di `llama-server` (sviluppo o build personalizzate).
 const SERVER_OVERRIDE_ENV: &str = "GREATNOTE_LLAMA_SERVER";
+/// Percorso alternativo di `whisper-cli` (ADR 0036).
+const WHISPER_OVERRIDE_ENV: &str = "GREATNOTE_WHISPER_CLI";
 const IDLE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 
 static RUNTIME: OnceLock<Arc<BuiltinRuntime>> = OnceLock::new();
@@ -141,6 +143,31 @@ fn locate_server(app: &AppHandle) -> Option<PathBuf> {
         .or(in_path)
 }
 
+/// `whisper-cli` distribuito con l'app (cartella `whisper` delle risorse,
+/// separata da quella di llama.cpp: le due build usano versioni diverse
+/// delle librerie ggml), indicato nell'ambiente oppure nel `PATH`.
+pub(crate) fn locate_whisper(app: &AppHandle) -> Option<PathBuf> {
+    let executable = greatnote_core::ai::whisper::EXECUTABLE;
+    let bundled = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|directory| directory.join("whisper").join(executable));
+    let configured = std::env::var_os(WHISPER_OVERRIDE_ENV)
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute());
+    let in_path = std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|directory| directory.join(executable))
+            .find(|path| path.is_file())
+    });
+    bundled
+        .into_iter()
+        .chain(configured)
+        .find(|path| path.is_file())
+        .or(in_path)
+}
+
 /// Download in corso, per l'annullamento.
 #[derive(Default)]
 pub struct ModelDownloads {
@@ -182,6 +209,8 @@ pub struct BuiltinModelInfo {
 pub struct BuiltinCatalog {
     /// `llama-server` è incluso o installato.
     pub engine_available: bool,
+    /// `whisper-cli` è incluso o installato (trascrizione, ADR 0036).
+    pub whisper_available: bool,
     pub models: Vec<BuiltinModelInfo>,
     pub models_directory: String,
     pub used_bytes: u64,
@@ -189,11 +218,16 @@ pub struct BuiltinCatalog {
     pub hardware: HardwareInfo,
 }
 
-fn catalog_status(runtime: &BuiltinRuntime, downloads: &ModelDownloads) -> BuiltinCatalog {
+fn catalog_status(
+    app: &AppHandle,
+    runtime: &BuiltinRuntime,
+    downloads: &ModelDownloads,
+) -> BuiltinCatalog {
     let store = runtime.store();
     let hardware = hardware();
     BuiltinCatalog {
         engine_available: runtime.executable().is_some(),
+        whisper_available: locate_whisper(app).is_some(),
         models: store
             .models()
             .into_iter()
@@ -208,7 +242,14 @@ fn catalog_status(runtime: &BuiltinRuntime, downloads: &ModelDownloads) -> Built
                     missing_bytes: store.missing_bytes(&model),
                     installed: store.is_installed(&model),
                     downloading: downloads.is_active(&model.id),
-                    fit: model_fit(size_bytes, hardware),
+                    // Whisper distribuito usa solo il processore.
+                    fit: match (model.engine, model_fit(size_bytes, hardware)) {
+                        (
+                            greatnote_core::ai::builtin::catalog::ModelEngine::Whisper,
+                            ModelFit::Gpu,
+                        ) => ModelFit::Cpu,
+                        (_, fit) => fit,
+                    },
                     curated: model.is_curated(),
                     repo: match &model.source {
                         ModelSource::Curated => None,
@@ -230,7 +271,11 @@ fn catalog_status(runtime: &BuiltinRuntime, downloads: &ModelDownloads) -> Built
 pub async fn get_builtin_ai_catalog(app: AppHandle) -> CommandResult<BuiltinCatalog> {
     blocking(app, |app| {
         let runtime = runtime()?;
-        Ok(catalog_status(&runtime, &app.state::<ModelDownloads>()))
+        Ok(catalog_status(
+            app,
+            &runtime,
+            &app.state::<ModelDownloads>(),
+        ))
     })
     .await
 }
@@ -477,7 +522,7 @@ pub async fn delete_builtin_model(
         if !model.is_curated() {
             runtime.store().unregister(&model.id).map_err(message)?;
         }
-        Ok(catalog_status(&runtime, &downloads))
+        Ok(catalog_status(app, &runtime, &downloads))
     })
     .await
 }

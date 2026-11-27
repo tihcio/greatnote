@@ -40,6 +40,11 @@ jobs:
         shell: pwsh
         run: ./scripts/fetch-llama.ps1
 
+      # Trascrizione delle riunioni (ADR 0036), inclusa come llama.cpp.
+      - name: Fetch whisper.cpp
+        shell: pwsh
+        run: ./scripts/fetch-whisper.ps1
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -293,7 +298,8 @@ jobs:
         run: npm ci
 
       # tauri.linux.conf.json viene applicato automaticamente su Linux e
-      # scarica llama.cpp (scripts/fetch-llama.sh) prima della compilazione.
+      # scarica llama.cpp e whisper.cpp (scripts/fetch-llama.sh,
+      # scripts/fetch-whisper.sh) prima della compilazione.
       - name: Build packages
         run: npx tauri build
         env:

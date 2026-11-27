@@ -20,6 +20,8 @@ MOBILE.md
 
 # Motore llama.cpp scaricato da scripts/fetch-llama.ps1 / fetch-llama.sh (non versionato).
 /src-tauri/resources/llama/
+# whisper.cpp scaricato da scripts/fetch-whisper.ps1 / fetch-whisper.sh.
+/src-tauri/resources/whisper/
 
 # Registrazioni OAuth dell'editore: solo in locale o nei segreti della CI.
 /oauth.env

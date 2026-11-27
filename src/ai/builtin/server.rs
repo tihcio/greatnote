@@ -625,7 +625,7 @@ mod tests {
 /// in qualunque modo (anche per un crash o una chiusura forzata, come i
 /// riavvii di `tauri dev`), il sistema chiude anche i server. Prima
 /// restavano orfani e tenevano occupata la memoria della scheda video.
-mod supervised {
+pub(crate) mod supervised {
     use std::{
         io,
         process::{Child, Command},

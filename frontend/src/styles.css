@@ -907,16 +907,36 @@ p {
   gap: 8px;
 }
 
-.note-link-controls select {
-  width: min(220px, 35vw);
-  min-width: 100px;
-  height: 28px;
-  padding: 0 28px 0 8px;
+/* Menu dei pannelli sotto la nota (collegamenti, ripetizione del
+   promemoria): stessa altezza, fondo, bordo e testo dei campi di data, ora
+   e attività accanto. */
+.note-link-controls select,
+.reminder-add > select {
+  height: 34px;
+  min-width: 0;
+  padding: 0 28px 0 10px;
   border: 1px solid var(--line);
-  border-radius: 5px;
-  background-color: var(--paper);
+  border-radius: 7px;
+  background-color: var(--ground);
   color: var(--ink);
-  font-size: 12px;
+  font-size: 13px;
+}
+
+.note-link-controls select {
+  width: min(240px, 35vw);
+  min-width: 120px;
+}
+
+.reminder-add > select {
+  width: 140px;
+  flex: 0 0 auto;
+}
+
+.note-link-controls select:hover,
+.reminder-add > select:hover,
+.datetime-field select:hover,
+.datetime-field input:hover {
+  border-color: #b8c1b2;
 }
 
 .visually-hidden {

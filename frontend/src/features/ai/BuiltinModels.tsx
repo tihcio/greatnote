@@ -243,6 +243,11 @@ export default function BuiltinModels({ draft, patch }: BuiltinModelsProps) {
         <div aria-label={roleLabel(role)} className="ai-builtin-group" key={role} role="radiogroup">
           <h4>{roleLabel(role)}</h4>
           <p className="data-hint">{roleHint(role)}</p>
+          {role === "audio" && !catalog.whisper_available && (
+            <p className="data-hint" role="status">
+              {t.aiBuiltinWhisperMissing}
+            </p>
+          )}
           {catalog.models
             .filter((model) => model.role === role)
             .map((model) => {

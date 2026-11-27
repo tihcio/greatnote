@@ -3,7 +3,8 @@
   "bundle": {
     "targets": ["nsis", "msi"],
     "resources": {
-      "resources/llama/*": "llama/"
+      "resources/llama/*": "llama/",
+      "resources/whisper/*": "whisper/"
     },
     "publisher": "Greatnote",
     "shortDescription": "Note locali, ricerca e conoscenza personale",

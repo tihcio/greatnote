@@ -239,6 +239,8 @@ export interface HardwareInfo {
 
 export interface BuiltinCatalog {
   engine_available: boolean;
+  /** whisper-cli incluso: trascrizione con Whisper (ADR 0036). */
+  whisper_available: boolean;
   models: BuiltinModel[];
   models_directory: string;
   used_bytes: number;
