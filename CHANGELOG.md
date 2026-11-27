@@ -4,6 +4,18 @@ Le modifiche rilevanti sono registrate per rilascio.
 
 ## Non rilasciato
 
+## 0.2.18 — 2026-11-27
+
+- **La trascrizione non rallenta più il computer.** Whisper usava quasi
+  tutti i core del processore e rendeva lenta l'interfaccia: ora ne usa al
+  massimo 8 (metà dei core, lasciandone sempre liberi) con priorità bassa,
+  senza perdere velocità.
+- I pulsanti disattivati (per esempio «Salva le impostazioni AI» senza
+  modifiche) non mostrano più il cursore di attesa, che faceva sembrare
+  l'app occupata; l'attesa compare solo durante un'operazione in corso.
+- Se Whisper si ferma subito con un errore, il messaggio ne riporta il
+  motivo (prima poteva restare vuoto).
+
 ## 0.2.17 — 2026-11-27
 
 - **Trascrizione delle riunioni con Whisper.** Il motore specializzato nel

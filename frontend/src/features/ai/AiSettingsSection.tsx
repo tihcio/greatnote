@@ -575,7 +575,13 @@ export default function AiSettingsSection({
         </p>
       )}
       <div className="ai-inline-actions ai-save-row">
-        <button className="data-action primary" disabled={!changed || saving} onClick={() => void save()} type="button">
+        <button
+          aria-busy={saving}
+          className="data-action primary"
+          disabled={!changed || saving}
+          onClick={() => void save()}
+          type="button"
+        >
           {t.aiSaveSettings}
         </button>
         {changed && (

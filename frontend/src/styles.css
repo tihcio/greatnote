@@ -1388,7 +1388,7 @@ p {
 .dialog-cancel-button:disabled,
 .dialog-submit-button:disabled,
 .dialog-close-button:disabled {
-  cursor: wait;
+  cursor: default;
   opacity: 0.65;
 }
 
@@ -1589,7 +1589,7 @@ p {
 }
 
 .data-tab:disabled {
-  cursor: wait;
+  cursor: default;
 }
 
 .data-panel {
@@ -1662,7 +1662,7 @@ p {
 }
 
 .data-action:disabled {
-  cursor: wait;
+  cursor: default;
   opacity: 0.6;
 }
 
@@ -7359,4 +7359,12 @@ button.time-grid-day-name:hover {
 .recorder-saved li {
   display: grid;
   gap: 2px;
+}
+
+/* Un pulsante disattivato ha il cursore normale (prima mostrava l'attesa e
+   sembrava che l'app stesse lavorando); l'attesa solo durante
+   un'operazione davvero in corso. */
+button[aria-busy="true"],
+[aria-busy="true"] button:disabled {
+  cursor: progress;
 }

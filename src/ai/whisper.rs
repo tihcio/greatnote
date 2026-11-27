@@ -35,6 +35,17 @@ pub const EXECUTABLE: &str = if cfg!(windows) {
 /// del suo contesto testuale).
 pub const MAX_TERMS_CHARS: usize = 400;
 const POLL: Duration = Duration::from_millis(200);
+/// Oltre questo numero di thread Whisper non accelera più, mentre il resto
+/// del computer (interfaccia compresa) resta senza processore.
+const MAX_THREADS: usize = 8;
+
+/// Thread per Whisper: metà dei core logici (i thread "hyper" aiutano poco),
+/// lasciandone almeno due al sistema, al massimo [`MAX_THREADS`].
+pub fn threads_for(cores: usize) -> usize {
+    (cores / 2)
+        .max(cores.saturating_sub(2).min(2))
+        .clamp(1, MAX_THREADS)
+}
 
 /// Lingua della riunione.
 pub fn valid_language(language: &str) -> bool {
@@ -106,7 +117,7 @@ impl WhisperJob<'_> {
             "--language".to_owned(),
             self.language.to_owned(),
             "--threads".to_owned(),
-            self.threads.clamp(1, 16).to_string(),
+            self.threads.clamp(1, MAX_THREADS).to_string(),
             "--prompt".to_owned(),
             self.prompt.to_owned(),
             // Il VAD toglie i silenzi: senza, Whisper inventa frasi («Grazie a
@@ -128,6 +139,18 @@ impl WhisperJob<'_> {
         PathBuf::from(name)
     }
 }
+
+/// Abbassa la priorità del processo figlio (solo tra fork ed exec).
+#[cfg(target_os = "linux")]
+fn libc_nice() {
+    // SAFETY: chiamata di sistema senza puntatori.
+    unsafe {
+        libc::nice(10);
+    }
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn libc_nice() {}
 
 /// Percentuale da una riga di `--print-progress`.
 pub fn parse_progress(line: &str) -> Option<u8> {
@@ -193,11 +216,25 @@ pub fn run(
         // Le librerie del motore sono accanto all'eseguibile.
         command.current_dir(directory);
     }
+    // Priorità bassa: una trascrizione lunga non deve rallentare
+    // l'interfaccia né il resto del sistema.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: `nice` è async-signal-safe e non alloca.
+        unsafe {
+            command.pre_exec(|| {
+                libc_nice();
+                Ok(())
+            });
+        }
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
+        const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
+        command.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS);
     }
     let mut child = super::builtin::server::supervised::spawn(command).map_err(|error| {
         AiError::Builtin(crate::tr!(
@@ -310,7 +347,13 @@ mod tests {
                 .map(|index| arguments[index + 1].clone())
         };
         assert_eq!(value("--language").as_deref(), Some("it"));
-        assert_eq!(value("--threads").as_deref(), Some("16"));
+        assert_eq!(value("--threads").as_deref(), Some("8"));
+        // Metà dei core logici, almeno due liberi, mai oltre 8.
+        assert_eq!(threads_for(20), 8);
+        assert_eq!(threads_for(8), 4);
+        assert_eq!(threads_for(4), 2);
+        assert_eq!(threads_for(2), 1);
+        assert_eq!(threads_for(1), 1);
         assert_eq!(
             value("--vad-model").as_deref(),
             Some("/m/ggml-silero-v6.2.0.bin")

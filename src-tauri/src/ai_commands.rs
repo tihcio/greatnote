@@ -1521,10 +1521,9 @@ fn transcribe_with_whisper(
             "Whisper is not included in this Greatnote installation (whisper-cli is missing)"
         )
     })?;
-    // Lascia un po' di processore all'app e al sistema.
-    let threads = thread::available_parallelism()
-        .map(|cores| cores.get().saturating_sub(2).max(1))
-        .unwrap_or(4);
+    let threads = greatnote_core::ai::whisper::threads_for(
+        thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get),
+    );
     let started = std::time::Instant::now();
     let result = greatnote_core::meeting::transcribe_with_whisper(
         directory,
