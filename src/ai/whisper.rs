@@ -208,28 +208,29 @@ pub fn run(
     // Lo standard error viene letto in un thread: avanzamento e, in caso
     // di errore, le ultime righe da mostrare.
     let (sender, receiver) = mpsc::channel::<String>();
-    if let Some(stderr) = child.stderr.take() {
+    let reader = child.stderr.take().map(|stderr| {
         thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 if sender.send(line).is_err() {
                     break;
                 }
             }
-        });
-    }
+        })
+    });
     let mut tail: Vec<String> = Vec::new();
+    let mut handle = |line: String| match parse_progress(&line) {
+        Some(percent) => on_progress(percent),
+        None if !line.trim().is_empty() => {
+            tail.push(line);
+            if tail.len() > 6 {
+                tail.remove(0);
+            }
+        }
+        None => {}
+    };
     let status = loop {
         while let Ok(line) = receiver.try_recv() {
-            match parse_progress(&line) {
-                Some(percent) => on_progress(percent),
-                None if !line.trim().is_empty() => {
-                    tail.push(line);
-                    if tail.len() > 6 {
-                        tail.remove(0);
-                    }
-                }
-                None => {}
-            }
+            handle(line);
         }
         if cancel.load(Ordering::Relaxed) {
             let _ = child.kill();
@@ -245,6 +246,15 @@ pub fn run(
             }
         }
     };
+    // Il processo può finire prima che le sue ultime righe siano state lette
+    // (errore immediato, ultima percentuale): si aspetta il lettore, che
+    // termina alla chiusura dello standard error, e si elabora il resto.
+    if let Some(reader) = reader {
+        let _ = reader.join();
+    }
+    for line in receiver.try_iter() {
+        handle(line);
+    }
     if !status.success() {
         return Err(AiError::Builtin(crate::tr!(
             "Whisper si è fermato con un errore ({status}): {}",
